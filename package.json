@@ -1,0 +1,25 @@
+{
+  "name": "my-pi-setup",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal global Pi setup with custom extensions, themes, and pinned third-party packages.",
+  "keywords": [
+    "pi-package"
+  ],
+  "dependencies": {
+    "@juicesharp/rpiv-ask-user-question": "^1.20.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions",
+      "./node_modules/@juicesharp/rpiv-ask-user-question/index.ts"
+    ],
+    "themes": [
+      "./themes"
+    ]
+  }
+}
