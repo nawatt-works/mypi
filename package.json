@@ -7,6 +7,9 @@
   "keywords": [
     "pi-package"
   ],
+  "scripts": {
+    "test": "node --experimental-strip-types --test tests/*.test.ts"
+  },
   "dependencies": {
     "@juicesharp/rpiv-ask-user-question": "^2.1.0"
   },

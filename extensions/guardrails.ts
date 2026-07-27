@@ -3,12 +3,13 @@ import { homedir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-type MutationKind = "external-write" | "unknown-write" | "secret-read";
+type MutationKind = "external-write" | "unknown-write" | "secret-read" | "external-upload";
 
 export type MutationFinding = {
 	kind: MutationKind;
 	reason: string;
 	target?: string;
+	targetIsDirectory?: boolean;
 };
 
 type ShellState = {
@@ -32,7 +33,17 @@ const CONTENT_READ_TOOLS = new Set(["read", "grep"]);
 const SESSION_ALLOW_ONCE = "Allow once";
 const SESSION_ALLOW_DIRECTORY = "Allow this directory for this session";
 const SESSION_ALLOW_SECRET = "Allow this secret file for this session";
+const SESSION_ALLOW_UPLOAD = "Allow this file upload for this session";
 const DENY = "Deny";
+
+const PATH_FIELD_PATTERN = /(?:^|[_-])(?:path|paths|file|files|filename|directory|dir|destination|dest|target|source|src|uri)(?:$|[_-])/i;
+const DESTINATION_FIELD_PATTERN = /(?:^|[_-])(?:destination|dest|target|output|out|to|new[_-]?path|save[_-]?path)(?:$|[_-])/i;
+const READ_TOOL_PATTERN = /(?:^|[_-])(?:read|get|load|open|fetch|inspect|parse|analyze|search|upload|attach|send)(?:$|[_-])/i;
+const FILE_MUTATION_TOOL_PATTERN = /(?:^|[_-])(?:write|edit|patch|replace|delete|remove|unlink|move|rename|copy|mkdir|create|save|download|extract|export|generate|screenshot)(?:$|[_-])/i;
+const FILE_MUTATION_CONTEXT_PATTERN = /(?:^|[_-])(?:file|directory|folder|path|filesystem|fs)(?:$|[_-])/i;
+const FILE_UPLOAD_TOOL_PATTERN = /(?:^|[_-])(?:upload|attach|send[_-]?file)(?:$|[_-])/i;
+const SENSITIVE_ENV_NAME_PATTERN = /(?:^|_)(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?|PRIVATE[_-]?KEY|AUTH)(?:_|$)/i;
+const LOCAL_VIDEO_EXTENSION_PATTERN = /\.(?:mp4|mov|webm|avi|mpeg|mpg|wmv|flv|3gp|3gpp)$/i;
 
 const SHELL_CONTENT_READ_COMMANDS = new Set([
 	".",
@@ -70,8 +81,11 @@ const SENSITIVE_FILE_PATTERNS = [
 	/^(?:credentials?|secrets?)(?:\.[^.]+)?$/i,
 	/^service[-_.]?account(?:\.[^.]+)?$/i,
 	/^application_default_credentials\.json$/i,
+	/^auth\.json$/i,
+	/^\.git-credentials$/i,
+	/^\.(?:bash|zsh|fish)_history$/i,
 	/^(?:id_)?(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?$/i,
-	/\.(?:key|pem|p12|pfx|jks|keystore)$/i,
+	/\.(?:key|pem|p12|pfx|jks|keystore|kdbx|age|gpg)$/i,
 	/^\.(?:npmrc|pypirc|netrc)$/i,
 ];
 
@@ -82,6 +96,8 @@ const SENSITIVE_PATH_PATTERNS = [
 	/(?:^|\/)\.docker\/config\.json$/i,
 	/(?:^|\/)\.kube\/config$/i,
 	/(?:^|\/)\.config\/gh\/hosts\.yml$/i,
+	/(?:^|\/)\.(?:pi\/agent|codex)\/auth\.json$/i,
+	/(?:^|\/)(?:Google\/Chrome|Chromium|BraveSoftware\/Brave-Browser|Microsoft Edge)\/[^/]+\/(?:Cookies|Login Data|Web Data)$/i,
 ];
 
 const MUTATION_COMMANDS = new Set([
@@ -144,6 +160,16 @@ function expandHome(value: string): string {
 	return value;
 }
 
+function normalizeFileReference(value: string): string {
+	const trimmed = value.trim().replace(/^@(?=[/~.])/, "");
+	if (!trimmed.startsWith("file://")) return trimmed;
+	try {
+		return decodeURIComponent(new URL(trimmed).pathname);
+	} catch {
+		return trimmed;
+	}
+}
+
 function canonicalizeMissingPath(input: string): string {
 	const absolute = resolve(expandHome(input));
 	if (existsSync(absolute)) return realpathSync.native(absolute);
@@ -157,7 +183,7 @@ function canonicalizeMissingPath(input: string): string {
 }
 
 export function resolvePolicyPath(input: string, cwd: string): string {
-	const expanded = expandHome(input);
+	const expanded = expandHome(normalizeFileReference(input));
 	return canonicalizeMissingPath(isAbsolute(expanded) ? expanded : resolve(cwd, expanded));
 }
 
@@ -169,7 +195,7 @@ export function isInsideWorkspace(input: string, cwd: string): boolean {
 }
 
 export function isSensitivePath(input: string): boolean {
-	const normalized = expandHome(input).replaceAll("\\", "/").replace(/\/+$/, "");
+	const normalized = expandHome(normalizeFileReference(input)).replaceAll("\\", "/").replace(/\/+$/, "");
 	const name = basename(normalized);
 	const lowerName = name.toLowerCase();
 
@@ -180,13 +206,38 @@ export function isSensitivePath(input: string): boolean {
 }
 
 function secretReadFinding(rawTarget: string, state: ShellState, reason: string): MutationFinding | undefined {
-	const expanded = expandKnownVariables(rawTarget, state);
+	const expanded = expandKnownVariables(normalizeFileReference(rawTarget), state);
 	if (expanded === undefined || !state.cwd || !isSensitivePath(expanded)) return;
 	return {
 		kind: "secret-read",
 		reason,
 		target: resolvePolicyPath(expanded, state.cwd),
 	};
+}
+
+function externalUploadFinding(rawTarget: string, state: ShellState, reason: string): MutationFinding {
+	const expanded = expandKnownVariables(normalizeFileReference(rawTarget), state);
+	if (expanded === undefined || !state.cwd) {
+		return {
+			kind: "external-upload",
+			reason: `${reason}; source is computed dynamically`,
+		};
+	}
+	return {
+		kind: "external-upload",
+		reason,
+		target: resolvePolicyPath(expanded, state.cwd),
+	};
+}
+
+function looksLikeRemotePath(value: string): boolean {
+	return /^[^/@\s]+@[^:\s]+:.+/.test(value) || /^[^/:\s]+:.+/.test(value);
+}
+
+function isLocalReference(value: string): boolean {
+	const normalized = normalizeFileReference(value);
+	if (/^[a-z][a-z0-9+.-]*:\/\//i.test(normalized)) return false;
+	return normalized.length > 0 && !looksLikeRemotePath(normalized);
 }
 
 function containsDynamicShell(value: string): boolean {
@@ -431,6 +482,30 @@ function analyzeSegment(segment: string, state: ShellState, workspace: string): 
 	const command = basename(tokens[cursor]!);
 	const args = tokens.slice(cursor + 1).filter((arg) => !/^(?:\d*)?[<>]/.test(arg));
 
+	const referencedEnvironmentVariables = segment.matchAll(
+		/\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g,
+	);
+	for (const match of referencedEnvironmentVariables) {
+		const name = match[1] ?? match[2] ?? "";
+		if (SENSITIVE_ENV_NAME_PATTERN.test(name)) {
+			findings.push({
+				kind: "secret-read",
+				reason: `shell reads sensitive environment variable ${name}`,
+			});
+		}
+	}
+	if (
+		(command === "env" && args.every((arg) => /^[A-Za-z_][A-Za-z0-9_]*=/.test(arg))) ||
+		(command === "printenv" && (args.length === 0 || args.some((arg) => SENSITIVE_ENV_NAME_PATTERN.test(arg)))) ||
+		(command === "set" && args.length === 0) ||
+		(command === "export" && args.includes("-p"))
+	) {
+		findings.push({
+			kind: "secret-read",
+			reason: `${command} may expose sensitive environment variables`,
+		});
+	}
+
 	if (command === "cd") {
 		const destination = args.find((arg) => !arg.startsWith("-")) ?? homedir();
 		const expanded = expandKnownVariables(destination, state);
@@ -502,6 +577,84 @@ function analyzeSegment(segment: string, state: ShellState, workspace: string): 
 		return findings;
 	}
 
+	if (command === "curl" || command === "wget") {
+		const writesUsingRemoteName =
+			(command === "curl" && args.some((arg) => arg === "-O" || arg === "--remote-name")) ||
+			(command === "wget" && !args.some((arg) =>
+				arg === "-O" ||
+				arg === "--output-document" ||
+				arg.startsWith("--output-document=")
+			));
+		if (writesUsingRemoteName && state.cwd && !isInsideWorkspace(state.cwd, workspace)) {
+			findings.push({
+				kind: "external-write",
+				reason: `${command} downloads into a directory outside workspace`,
+				target: state.cwd,
+				targetIsDirectory: true,
+			});
+		}
+
+		for (let index = 0; index < args.length; index += 1) {
+			const arg = args[index]!;
+			const next = args[index + 1];
+			const isOutputFlag =
+				arg === "-o" ||
+				arg === "--output" ||
+				(command === "wget" && arg === "-O") ||
+				arg === "--output-document";
+			const inlineOutput = arg.match(/^--(?:output|output-document)=(.+)$/);
+			const output = inlineOutput?.[1] ?? (isOutputFlag ? next : undefined);
+			if (output && output !== "-") {
+				const finding = externalFinding(
+					output,
+					state,
+					workspace,
+					`${command} downloads a file outside workspace`,
+				);
+				if (finding) findings.push(finding);
+			}
+
+			const uploadFlag =
+				arg === "-T" ||
+				arg === "--upload-file" ||
+				arg === "--data" ||
+				arg === "-d" ||
+				arg === "--data-binary" ||
+				arg === "--data-urlencode" ||
+				arg === "--form" ||
+				arg === "-F";
+			const inlineUpload = arg.match(/^--(?:upload-file|data|data-binary|data-urlencode|form)=(.+)$/)?.[1];
+			const uploadValue = inlineUpload ?? (uploadFlag ? next : undefined);
+			const fileReference = uploadValue?.match(/(?:^|=)@(.+)$/)?.[1] ??
+				((arg === "-T" || arg === "--upload-file") && uploadValue ? uploadValue : undefined);
+			if (fileReference && isLocalReference(fileReference)) {
+				findings.push(externalUploadFinding(
+					fileReference,
+					state,
+					`${command} uploads a local file to an external destination`,
+				));
+			}
+		}
+		return findings;
+	}
+
+	if ((command === "scp" || command === "rsync") && args.length >= 2) {
+		const positional = args.filter((arg) => !arg.startsWith("-"));
+		const destination = positional[positional.length - 1];
+		if (destination && looksLikeRemotePath(destination)) {
+			for (const source of positional.slice(0, -1)) {
+				if (isLocalReference(source)) {
+					findings.push(externalUploadFinding(
+						source,
+						state,
+						`${command} uploads a local file to a remote destination`,
+					));
+				}
+			}
+			return findings;
+		}
+	}
+
 	if (!MUTATION_COMMANDS.has(command)) return findings;
 
 	const operands = mutationOperands(command, args);
@@ -541,6 +694,216 @@ function deduplicateFindings(findings: MutationFinding[]): MutationFinding[] {
 	});
 }
 
+type PathArgument = {
+	field: string;
+	value: string;
+};
+
+function normalizedFieldName(field: string): string {
+	return field
+		.replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+		.replace(/[^A-Za-z0-9]+/g, "_")
+		.toLowerCase();
+}
+
+function collectPathArguments(
+	value: unknown,
+	field = "",
+	results: PathArgument[] = [],
+): PathArgument[] {
+	if (typeof value === "string") {
+		if (PATH_FIELD_PATTERN.test(normalizedFieldName(field)) || value.startsWith("file://")) {
+			results.push({ field: normalizedFieldName(field), value });
+		}
+		return results;
+	}
+	if (Array.isArray(value)) {
+		for (const item of value) collectPathArguments(item, field, results);
+		return results;
+	}
+	if (!value || typeof value !== "object") return results;
+	for (const [key, nested] of Object.entries(value as Record<string, unknown>)) {
+		collectPathArguments(nested, key, results);
+	}
+	return results;
+}
+
+function parseNestedToolArguments(value: unknown): Record<string, unknown> | undefined {
+	if (value === undefined || value === "") return {};
+	if (value && typeof value === "object" && !Array.isArray(value)) {
+		return value as Record<string, unknown>;
+	}
+	if (typeof value !== "string") return undefined;
+	try {
+		const parsed: unknown = JSON.parse(value);
+		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+			? parsed as Record<string, unknown>
+			: undefined;
+	} catch {
+		return undefined;
+	}
+}
+
+function analyzePathAwareCustomTool(
+	toolName: string,
+	input: Record<string, unknown>,
+	cwd: string,
+): MutationFinding[] {
+	const normalizedToolName = normalizedFieldName(toolName);
+	const pathArguments = collectPathArguments(input).filter(({ value }) => isLocalReference(value));
+	const findings: MutationFinding[] = [];
+
+	if (READ_TOOL_PATTERN.test(normalizedToolName)) {
+		for (const { value } of pathArguments) {
+			if (!isSensitivePath(value)) continue;
+			findings.push({
+				kind: "secret-read",
+				reason: `${toolName} reads a secret file`,
+				target: resolvePolicyPath(value, cwd),
+			});
+		}
+	}
+
+	if (FILE_UPLOAD_TOOL_PATTERN.test(normalizedToolName)) {
+		const state: ShellState = { cwd, vars: new Map() };
+		const uploadSources = pathArguments.filter(({ field, value }) => {
+			return (
+				/(?:^|_)(?:local_path|file_path|source|src|file|files)(?:_|$)/.test(field) ||
+				value.startsWith("/") ||
+				value.startsWith("./") ||
+				value.startsWith("../") ||
+				value.startsWith("~/") ||
+				value.startsWith("file://")
+			);
+		});
+		for (const { value } of uploadSources) {
+			findings.push(externalUploadFinding(
+				value,
+				state,
+				`${toolName} uploads a local file to an external service`,
+			));
+		}
+	}
+
+	const isFileMutation =
+		FILE_MUTATION_TOOL_PATTERN.test(normalizedToolName) &&
+		(
+			FILE_MUTATION_CONTEXT_PATTERN.test(normalizedToolName) ||
+			normalizedToolName === "apply_patch" ||
+			pathArguments.some(({ field }) => DESTINATION_FIELD_PATTERN.test(field))
+		);
+	if (!isFileMutation) return deduplicateFindings(findings);
+
+	let destinations = pathArguments;
+	if (/(?:^|_)(?:copy|move|rename|download|extract|export|generate|screenshot)(?:_|$)/.test(normalizedToolName)) {
+		const explicitDestinations = pathArguments.filter(({ field }) => DESTINATION_FIELD_PATTERN.test(field));
+		destinations = explicitDestinations.length > 0
+			? explicitDestinations
+			: pathArguments.slice(-1);
+	}
+
+	if (destinations.length === 0) {
+		findings.push({
+			kind: "unknown-write",
+			reason: `${toolName} may modify files, but its destination could not be determined`,
+		});
+		return deduplicateFindings(findings);
+	}
+
+	for (const { value } of destinations) {
+		if (isInsideWorkspace(value, cwd)) continue;
+		findings.push({
+			kind: "external-write",
+			reason: `${toolName} modifies a path outside workspace`,
+			target: resolvePolicyPath(value, cwd),
+		});
+	}
+	return deduplicateFindings(findings);
+}
+
+function analyzeApplyPatch(input: Record<string, unknown>, cwd: string): MutationFinding[] {
+	const patch = input.patch ?? input.input;
+	if (typeof patch !== "string") {
+		return [{
+			kind: "unknown-write",
+			reason: "apply_patch target paths could not be inspected",
+		}];
+	}
+
+	const paths = [...patch.matchAll(/^\*\*\* (?:Add|Update|Delete) File: (.+)$/gm)]
+		.map((match) => match[1]?.trim())
+		.filter((value): value is string => Boolean(value));
+	if (paths.length === 0) {
+		return [{
+			kind: "unknown-write",
+			reason: "apply_patch target paths could not be inspected",
+		}];
+	}
+	return deduplicateFindings(paths.flatMap((path): MutationFinding[] => {
+		if (isInsideWorkspace(path, cwd)) return [];
+		return [{
+			kind: "external-write",
+			reason: "apply_patch modifies a path outside workspace",
+			target: resolvePolicyPath(path, cwd),
+		}];
+	}));
+}
+
+function analyzeFetchContent(input: Record<string, unknown>, cwd: string): MutationFinding[] {
+	const rawUrls: unknown[] = [input.url];
+	if (Array.isArray(input.urls)) rawUrls.push(...input.urls);
+	const urls = rawUrls.filter((value): value is string => typeof value === "string");
+	const findings: MutationFinding[] = [];
+	const hasTimestamp = typeof input.timestamp === "string" && input.timestamp.trim().length > 0;
+	const hasFrameSampling = typeof input.frames === "number" && Number.isInteger(input.frames) && input.frames > 1;
+	const performsLocalOnlyFrameExtraction = hasTimestamp || hasFrameSampling;
+
+	for (const url of urls) {
+		const normalized = normalizeFileReference(url);
+		const isExplicitLocalFile =
+			url.startsWith("/") ||
+			url.startsWith("./") ||
+			url.startsWith("../") ||
+			url.startsWith("~/") ||
+			url.startsWith("file://");
+		if (isExplicitLocalFile) {
+			if (isSensitivePath(normalized)) {
+				findings.push({
+					kind: "secret-read",
+					reason: "fetch_content reads a secret local file",
+					target: resolvePolicyPath(normalized, cwd),
+				});
+			}
+			if (!performsLocalOnlyFrameExtraction && LOCAL_VIDEO_EXTENSION_PATTERN.test(normalized)) {
+				findings.push({
+					kind: "external-upload",
+					reason: "fetch_content may upload a local video to an external AI provider",
+					target: resolvePolicyPath(normalized, cwd),
+				});
+			}
+			continue;
+		}
+
+		try {
+			const parsed = new URL(url);
+			if (
+				(parsed.protocol === "http:" || parsed.protocol === "https:") &&
+				parsed.pathname.toLowerCase().endsWith(".pdf")
+			) {
+				findings.push({
+					kind: "external-write",
+					reason: "fetch_content PDF extraction writes Markdown outside workspace",
+					target: join(homedir(), "Downloads"),
+					targetIsDirectory: true,
+				});
+			}
+		} catch {
+			// Invalid URLs are rejected by fetch_content itself.
+		}
+	}
+	return deduplicateFindings(findings);
+}
+
 export function analyzeToolCall(
 	toolName: string,
 	input: Record<string, unknown>,
@@ -564,18 +927,25 @@ export function analyzeToolCall(
 	if (READ_ONLY_TOOLS.has(toolName)) return [];
 
 	if (DIRECT_MUTATION_TOOLS.has(toolName)) {
-		const rawPath = input.path ?? input.filePath ?? input.target;
-		if (typeof rawPath !== "string") {
+		const pathArguments = collectPathArguments(input).filter(({ value }) => isLocalReference(value));
+		let destinations = pathArguments;
+		if (toolName === "move" || toolName === "copy") {
+			const explicitDestinations = pathArguments.filter(({ field }) => DESTINATION_FIELD_PATTERN.test(field));
+			destinations = explicitDestinations.length > 0
+				? explicitDestinations
+				: pathArguments.slice(-1);
+		}
+		if (destinations.length === 0) {
 			return [{ kind: "unknown-write", reason: `${toolName} target path is missing or dynamic` }];
 		}
-		if (isInsideWorkspace(rawPath, cwd)) return [];
-		return [
-			{
+		return deduplicateFindings(destinations.flatMap(({ value }): MutationFinding[] => {
+			if (isInsideWorkspace(value, cwd)) return [];
+			return [{
 				kind: "external-write",
 				reason: `${toolName} modifies a path outside workspace`,
-				target: resolvePolicyPath(rawPath, cwd),
-			},
-		];
+				target: resolvePolicyPath(value, cwd),
+			}];
+		}));
 	}
 
 	if (toolName === "bash" && typeof input.command === "string") {
@@ -586,38 +956,145 @@ export function analyzeToolCall(
 		return analyzeShellMutations(input.cmd, workdir, cwd);
 	}
 
-	return [];
+	if (toolName === "apply_patch") {
+		return analyzeApplyPatch(input, cwd);
+	}
+
+	if (toolName === "mcp" && typeof input.tool === "string") {
+		const nestedInput = parseNestedToolArguments(input.args);
+		if (!nestedInput) {
+			const nestedToolName = normalizedFieldName(input.tool);
+			return (
+				FILE_MUTATION_TOOL_PATTERN.test(nestedToolName) &&
+				FILE_MUTATION_CONTEXT_PATTERN.test(nestedToolName)
+			)
+				? [{
+					kind: "unknown-write",
+					reason: `MCP tool ${input.tool} has arguments that guardrails cannot inspect`,
+				}]
+				: [];
+		}
+		if (normalizedFieldName(input.tool).endsWith("apply_patch")) {
+			return analyzeApplyPatch(nestedInput, cwd);
+		}
+		return analyzePathAwareCustomTool(`mcp:${input.tool}`, nestedInput, cwd);
+	}
+
+	if (toolName === "fetch_content") {
+		return analyzeFetchContent(input, cwd);
+	}
+
+	if (toolName === "chrome_devtools_screenshot" && typeof input.savePath === "string") {
+		if (isInsideWorkspace(input.savePath, cwd)) return [];
+		return [{
+			kind: "external-write",
+			reason: "chrome_devtools_screenshot saves an image outside workspace",
+			target: resolvePolicyPath(input.savePath, cwd),
+		}];
+	}
+
+	return analyzePathAwareCustomTool(toolName, input, cwd);
 }
 
 function displayFinding(finding: MutationFinding): string {
 	if (finding.target) return `${finding.reason}\n\nTarget: ${finding.target}`;
+	if (finding.kind === "secret-read") {
+		return `${finding.reason}\n\nThe sensitive source could not be determined exactly.`;
+	}
+	if (finding.kind === "external-upload") {
+		return `${finding.reason}\n\nThe local source could not be determined exactly.`;
+	}
 	return `${finding.reason}\n\nThe destination cannot be proven to stay inside the workspace.`;
 }
 
 function sessionDirectoryKey(finding: MutationFinding): string | undefined {
 	if (!finding.target) return;
-	return dirname(finding.target);
+	return finding.targetIsDirectory ? finding.target : dirname(finding.target);
 }
 
-export default function externalWriteGate(pi: ExtensionAPI) {
+export default function guardrails(pi: ExtensionAPI) {
 	const allowedDirectories = new Set<string>();
 	const allowedSecretFiles = new Set<string>();
+	const allowedUploadFiles = new Set<string>();
+	const fetchContentToolNames = new Set(["fetch_content"]);
 
 	pi.on("session_start", () => {
 		allowedDirectories.clear();
 		allowedSecretFiles.clear();
+		allowedUploadFiles.clear();
+		fetchContentToolNames.clear();
+		fetchContentToolNames.add("fetch_content");
+		for (const tool of pi.getAllTools()) {
+			const description = tool.description.toLowerCase();
+			if (
+				description.includes("fetch url(s) and extract readable content") &&
+				description.includes("local video")
+			) {
+				fetchContentToolNames.add(tool.name);
+			}
+		}
 	});
 
 	pi.on("tool_call", async (event, ctx) => {
+		const policyToolName = fetchContentToolNames.has(event.toolName)
+			? "fetch_content"
+			: event.toolName;
 		const findings = analyzeToolCall(
-			event.toolName,
+			policyToolName,
 			event.input as Record<string, unknown>,
 			ctx.cwd,
 		);
 		if (findings.length === 0) return;
 
+		const approvedUploadsThisCall = new Set<string>();
+		const pendingUploads = findings.filter((finding) => {
+			if (finding.kind !== "external-upload") return false;
+			if (finding.target && allowedUploadFiles.has(finding.target)) {
+				approvedUploadsThisCall.add(finding.target);
+				return false;
+			}
+			return true;
+		});
+		if (pendingUploads.length > 0) {
+			const summary = pendingUploads.map(displayFinding).join("\n\n");
+			if (!ctx.hasUI) {
+				return {
+					block: true,
+					reason: `Blocked local file upload in non-interactive mode.\n${summary}`,
+				};
+			}
+
+			const choice = await ctx.ui.select(
+				`Local file upload requested\n\n${summary}`,
+				[SESSION_ALLOW_ONCE, SESSION_ALLOW_UPLOAD, DENY],
+			);
+			if (choice === SESSION_ALLOW_UPLOAD) {
+				for (const finding of pendingUploads) {
+					if (finding.target) {
+						allowedUploadFiles.add(finding.target);
+						approvedUploadsThisCall.add(finding.target);
+					}
+				}
+			} else if (choice === SESSION_ALLOW_ONCE) {
+				for (const finding of pendingUploads) {
+					if (finding.target) approvedUploadsThisCall.add(finding.target);
+				}
+			} else {
+				return {
+					block: true,
+					reason: `User rejected uploading a local file.\n${summary}`,
+				};
+			}
+		}
+
 		const pendingSecretReads = findings.filter((finding) => {
-			return finding.kind === "secret-read" && (!finding.target || !allowedSecretFiles.has(finding.target));
+			return (
+				finding.kind === "secret-read" &&
+				(!finding.target || (
+					!allowedSecretFiles.has(finding.target) &&
+					!approvedUploadsThisCall.has(finding.target)
+				))
+			);
 		});
 		if (pendingSecretReads.length > 0) {
 			const summary = pendingSecretReads.map(displayFinding).join("\n\n");
@@ -645,7 +1122,7 @@ export default function externalWriteGate(pi: ExtensionAPI) {
 		}
 
 		const pending = findings.filter((finding) => {
-			if (finding.kind === "secret-read") return false;
+			if (finding.kind === "secret-read" || finding.kind === "external-upload") return false;
 			const key = sessionDirectoryKey(finding);
 			return !key || !allowedDirectories.has(key);
 		});

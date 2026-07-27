@@ -1,8 +1,8 @@
 # Extension Review
 
-> **Status:** รอตัดสินใจ<br>
+> **Status:** ดำเนินการบางส่วน<br>
 > **Created:** 2026-07-27 02:31<br>
-> **Updated:** 2026-07-27 08:55<br>
+> **Updated:** 2026-07-27 09:19<br>
 > **Purpose:** บันทึกผลประเมิน third-party extensions และแนวทางปรับ Pi setup
 
 ## ข้อสรุป
@@ -30,31 +30,44 @@
 - หากเน้น UI testing ให้พิจารณา Playwright MCP
 - ไม่ควรเปิด browser tools สองชุดพร้อมกัน
 
-## Permission Blind Spots
+## Guardrails Coverage
 
-`external-write-gate` ตรวจได้เฉพาะ operation ที่มองเห็นจาก top-level tool call ปัจจุบัน แต่ไม่เห็น I/O ภายใน custom extension หรือ MCP server
+เปลี่ยนชื่อ `external-write-gate.ts` เป็น `guardrails.ts` เพื่อให้ตรงกับขอบเขตที่ครอบคลุมมากกว่า external file writes
 
-- MCP filesystem tools อาจอ่านหรือเขียนนอก workspace โดย gate เห็นเพียง `mcp`
-- `fetch_content` อาจอ่าน local video และส่งไปยัง external provider
-- PDF extraction อาจเขียนไปยัง `~/Downloads`
-- Browser tools สามารถกระทำกับ browser session ที่ล็อกอินอยู่
+### ป้องกันเพิ่มแล้ว
 
-สิ่งที่ควรเขียนเพิ่มคือ policy layer สำหรับ `mcp`, `fetch_content` และ custom tools ไม่ใช่เขียน MCP/Web/Chrome implementation ใหม่ทั้งหมด
+- ตรวจ nested `mcp({ tool, args })` และ direct custom tools ที่มีลักษณะอ่านหรือแก้ filesystem
+- ถามก่อน `fetch_content` อัปโหลด local video ไปยัง external AI provider
+- ถามก่อน PDF URL ที่ลงท้าย `.pdf` เขียนผล extraction ไปยัง `~/Downloads`
+- ตรวจ `chrome_devtools_screenshot.savePath` เมื่อระบุ path นอก workspace
+- ตรวจ shell upload/download ที่ระบุ path เช่น `curl`, `wget`, `scp` และ `rsync`
+- ถามก่อนอ่าน sensitive environment variables และขยายรูปแบบ secret files ที่รู้จัก
+- ยอมให้ managed temporary files ที่ tool สร้างเองและไม่ได้ระบุ output path เช่น screenshot หรือ GitHub clone cache ใต้ `/tmp`
 
-## แนวทางที่เสนอ
+### ข้อจำกัดที่ยังเหลือ
+
+- Guardrails เห็นเฉพาะชื่อ tool และ arguments ก่อน execute หาก MCP server, extension หรือ local script ซ่อน side effect ไว้ภายในจะตรวจไม่ได้
+- PDF ที่ URL ไม่มีนามสกุล `.pdf` แต่ server ตอบ `Content-Type: application/pdf` ยังเขียน `~/Downloads` ก่อนที่ guardrails จะรู้ผล
+- Slash commands และ startup hooks ของ third-party extensions ไม่ผ่าน `tool_call`
+- Browser actions มีความหมายตามหน้าเว็บ การถามทุก navigation/click จะรบกวนมากเกินไป จึงควรใช้ isolated browser profile เมื่อต้องการ hard boundary
+- การรับประกันว่าเขียนไม่ได้จริงต้องใช้ OS sandbox/container เพิ่มเติม ไม่สามารถทำด้วย Pi extension เพียงตัวเดียว
+
+## แนวทางที่ยังต้องตัดสินใจ
 
 - เก็บ `pi-mcp-adapter`
 - เก็บ `pi-web-access` แต่ปิด capability ที่ไม่ใช้
-- เลือก browser integration เพียงชุดเดียว
-- เพิ่ม custom-tool policy ใน permission gate
+- เลือก browser integration เพียงชุดเดียวและพิจารณา isolated profile
 - หลังตัดสินใจแล้วค่อยย้าย package ที่เลือกมา pin ใน `my-pi/package.json`
 
 ## Decisions
 
+- 2026-07-27 — ไม่ถามทุก browser navigation/click เพราะสร้าง prompt noise สูง ให้ใช้ isolated browser profile เมื่อต้องการขอบเขตที่เข้มงวด
+- 2026-07-27 — เปลี่ยนชื่อ custom policy extension เป็น Guardrails เพราะครอบคลุม secrets, uploads, MCP และ custom tools มากกว่า external writes
 - 2026-07-27 — ยังไม่เปลี่ยน setup จนกว่าจะคุยรายละเอียดและเลือก browser integration ที่ต้องการ เพื่อลด tools ที่ทำหน้าที่ซ้ำกัน
 - 2026-07-27 — ใช้ third-party implementations ต่อแทนการเขียนใหม่ เพราะ capability และการป้องกันความเสี่ยงครอบคลุมกว่ารุ่นเล็กที่เขียนเอง
 
 ## Change log
 
+- 2026-07-27 09:19 — เพิ่ม Guardrails สำหรับ MCP, custom tools, local uploads, PDF output, Chrome screenshot และ shell/environment risks พร้อมบันทึกข้อจำกัดที่ยังเหลือ
 - 2026-07-27 08:55 — เพิ่มข้อมูลสถานะ วัตถุประสงค์ การตัดสินใจ และประวัติเอกสาร
 - 2026-07-27 02:31 — สร้างบันทึกผลประเมิน extensions
