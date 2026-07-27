@@ -15,6 +15,11 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
 - `steering-choice.ts`
   - เมื่อ AI กำลังทำงาน การกด Enter จะแสดงตัวเลือก `Steer`, `Wait` หรือ `Cancel`
   - เมื่อ AI ว่าง การกด Enter ยังส่งข้อความตามปกติ
+- `dependency-update-notifier.ts`
+  - ตรวจ dependency ภายใน `my-pi` แบบ background ไม่ขวางการเปิด Pi
+  - ตรวจอัตโนมัติไม่เกินวันละครั้งและใช้ timeout 10 วินาที
+  - แจ้งเฉพาะเมื่อพบเวอร์ชันใหม่ และข้ามเงียบเมื่อ startup check ล้มเหลว
+  - ใช้ `/mypi-updates` เมื่อต้องการบังคับตรวจทันที
 
 ### Third-party packages
 
@@ -81,6 +86,12 @@ npm ci
 หลังแก้ extension, theme หรืออัปเดต dependency ให้ใช้ `/reload` หรือเปิด Pi ใหม่
 
 เนื่องจาก setup นี้เป็น local-path package คำสั่ง `pi update --extensions` จะไม่อัปเดต dependency ภายใน repository ให้ ต้องใช้ npm จาก repository นี้
+
+Extension `dependency-update-notifier.ts` ช่วยตรวจ dependency เหล่านี้วันละครั้ง โดยเก็บ cache ที่ `.runtime/cache/` ซึ่งไม่ถูก commit หากต้องการตรวจทันทีโดยไม่รอรอบถัดไป ให้ใช้:
+
+```text
+/mypi-updates
+```
 
 ## เพิ่ม package อื่น
 
