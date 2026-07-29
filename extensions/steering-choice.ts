@@ -2,7 +2,12 @@ import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@earendi
 
 const STEER = "Steer — ส่งหลัง turn/tool ปัจจุบัน";
 const FOLLOW_UP = "Wait — รอจน AI ทำงานเดิมครบ";
+const REPLACE_FOLLOW_UP = "Wait — แทนที่ข้อความที่กำลังรอ";
 const CANCEL = "Cancel — ยังไม่ส่ง";
+const EDIT_WAIT = "Edit — นำข้อความกลับมาแก้ไข";
+const CANCEL_WAIT = "Cancel Wait — ยกเลิกข้อความที่กำลังรอ";
+const KEEP_WAITING = "Keep Waiting — รอต่อ";
+const WAIT_STATUS_KEY = "steering-choice-wait";
 
 type EditableComponent = CustomEditor & {
 	getExpandedText?: () => string;
@@ -19,6 +24,31 @@ export default function steeringChoice(pi: ExtensionAPI) {
 	let activeContext: ExtensionContext | undefined;
 	let installed = false;
 	let dialogOpen = false;
+	let pendingFollowUp: { text: string; editor: EditableComponent } | undefined;
+
+	const clearPendingFollowUp = (ctx: ExtensionContext) => {
+		const pending = pendingFollowUp;
+		pendingFollowUp = undefined;
+		ctx.ui.setStatus(WAIT_STATUS_KEY, undefined);
+		return pending;
+	};
+
+	const flushPendingFollowUp = (ctx: ExtensionContext) => {
+		if (dialogOpen || !ctx.isIdle() || !pendingFollowUp) return;
+		const pending = clearPendingFollowUp(ctx);
+		if (!pending) return;
+		pending.editor.addToHistory?.(pending.text);
+		pi.sendUserMessage(pending.text);
+	};
+
+	pi.on("agent_settled", (_event, ctx) => {
+		flushPendingFollowUp(ctx);
+	});
+
+	pi.on("session_shutdown", (_event, ctx) => {
+		clearPendingFollowUp(ctx);
+		activeContext = undefined;
+	});
 
 	pi.on("session_start", (_event, ctx) => {
 		activeContext = ctx;
@@ -44,6 +74,42 @@ export default function steeringChoice(pi: ExtensionAPI) {
 					!dialogOpen &&
 					current &&
 					!current.isIdle() &&
+					pendingFollowUp &&
+					text.length === 0 &&
+					!hasAutocomplete
+				) {
+					dialogOpen = true;
+					void (async () => {
+						try {
+							const choice = await current.ui.select(
+								"A Wait message is queued — what would you like to do?",
+								[EDIT_WAIT, CANCEL_WAIT, KEEP_WAITING],
+							);
+							if (choice === EDIT_WAIT) {
+								const pending = clearPendingFollowUp(current);
+								if (pending) editor.setText(pending.text);
+							} else if (choice === CANCEL_WAIT) {
+								clearPendingFollowUp(current);
+								current.ui.notify("Cancelled the queued Wait message.", "info");
+							}
+						} catch (error) {
+							current.ui.notify(
+								`Could not manage Wait message: ${error instanceof Error ? error.message : String(error)}`,
+								"error",
+							);
+						} finally {
+							dialogOpen = false;
+							flushPendingFollowUp(current);
+						}
+					})();
+					return;
+				}
+
+				if (
+					isSubmit &&
+					!dialogOpen &&
+					current &&
+					!current.isIdle() &&
 					text.length > 0 &&
 					!isCommand &&
 					!hasAutocomplete
@@ -53,15 +119,21 @@ export default function steeringChoice(pi: ExtensionAPI) {
 						try {
 							const choice = await current.ui.select(
 								"AI is working — how should this message be delivered?",
-								[STEER, FOLLOW_UP, CANCEL],
+								[STEER, pendingFollowUp ? REPLACE_FOLLOW_UP : FOLLOW_UP, CANCEL],
 							);
 							if (choice === CANCEL || choice === undefined) return;
 
-							editor.addToHistory?.(text);
 							editor.setText("");
-							pi.sendUserMessage(text, {
-								deliverAs: choice === FOLLOW_UP ? "followUp" : "steer",
-							});
+							if (choice === FOLLOW_UP || choice === REPLACE_FOLLOW_UP) {
+								pendingFollowUp = { text, editor };
+								current.ui.setStatus(
+									WAIT_STATUS_KEY,
+									"Wait queued — กด Enter ตอนช่องว่างเพื่อแก้ไขหรือยกเลิก",
+								);
+							} else {
+								editor.addToHistory?.(text);
+								pi.sendUserMessage(text, { deliverAs: "steer" });
+							}
 						} catch (error) {
 							editor.setText(text);
 							current.ui.notify(
@@ -70,6 +142,7 @@ export default function steeringChoice(pi: ExtensionAPI) {
 							);
 						} finally {
 							dialogOpen = false;
+							flushPendingFollowUp(current);
 						}
 					})();
 					return;

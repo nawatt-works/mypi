@@ -16,6 +16,7 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - ถามก่อนอัปโหลด local file, อ่าน sensitive environment variables และเขียนไปยัง output path ภายนอกที่รู้ล่วงหน้า
 - `steering-choice.ts`
   - เมื่อ AI กำลังทำงาน การกด Enter จะแสดงตัวเลือก `Steer`, `Wait` หรือ `Cancel`
+  - ขณะมีข้อความ `Wait` กด Enter ตอนช่องข้อความว่างเพื่อเลือกแก้ไข ยกเลิก หรือรอต่อได้ โดยไม่หยุดงานปัจจุบันของ AI
   - เมื่อ AI ว่าง การกด Enter ยังส่งข้อความตามปกติ
 - `dependency-update-notifier.ts`
   - ตรวจ dependency ภายใน `my-pi` แบบ background ไม่ขวางการเปิด Pi
