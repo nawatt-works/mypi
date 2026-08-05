@@ -2,7 +2,7 @@
 
 > **Status:** ดำเนินการบางส่วน<br>
 > **Created:** 2026-07-27 02:31<br>
-> **Updated:** 2026-07-27 09:19<br>
+> **Updated:** 2026-08-05 12:04<br>
 > **Purpose:** บันทึกผลประเมิน third-party extensions และแนวทางปรับ Pi setup
 
 ## ข้อสรุป
@@ -30,6 +30,13 @@
 - หากเน้น UI testing ให้พิจารณา Playwright MCP
 - ไม่ควรเปิด browser tools สองชุดพร้อมกัน
 
+### `@plannotator/pi-extension`
+
+- นำมาใช้แล้วที่เวอร์ชัน `0.25.1` สำหรับ plan review และ code review
+- ใช้ Browser UI ตอนตรวจและอนุมัติแผน และใช้ terminal widget ตอน execution
+- เสริมด้วย `plannotator-workflow.ts` เพื่อให้แผนอยู่ใน `.workbench/plans/` และมี verification กับ handoff ตามกติกา workspace
+- ต้องโหลด `plannotator-workflow.ts` หลัง Plannotator เพื่อให้คำแนะนำของโปรเจกต์ต่อท้าย phase system prompt ได้
+
 ## Guardrails Coverage
 
 เปลี่ยนชื่อ `external-write-gate.ts` เป็น `guardrails.ts` เพื่อให้ตรงกับขอบเขตที่ครอบคลุมมากกว่า external file writes
@@ -43,6 +50,8 @@
 - ตรวจ shell upload/download ที่ระบุ path เช่น `curl`, `wget`, `scp` และ `rsync`
 - ถามก่อนอ่าน sensitive environment variables และขยายรูปแบบ secret files ที่รู้จัก
 - ยอมให้ managed temporary files ที่ tool สร้างเองและไม่ได้ระบุ output path เช่น screenshot หรือ GitHub clone cache ใต้ `/tmp`
+- ตั้ง temp environment ของ Pi และ child processes ไปที่ `.runtime/tmp` ทุก session
+- ยอม `/dev/null` แบบเจาะจง และ block explicit `/tmp` หรือ `/private/tmp` พร้อมให้ AI ลองใหม่ใต้ `.runtime/` โดยไม่ถามผู้ใช้
 
 ### ข้อจำกัดที่ยังเหลือ
 
@@ -61,6 +70,8 @@
 
 ## Decisions
 
+- 2026-08-05 — นำ Plannotator มาใช้แทนการพัฒนา Plan/Todo UI ใหม่ และเก็บ handoff ถาวรใน `.workbench/`
+- 2026-08-05 — ใช้ `.runtime/tmp` เป็น default temp พร้อม block system temp ที่ AI ระบุเอง แต่ไม่พยายามดัก side effect ภายในที่ tool ไม่เปิดเผย
 - 2026-07-27 — ไม่ถามทุก browser navigation/click เพราะสร้าง prompt noise สูง ให้ใช้ isolated browser profile เมื่อต้องการขอบเขตที่เข้มงวด
 - 2026-07-27 — เปลี่ยนชื่อ custom policy extension เป็น Guardrails เพราะครอบคลุม secrets, uploads, MCP และ custom tools มากกว่า external writes
 - 2026-07-27 — ยังไม่เปลี่ยน setup จนกว่าจะคุยรายละเอียดและเลือก browser integration ที่ต้องการ เพื่อลด tools ที่ทำหน้าที่ซ้ำกัน
@@ -68,6 +79,7 @@
 
 ## Change log
 
+- 2026-08-05 12:04 — เพิ่มผลประเมินและการนำ Plannotator มาใช้ พร้อมนโยบาย `.runtime/tmp`, `/dev/null` และ explicit system temp
 - 2026-07-27 09:19 — เพิ่ม Guardrails สำหรับ MCP, custom tools, local uploads, PDF output, Chrome screenshot และ shell/environment risks พร้อมบันทึกข้อจำกัดที่ยังเหลือ
 - 2026-07-27 08:55 — เพิ่มข้อมูลสถานะ วัตถุประสงค์ การตัดสินใจ และประวัติเอกสาร
 - 2026-07-27 02:31 — สร้างบันทึกผลประเมิน extensions

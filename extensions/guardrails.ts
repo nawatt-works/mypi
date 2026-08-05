@@ -1,5 +1,5 @@
 import { existsSync, realpathSync } from "node:fs";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -35,6 +35,7 @@ const SESSION_ALLOW_DIRECTORY = "Allow this directory for this session";
 const SESSION_ALLOW_SECRET = "Allow this secret file for this session";
 const SESSION_ALLOW_UPLOAD = "Allow this file upload for this session";
 const DENY = "Deny";
+const STARTUP_TEMPORARY_DIRECTORY = tmpdir();
 
 const PATH_FIELD_PATTERN = /(?:^|[_-])(?:path|paths|file|files|filename|directory|dir|destination|dest|target|source|src|uri)(?:$|[_-])/i;
 const DESTINATION_FIELD_PATTERN = /(?:^|[_-])(?:destination|dest|target|output|out|to|new[_-]?path|save[_-]?path)(?:$|[_-])/i;
@@ -192,6 +193,26 @@ export function isInsideWorkspace(input: string, cwd: string): boolean {
 	const target = resolvePolicyPath(input, cwd);
 	const rel = relative(workspace, target);
 	return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+function isSameOrInside(target: string, directory: string): boolean {
+	const rel = relative(directory, target);
+	return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
+}
+
+export function isNullDevicePath(input: string, cwd: string): boolean {
+	return resolvePolicyPath(input, cwd) === resolvePolicyPath("/dev/null", "/");
+}
+
+export function isSystemTemporaryPath(input: string, cwd: string): boolean {
+	const target = resolvePolicyPath(input, cwd);
+	const roots = [STARTUP_TEMPORARY_DIRECTORY, "/tmp", "/private/tmp"]
+		.map((root) => resolvePolicyPath(root, "/"));
+	return roots.some((root) => isSameOrInside(target, root));
+}
+
+function isPermittedWriteTarget(input: string, cwd: string): boolean {
+	return isInsideWorkspace(input, cwd) || isNullDevicePath(input, cwd);
 }
 
 export function isSensitivePath(input: string): boolean {
@@ -425,7 +446,7 @@ function externalFinding(rawTarget: string, state: ShellState, workspace: string
 		};
 	}
 	const target = resolvePolicyPath(expanded, state.cwd);
-	if (isInsideWorkspace(target, workspace)) return;
+	if (isPermittedWriteTarget(target, workspace)) return;
 	return { kind: "external-write", reason, target };
 }
 
@@ -811,7 +832,7 @@ function analyzePathAwareCustomTool(
 	}
 
 	for (const { value } of destinations) {
-		if (isInsideWorkspace(value, cwd)) continue;
+		if (isPermittedWriteTarget(value, cwd)) continue;
 		findings.push({
 			kind: "external-write",
 			reason: `${toolName} modifies a path outside workspace`,
@@ -840,7 +861,7 @@ function analyzeApplyPatch(input: Record<string, unknown>, cwd: string): Mutatio
 		}];
 	}
 	return deduplicateFindings(paths.flatMap((path): MutationFinding[] => {
-		if (isInsideWorkspace(path, cwd)) return [];
+		if (isPermittedWriteTarget(path, cwd)) return [];
 		return [{
 			kind: "external-write",
 			reason: "apply_patch modifies a path outside workspace",
@@ -939,7 +960,7 @@ export function analyzeToolCall(
 			return [{ kind: "unknown-write", reason: `${toolName} target path is missing or dynamic` }];
 		}
 		return deduplicateFindings(destinations.flatMap(({ value }): MutationFinding[] => {
-			if (isInsideWorkspace(value, cwd)) return [];
+			if (isPermittedWriteTarget(value, cwd)) return [];
 			return [{
 				kind: "external-write",
 				reason: `${toolName} modifies a path outside workspace`,
@@ -985,7 +1006,7 @@ export function analyzeToolCall(
 	}
 
 	if (toolName === "chrome_devtools_screenshot" && typeof input.savePath === "string") {
-		if (isInsideWorkspace(input.savePath, cwd)) return [];
+		if (isPermittedWriteTarget(input.savePath, cwd)) return [];
 		return [{
 			kind: "external-write",
 			reason: "chrome_devtools_screenshot saves an image outside workspace",
@@ -1045,6 +1066,21 @@ export default function guardrails(pi: ExtensionAPI) {
 			ctx.cwd,
 		);
 		if (findings.length === 0) return;
+
+		const explicitSystemTempWrites = findings.filter((finding) => {
+			return (
+				finding.kind === "external-write" &&
+				finding.target !== undefined &&
+				isSystemTemporaryPath(finding.target, ctx.cwd)
+			);
+		});
+		if (explicitSystemTempWrites.length > 0) {
+			const summary = explicitSystemTempWrites.map(displayFinding).join("\n\n");
+			return {
+				block: true,
+				reason: `Blocked an explicit write to the system temporary directory. Retry with a task-specific path under .runtime/ inside the workspace.\n${summary}`,
+			};
+		}
 
 		const approvedUploadsThisCall = new Set<string>();
 		const pendingUploads = findings.filter((finding) => {

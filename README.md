@@ -23,11 +23,22 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - ตรวจอัตโนมัติไม่เกินวันละครั้งและใช้ timeout 10 วินาที
   - แจ้งเฉพาะเมื่อพบเวอร์ชันใหม่ และข้ามเงียบเมื่อ startup check ล้มเหลว
   - ใช้ `/mypi-updates` เมื่อต้องการบังคับตรวจทันที
+- `workspace-runtime.ts`
+  - สร้าง `.runtime/tmp` ใน workspace เมื่อเริ่ม session
+  - ตั้ง `TMPDIR`, `TMP` และ `TEMP` ให้ Pi และ child processes ใช้ตำแหน่งนี้โดยอัตโนมัติ
+- `plannotator-workflow.ts`
+  - เสริมกติกาหลัง Plannotator เพื่อเก็บแผนถาวรใต้ `.workbench/plans/`
+  - กำหนด phase, checklist, verification และ handoff ให้ติดตามต่อได้
 
 ### Third-party packages
 
 - [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question)
   - เพิ่ม structured question tool และ UI สำหรับให้ model ถามคำถามแบบเลือกตอบ
+- [`@plannotator/pi-extension`](https://github.com/backnotprop/plannotator)
+  - เปิด browser สำหรับตรวจ แก้ และอนุมัติแผนก่อนลงมือ
+  - แสดง phase และ checklist progress ใน terminal ระหว่าง execution
+  - เปิดด้วย `pi --plan` หรือสลับระหว่าง session ด้วย `/plannotator`
+  - ใช้ `/plannotator-review` เพื่อตรวจ diff และส่ง feedback กลับเข้า session
 
 ### Themes
 
@@ -115,6 +126,13 @@ Extension `dependency-update-notifier.ts` ช่วยตรวจ dependency �
 
 สิ่งที่ตรวจได้ครอบคลุม built-in tools, shell commands ที่วิเคราะห์ path ได้, nested MCP/custom filesystem tools และพฤติกรรมเฉพาะของ extensions ที่รู้จัก เช่น local file upload, PDF output และ screenshot path
 
+นโยบาย temporary files:
+
+- Pi และ child processes ที่ใช้ temp directory มาตรฐานจะถูกชี้ไปที่ `<workspace>/.runtime/tmp` ทุก session
+- `/dev/null` ใช้ทิ้ง output ได้โดยไม่ถาม แต่ไม่ได้อนุญาต path อื่นใต้ `/dev`
+- shell command หรือ tool ที่ระบุ `/tmp`, `/private/tmp` หรือ system temp directory โดยตรงจะถูก block และให้ลองใหม่ใต้ `.runtime/` โดยไม่เปิด permission prompt
+- side effect ภายในของเครื่องมือที่ไม่ได้ส่ง output path ผ่าน `tool_call` ยังเป็นข้อจำกัดแบบ best-effort และอาจใช้ system temp ของตนเองได้
+
 Guardrails เป็น best-effort policy layer ไม่ใช่ security sandbox จึงยังมีข้อจำกัดที่ยอมรับไว้:
 
 - ไม่สามารถเห็น side effect ที่ซ่อนอยู่ภายใน MCP server, extension, local script หรือ subprocess
@@ -125,6 +143,14 @@ Guardrails เป็น best-effort policy layer ไม่ใช่ security san
 
 สำหรับ setup ส่วนตัว ขอบเขตนี้เพียงพอสำหรับป้องกันความผิดพลาดทั่วไป หากต้องทำงานกับ code หรือ input ที่ไม่น่าเชื่อถือและต้องการขอบเขตที่ข้ามไม่ได้ ควรรัน Pi ใน container, VM, OS sandbox หรือ user ที่มีสิทธิ์จำกัดเพิ่มเติม
 
+## Plan, Todo และ Handoff
+
+สำหรับงานใหญ่ให้เปิด Pi ด้วย `pi --plan` หรือใช้ `/plannotator` ก่อนเริ่ม implementation จากนั้น AI จะสร้างแผนที่ `.workbench/plans/<ชื่องาน>.md` และส่งเข้า Browser UI ให้ตรวจ แก้ หรืออนุมัติ
+
+หลังอนุมัติ Plannotator จะแสดง checklist ใน terminal และติดตามความคืบหน้าด้วย Markdown checkbox ร่วมกับ `[DONE:n]` แผนใน `.workbench/` เป็นข้อมูลถาวร ส่วน terminal widget เป็นมุมมองสด หากงานหยุดกลางทาง AI ต้องบันทึก blocker, decision และ next action ในหัวข้อ `Handoff` ของแผนก่อนจบช่วงงาน
+
+ดูหลักเกณฑ์รูปแบบแผนได้ที่ `.workbench/plans/README.md` และสถานะการออกแบบที่ `.workbench/notes/persistent-todo-handoff.md`
+
 ## ถอดออกจาก Pi
 
 การถอด setup ออกจาก global settings จะไม่ลบ repository:
@@ -132,7 +158,3 @@ Guardrails เป็น best-effort policy layer ไม่ใช่ security san
 ```sh
 pi remove /Users/developer/my-project/my-pi
 ```
-
-## งานที่วางแผนไว้
-
-โน้ตสำหรับ extension ที่จะรวม persistent Todo กับ session handoff อยู่ใน `.workbench/notes/persistent-todo-handoff.md`

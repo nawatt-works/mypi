@@ -3,6 +3,8 @@ import test from "node:test";
 import guardrails, {
 	analyzeShellMutations,
 	analyzeToolCall,
+	isNullDevicePath,
+	isSystemTemporaryPath,
 } from "../extensions/guardrails.ts";
 
 const workspace = process.cwd();
@@ -171,6 +173,53 @@ test("guards sensitive environment access and shell transfers", () => {
 		),
 		true,
 	);
+});
+
+test("allows only /dev/null while recognizing system temporary paths", () => {
+	assert.equal(isNullDevicePath("/dev/null", workspace), true);
+	assert.equal(isNullDevicePath("/dev/zero", workspace), false);
+	assert.equal(isSystemTemporaryPath("/tmp/my-pi.log", workspace), true);
+	assert.equal(isSystemTemporaryPath("/private/tmp/my-pi.log", workspace), true);
+	assert.equal(
+		hasFinding(analyzeShellMutations("npm run dev >/dev/null 2>&1", workspace), "external-write"),
+		false,
+	);
+	assert.equal(
+		hasFinding(analyzeShellMutations("npm run dev >/dev/zero 2>&1", workspace), "external-write"),
+		true,
+	);
+});
+
+test("blocks explicit system temp writes without asking the user", async () => {
+	const handlers = new Map<string, (...args: any[]) => any>();
+	let selectCalls = 0;
+	const api = {
+		on(name: string, handler: (...args: any[]) => any) {
+			handlers.set(name, handler);
+		},
+		getAllTools() {
+			return [];
+		},
+	};
+
+	guardrails(api as any);
+	handlers.get("session_start")?.({}, {});
+	const result = await handlers.get("tool_call")?.(
+		{ toolName: "bash", input: { command: "npm run dev >/tmp/sprint-plan-warm.log 2>&1" } },
+		{
+			cwd: workspace,
+			hasUI: true,
+			ui: {
+				select() {
+					selectCalls += 1;
+				},
+			},
+		},
+	);
+
+	assert.equal(result?.block, true);
+	assert.match(result?.reason ?? "", /\.runtime\//);
+	assert.equal(selectCalls, 0);
 });
 
 test("discovers renamed fetch_content tools and blocks uploads without UI", async () => {

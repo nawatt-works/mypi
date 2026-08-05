@@ -11,15 +11,21 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
-    "@juicesharp/rpiv-ask-user-question": "^2.1.0"
+    "@juicesharp/rpiv-ask-user-question": "^2.1.0",
+    "@plannotator/pi-extension": "^0.25.1"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
   },
   "pi": {
     "extensions": [
-      "./extensions",
-      "./node_modules/@juicesharp/rpiv-ask-user-question/index.ts"
+      "./extensions/dependency-update-notifier.ts",
+      "./extensions/guardrails.ts",
+      "./extensions/steering-choice.ts",
+      "./extensions/workspace-runtime.ts",
+      "./node_modules/@juicesharp/rpiv-ask-user-question/index.ts",
+      "./node_modules/@plannotator/pi-extension/index.ts",
+      "./extensions/plannotator-workflow.ts"
     ],
     "themes": [
       "./themes"
