@@ -26,6 +26,12 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
 - `workspace-runtime.ts`
   - สร้าง `.runtime/tmp` ใน workspace เมื่อเริ่ม session
   - ตั้ง `TMPDIR`, `TMP` และ `TEMP` ให้ Pi และ child processes ใช้ตำแหน่งนี้โดยอัตโนมัติ
+- `azure-devops/`
+  - โหลดแบบ global แต่ active เฉพาะ trusted project ที่มี `.pi/azure-devops.json`
+  - รองรับ Azure Boards/Repos read tools โดย config เดิมยังเป็น read-only
+  - เปิด Work Item Create/Update/soft-delete ได้ราย project เมื่อใช้ PAT และ permission แบบ opt-in
+  - บังคับ preview และ confirmation ทุก write; non-interactive mode ถูก block
+  - ใช้ `/mypi-azure-devops-config` เพื่อตรวจ effective configuration โดยไม่แสดง credential
 - `auto-plannotator.ts`
   - ให้ AI ประเมินเองว่างานควรใช้ durable plan หรือไม่ และเข้า Plannotator ผ่าน shared event API
   - ค่าเริ่มต้น `automatic`; ใช้ `/mypi-auto-plan suggest` เพื่อถามก่อนเปิด หรือ `/mypi-auto-plan off` เพื่อปิดใน session ปัจจุบัน
@@ -110,6 +116,46 @@ Extension `dependency-update-notifier.ts` ช่วยตรวจ dependency �
 ```text
 /mypi-updates
 ```
+
+## Azure DevOps ราย project
+
+เพิ่ม `.pi/azure-devops.json` ใน trusted project ที่ต้องใช้ Azure DevOps หากไม่มีไฟล์นี้ extension จะ inactive โดยไม่แจ้งเตือน Config เดิมที่ไม่มี `permissions` จะ normalize เป็น read-only:
+
+```json
+{
+  "organization": "example-org",
+  "project": "example-project",
+  "auth": {
+    "method": "azure-cli"
+  }
+}
+```
+
+Project ที่ต้องเขียน Work Items ต้องใช้ `auth.method: "pat"` และเปิด operation อย่างชัดเจน:
+
+```json
+{
+  "organization": "example-org",
+  "project": "example-project",
+  "auth": {
+    "method": "pat",
+    "patEnv": "AZURE_DEVOPS_PAT"
+  },
+  "permissions": {
+    "workItems": {
+      "read": true,
+      "create": true,
+      "update": true,
+      "delete": false
+    },
+    "repos": {
+      "read": true
+    }
+  }
+}
+```
+
+Create/Update/Delete ไม่ fallback ไป Azure CLI, ต้องยืนยันทุกครั้ง และถูก block เมื่อไม่มี interactive UI ส่วน Delete รองรับเฉพาะ soft delete ไป recycle bin ไม่มี permanent destroy ตำแหน่งหรือวิธีเก็บ PAT อยู่นอกขอบเขตของ extension นี้ ดูรายละเอียดและ migration checklist ที่ [`extensions/azure-devops/README.md`](extensions/azure-devops/README.md)
 
 ## เพิ่ม package อื่น
 

@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-07-27 08:55<br>
-> **Updated:** 2026-08-09 09:10<br>
+> **Updated:** 2026-08-09 12:50<br>
 > **Purpose:** แสดงภาพรวมของเอกสารประกอบ เพื่อให้ค้นหาและเข้าใจลำดับงานได้ง่าย
 
 เอกสารเรียงตามเวลาอัปเดตล่าสุด แล้วตามเวลาสร้าง หากต้องการรายละเอียดการตัดสินใจหรือสิ่งที่เปลี่ยน ให้เปิดหัวข้อ `Decisions` และ `Change log` ภายในเอกสารนั้น
@@ -11,6 +11,7 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
+| 2026-08-09 12:50 | 2026-08-09 11:10 | complete | [ย้ายและขยาย Azure DevOps extension](plans/azure-devops-extension-crud.md) | ย้ายเป็น global extension, เพิ่ม opt-in Work Item CRUD และผ่าน automated/user/post-removal verification |
 | 2026-08-09 09:10 | 2026-08-09 09:02 | complete | [ให้ AI ตัดสินใจเปิด Plannotator](plans/ai-auto-plannotator.md) | เพิ่มกลไกให้ AI เข้า plan mode เองเมื่องานซับซ้อนหรือเสี่ยงสูญเสียบริบท |
 | 2026-08-05 12:04 | 2026-08-05 12:04 | active | [แนวทางเขียนแผนงานใหญ่](plans/README.md) | กำหนดตำแหน่งและโครงสร้างขั้นต่ำของแผนที่ใช้ร่วมกับ Plannotator |
 
@@ -23,6 +24,11 @@
 
 ## Change log
 
+- 2026-08-09 12:50 — ปิดแผน Azure DevOps หลัง automated, user acceptance และ post-removal verification ผ่านครบ
+- 2026-08-09 12:47 — Azure DevOps acceptance ผ่าน, write ถูก block ตาม read-only และรอ post-removal retest
+- 2026-08-09 11:53 — Azure DevOps implementation ผ่าน automated verification และ blocked รอ user acceptance ก่อนลบ local source
+- 2026-08-09 11:27 — พักแผน Azure DevOps ไว้รอคำสั่งเริ่ม พร้อมกำหนดให้ผู้ใช้ทำ acceptance test และห้าม AI เรียก Azure CLI
+- 2026-08-09 11:10 — เพิ่มแผนย้ายและขยาย Azure DevOps extension พร้อม permission CRUD ราย project
 - 2026-08-09 09:10 — ปิดแผน AI-selected Plannotator หลัง implementation และ verification ผ่าน
 - 2026-08-09 09:02 — เพิ่มแผนให้ AI ตัดสินใจเปิด Plannotator และอัปเดตสถานะ Persistent Todo + Handoff
 - 2026-08-05 12:04 — เพิ่มแนวทางแผนงานใหญ่และอัปเดตสถานะ Plannotator, Todo และ Handoff
