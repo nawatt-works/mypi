@@ -1,13 +1,26 @@
-# Global Azure DevOps extension
+# Project-local Azure DevOps extension
 
-Project-configured Azure DevOps Boards and Repos tools for Pi. The extension is loaded globally by `my-pi`, but it is active only when the current trusted project contains `.pi/azure-devops.json`.
+Project-configured Azure DevOps Boards and Repos tools for Pi. Source is maintained centrally at `local/extensions/azure-devops/` แต่ extension ไม่ได้โหลดจาก global `my-pi` package แต่ละ project ต้องอ้าง path นี้ใน `.pi/settings.json` และต้องผ่าน project trust ก่อน Pi จึงจะ execute extension
 
-## Activation
+## Installation and activation
 
-- Untrusted project: config is not read and all Azure DevOps tools remain inactive.
-- Trusted project without config: extension stays inactive without warnings.
+เพิ่ม path ใน `.pi/settings.json` ของ project ที่ต้องใช้:
+
+```json
+{
+  "extensions": [
+    "/Users/developer/my-project/my-pi/local/extensions/azure-devops"
+  ]
+}
+```
+
+- Untrusted project: Pi does not load project settings or execute this extension.
+- Trusted project without the extension path: Azure DevOps tools are not registered.
+- Trusted project with the extension path but without `.pi/azure-devops.json`: extension stays inactive without warnings.
 - Invalid config: Azure DevOps tools are disabled and Pi shows a warning.
 - Valid config: only tools permitted by the effective project permissions are active.
+
+Absolute paths tie project settings to the current machine. If this repository moves, update every project that references it.
 
 Use this command to inspect non-secret effective configuration:
 
@@ -130,17 +143,17 @@ The extension asks for separate user confirmation when the model or user attempt
 
 This is a best-effort guard, not an OS sandbox. Pi extensions and unrestricted shell processes retain the OS user's permissions.
 
-## Migration checklist for an existing project
+## Project setup checklist
 
-1. Keep the project's `.pi/azure-devops.json` in place.
-2. Install/reload the global `my-pi` package.
-3. Before removing a local extension, check for duplicate Azure tool or command registrations.
+1. Add the maintained extension path to the project's `.pi/settings.json`.
+2. Keep the project's `.pi/azure-devops.json` in place.
+3. Trust the project and restart Pi or use `/reload`.
 4. Run `/mypi-azure-devops-config` and verify organization, project, auth method, and effective permissions.
 5. Verify `azure_boards_doctor`.
 6. Read one known Work Item.
 7. Read one known Pull Request.
 8. Confirm a legacy config without `permissions` exposes no write tools.
-9. Remove the old project-local extension only after the global checks pass.
-10. Restart Pi and repeat config, Work Item read, and Pull Request read checks.
+9. Check that no copied `.pi/extensions/azure-boards` or `.pi/extensions/azure-devops` remains, to avoid duplicate tools.
+10. When this repository moves, update the absolute extension path and repeat the checks.
 
 Do not put PATs, access tokens, or Authorization headers in project configuration or test reports.

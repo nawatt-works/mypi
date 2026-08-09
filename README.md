@@ -26,8 +26,9 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
 - `workspace-runtime.ts`
   - สร้าง `.runtime/tmp` ใน workspace เมื่อเริ่ม session
   - ตั้ง `TMPDIR`, `TMP` และ `TEMP` ให้ Pi และ child processes ใช้ตำแหน่งนี้โดยอัตโนมัติ
-- `azure-devops/`
-  - โหลดแบบ global แต่ active เฉพาะ trusted project ที่มี `.pi/azure-devops.json`
+- `local/extensions/azure-devops/`
+  - maintain source ไว้ใน repository นี้ แต่ไม่โหลดจาก global package
+  - แต่ละ trusted project ต้องชี้ path นี้ผ่าน `.pi/settings.json` และมี `.pi/azure-devops.json`
   - รองรับ Azure Boards/Repos read tools โดย config เดิมยังเป็น read-only
   - เปิด Work Item Create/Update/soft-delete ได้ราย project เมื่อใช้ PAT และ permission แบบ opt-in
   - บังคับ preview และ confirmation ทุก write; non-interactive mode ถูก block
@@ -119,7 +120,17 @@ Extension `dependency-update-notifier.ts` ช่วยตรวจ dependency �
 
 ## Azure DevOps ราย project
 
-เพิ่ม `.pi/azure-devops.json` ใน trusted project ที่ต้องใช้ Azure DevOps หากไม่มีไฟล์นี้ extension จะ inactive โดยไม่แจ้งเตือน Config เดิมที่ไม่มี `permissions` จะ normalize เป็น read-only:
+Azure DevOps extension ไม่ได้อยู่ใน global package แต่ maintain ที่ `local/extensions/azure-devops/` แต่ละ project ที่ต้องใช้ต้องเพิ่ม path ใน `.pi/settings.json` (path นี้ resolve จาก directory `.pi`; ตัวอย่างจึงใช้ absolute path):
+
+```json
+{
+  "extensions": [
+    "/Users/developer/my-project/my-pi/local/extensions/azure-devops"
+  ]
+}
+```
+
+Project ต้องถูก trust ก่อน Pi จึงจะอ่าน settings และ execute extension จากนั้นเพิ่ม `.pi/azure-devops.json` ใน project เดียวกัน Config เดิมที่ไม่มี `permissions` จะ normalize เป็น read-only:
 
 ```json
 {
@@ -155,7 +166,7 @@ Project ที่ต้องเขียน Work Items ต้องใช้ `a
 }
 ```
 
-Create/Update/Delete ไม่ fallback ไป Azure CLI, ต้องยืนยันทุกครั้ง และถูก block เมื่อไม่มี interactive UI ส่วน Delete รองรับเฉพาะ soft delete ไป recycle bin ไม่มี permanent destroy ตำแหน่งหรือวิธีเก็บ PAT อยู่นอกขอบเขตของ extension นี้ ดูรายละเอียดและ migration checklist ที่ [`extensions/azure-devops/README.md`](extensions/azure-devops/README.md)
+Create/Update/Delete ไม่ fallback ไป Azure CLI, ต้องยืนยันทุกครั้ง และถูก block เมื่อไม่มี interactive UI ส่วน Delete รองรับเฉพาะ soft delete ไป recycle bin ไม่มี permanent destroy ตำแหน่งหรือวิธีเก็บ PAT อยู่นอกขอบเขตของ extension นี้ ดูรายละเอียดที่ [`local/extensions/azure-devops/README.md`](local/extensions/azure-devops/README.md)
 
 ## เพิ่ม package อื่น
 

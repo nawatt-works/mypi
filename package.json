@@ -22,7 +22,6 @@
     "extensions": [
       "./extensions/dependency-update-notifier.ts",
       "./extensions/guardrails.ts",
-      "./extensions/azure-devops/index.ts",
       "./extensions/steering-choice.ts",
       "./extensions/workspace-runtime.ts",
       "./node_modules/@juicesharp/rpiv-ask-user-question/index.ts",

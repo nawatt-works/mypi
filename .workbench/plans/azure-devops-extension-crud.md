@@ -2,14 +2,25 @@
 
 > **Status:** complete<br>
 > **Created:** 2026-08-09 11:10<br>
-> **Updated:** 2026-08-09 12:50<br>
-> **Purpose:** ย้าย Azure Boards extension มาเป็น global `azure-devops` extension ใน repository นี้ และเพิ่ม Create/Update/Delete แบบ opt-in ที่บังคับใช้ PAT
+> **Updated:** 2026-08-09 19:25<br>
+> **Purpose:** บันทึกการพัฒนา Azure DevOps CRUD extension และสถานะปัจจุบันที่ maintain แบบ project-local จาก `local/extensions/azure-devops/`
 
 ## Context
 
 ปัจจุบัน project `exim` มี project-local extension ที่ `/Users/developer/office/cpmatch/exim/.pi/extensions/azure-boards` ใช้ config `.pi/azure-devops.json` และเปิดเฉพาะ read-only tools สำหรับ Azure Boards และ Azure Repos โดยรองรับ Azure CLI/PAT authentication พร้อม credential guard สำหรับ direct shell access
 
 ต้องย้าย source มาไว้ใน repository `my-pi` เพื่อใช้ร่วมกันหลาย project เปลี่ยนชื่อ extension เป็น `azure-devops` ให้ตรงกับชื่อ config ที่แต่ละ project จะมี และเปิดให้บาง project เลือก Create/Update/Delete ได้โดยไม่ทำให้ project เดิมได้รับ write permission อัตโนมัติ
+
+## Post-completion state
+
+หลังปิดแผนเดิม ผู้ใช้เปลี่ยน deployment model จาก global package เป็น project-local reference:
+
+- Source ปัจจุบันอยู่ที่ `local/extensions/azure-devops/`
+- `package.json#pi.extensions` ไม่โหลด Azure DevOps แบบ global แล้ว
+- แต่ละ project ที่ต้องใช้เพิ่ม absolute path ไปยัง folder นี้ใน `.pi/settings.json`
+- `.pi/azure-devops.json`, permission policy และ read-only default ยังคงเป็น config ราย project
+
+Scope, checklist และ path แบบ global ในส่วนถัดไปเป็นประวัติของ implementation รอบเดิม ไม่ใช่ deployment model ปัจจุบัน
 
 ## Scope
 
@@ -142,6 +153,7 @@
 - 2026-08-09 — ระหว่าง implementation AI ห้ามเรียก Azure CLI จริง; verification ของ AI ใช้ mocks/static checks และผู้ใช้เป็นผู้ทำ acceptance test เองหลัง implementation
 - 2026-08-09 — ผู้ใช้ยืนยัน acceptance ว่า doctor, Work Item read และ Pull Request read ผ่าน และการขอเขียน comment ถูกปฏิเสธเพราะ `update: false`; `exim` ต้องคง read-only
 - 2026-08-09 — ผู้ใช้ยืนยันว่าการทดสอบดังกล่าวเกิดหลังลบ local source และเปิด Pi ใหม่ จึงถือว่า post-removal acceptance ผ่าน
+- 2026-08-09 — หลังปิดแผน เปลี่ยนจาก global package registration เป็น source กลางที่ `local/extensions/azure-devops/` และให้แต่ละ project โหลดผ่าน `.pi/settings.json`
 
 ## Steps
 
@@ -234,10 +246,13 @@ Implementation และ automated verification เสร็จถึง Phase 5
 
 ผู้ใช้ยืนยันว่าหลัง local source ถูกลบและเปิด Pi ใหม่แล้ว `azure_boards_doctor`, Work Item read และ Pull Request read ผ่าน ส่วนการขอเขียน comment ถูกปฏิเสธตาม read-only policy (`update: false`) จึงถือว่า acceptance และ post-removal verification ผ่านครบ
 
-Final automated review ผ่าน: extension import สำเร็จ, `npm test` ผ่าน 37 tests, `git diff --check` ผ่าน, credential scan ไม่พบค่า secret และไม่มีไฟล์ใต้ `.runtime/` ถูกเพิ่มเข้า versioned changes Local source `/Users/developer/office/cpmatch/exim/.pi/extensions/azure-boards/` ไม่มีอยู่แล้ว ไม่มี blocker เหลือ
+Final automated review ของ implementation เดิมผ่าน: extension import สำเร็จ, `npm test` ผ่าน 37 tests, `git diff --check` ผ่าน, credential scan ไม่พบค่า secret และไม่มีไฟล์ใต้ `.runtime/` ถูกเพิ่มเข้า versioned changes Local source `/Users/developer/office/cpmatch/exim/.pi/extensions/azure-boards/` ไม่มีอยู่แล้ว
+
+สถานะ deployment ปัจจุบัน: source อยู่ที่ `local/extensions/azure-devops/`, ไม่ได้ลงทะเบียน global และแต่ละ project ต้องเพิ่ม path ใน `.pi/settings.json` เอง ไม่มี blocker เหลือ
 
 ## Change log
 
+- 2026-08-09 19:25 — บันทึกการเปลี่ยน deployment model จาก global เป็น project-local path โดยคง source กลางใน repository นี้
 - 2026-08-09 12:50 — ผู้ใช้ยืนยัน post-removal test ผ่าน, final automated/security review ผ่าน และปิดแผน complete
 - 2026-08-09 12:47 — บันทึก user acceptance ว่า read paths ผ่านและ write comment ถูก block; local source ไม่มีอยู่แล้ว รอ post-removal retest
 - 2026-08-09 11:53 — Implement global extension, CRUD policy/tools/tests/docs ครบและผ่าน mock verification; เปลี่ยนสถานะเป็น blocked รอ user acceptance

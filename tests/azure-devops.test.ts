@@ -2,19 +2,19 @@ import assert from "node:assert/strict";
 import { mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import test from "node:test";
-import azureDevOpsExtension, { setAzureToolsActive } from "../extensions/azure-devops/index.ts";
+import azureDevOpsExtension, { setAzureToolsActive } from "../local/extensions/azure-devops/index.ts";
 import {
 	AzureDevOpsClient,
 	normalizeConfig,
 	validateWorkItemFields,
 	type AzureDevOpsConfig,
-} from "../extensions/azure-devops/client.ts";
+} from "../local/extensions/azure-devops/client.ts";
 import {
 	AZURE_TOOL_NAMES,
 	allowedToolNames,
 	assertToolPermission,
 	defaultPermissions,
-} from "../extensions/azure-devops/policy.ts";
+} from "../local/extensions/azure-devops/policy.ts";
 
 const runtimeRoot = join(process.cwd(), ".runtime", "azure-devops-tests");
 const PAT_ENV = "AZURE_DEVOPS_TEST_PAT";
@@ -263,7 +263,7 @@ async function fixture(name: string, config?: unknown): Promise<string> {
 	return cwd;
 }
 
-test("global lifecycle is silent without config and inactive for untrusted projects", async () => {
+test("project-local lifecycle is silent without config and inactive for untrusted projects", async () => {
 	const noConfig = createHarness(["read", "other_tool", ...AZURE_TOOL_NAMES]);
 	const notifications = await startHarness(noConfig, await fixture("missing"));
 	assert.deepEqual(notifications, []);
@@ -277,7 +277,7 @@ test("global lifecycle is silent without config and inactive for untrusted proje
 	assert.deepEqual(untrusted.active, ["read"]);
 });
 
-test("global lifecycle warns and disables tools for invalid config", async () => {
+test("project-local lifecycle warns and disables tools for invalid config", async () => {
 	const harness = createHarness();
 	const notifications = await startHarness(harness, await fixture("invalid", {
 		organization: "org",

@@ -2,12 +2,12 @@
 
 > **Status:** draft<br>
 > **Created:** 2026-08-09 12:56<br>
-> **Updated:** 2026-08-09 12:56<br>
+> **Updated:** 2026-08-09 19:25<br>
 > **Purpose:** รวบรวมทางเลือก ข้อจำกัด และแนวทางแนะนำสำหรับส่ง PAT ให้ Azure DevOps extension โดยลดโอกาสที่ credential จะถูกเปิดเผยต่อโมเดลหรือ subprocess
 
 ## ขอบเขต
 
-เอกสารนี้กล่าวถึงวิธีจัดเก็บและดึง Azure DevOps Personal Access Token (PAT) สำหรับ `extensions/azure-devops/` เท่านั้น ยังไม่ใช่แผน implementation และไม่มีค่า PAT จริง
+เอกสารนี้กล่าวถึงวิธีจัดเก็บและดึง Azure DevOps Personal Access Token (PAT) สำหรับ `local/extensions/azure-devops/` เท่านั้น Extension ถูก maintain ใน repository นี้ แต่แต่ละ project เป็นผู้เลือกโหลดผ่าน `.pi/settings.json` เอกสารนี้ยังไม่ใช่แผน implementation และไม่มีค่า PAT จริง
 
 Azure DevOps extension ปัจจุบันมีนโยบายดังนี้:
 
@@ -186,4 +186,5 @@ Broker ควร:
 
 ## Change log
 
+- 2026-08-09 19:25 — ปรับ path และ scope ให้ตรงกับการ maintain extension แบบ project-local
 - 2026-08-09 12:56 — สร้างเอกสารเปรียบเทียบทางเลือกและเสนอ macOS Keychain เป็นแนวทางเริ่มต้น
