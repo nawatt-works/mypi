@@ -26,6 +26,10 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
 - `workspace-runtime.ts`
   - สร้าง `.runtime/tmp` ใน workspace เมื่อเริ่ม session
   - ตั้ง `TMPDIR`, `TMP` และ `TEMP` ให้ Pi และ child processes ใช้ตำแหน่งนี้โดยอัตโนมัติ
+- `auto-plannotator.ts`
+  - ให้ AI ประเมินเองว่างานควรใช้ durable plan หรือไม่ และเข้า Plannotator ผ่าน shared event API
+  - ค่าเริ่มต้น `automatic`; ใช้ `/mypi-auto-plan suggest` เพื่อถามก่อนเปิด หรือ `/mypi-auto-plan off` เพื่อปิดใน session ปัจจุบัน
+  - พิจารณางานหลาย phase, งานเสี่ยงสูง, การเปลี่ยนจาก discussion ไป implementation และความเสี่ยงจาก context compaction โดยไม่ใช้ keyword ตายตัว
 - `plannotator-workflow.ts`
   - เสริมกติกาหลัง Plannotator เพื่อเก็บแผนถาวรใต้ `.workbench/plans/`
   - กำหนด phase, checklist, verification และ handoff ให้ติดตามต่อได้
@@ -145,7 +149,18 @@ Guardrails เป็น best-effort policy layer ไม่ใช่ security san
 
 ## Plan, Todo และ Handoff
 
-สำหรับงานใหญ่ให้เปิด Pi ด้วย `pi --plan` หรือใช้ `/plannotator` ก่อนเริ่ม implementation จากนั้น AI จะสร้างแผนที่ `.workbench/plans/<ชื่องาน>.md` และส่งเข้า Browser UI ให้ตรวจ แก้ หรืออนุมัติ
+ค่าเริ่มต้น AI จะประเมินเองว่าควรเปิด Plannotator หรือไม่ เมื่องานเริ่มมีหลาย phase, มีความเสี่ยงสูง, เปลี่ยนจากการถามตอบไปเป็น implementation ขนาดใหญ่ หรือต้องมี durable state เพื่อรับมือ context compaction AI จะเรียก `mypi_use_plannotator` ก่อนลงมือ แล้วสร้างแผนที่ `.workbench/plans/<ชื่องาน>.md` และส่งเข้า Browser UI ให้ตรวจ แก้ หรืออนุมัติ การเข้า plan mode อัตโนมัติไม่ได้ข้ามการอนุมัติของผู้ใช้
+
+ควบคุมพฤติกรรมใน session ปัจจุบันได้ด้วย:
+
+```text
+/mypi-auto-plan automatic  # AI เข้า plan mode เองเมื่อเห็นว่าจำเป็น (ค่าเริ่มต้น)
+/mypi-auto-plan suggest    # AI แนะนำได้ แต่ถามยืนยันก่อนเข้า plan mode
+/mypi-auto-plan off        # ไม่ให้ AI เปิดเอง
+/mypi-auto-plan status     # แสดงโหมดปัจจุบัน
+```
+
+คำสั่ง `pi --plan`, `/plannotator` และ `Ctrl+Alt+P` ยังใช้บังคับเปิดด้วยตนเองได้ตามเดิม และการบอก AI ว่า “ใช้ plan” หรือ “ไม่ต้องทำ plan” ถือเป็น override สำหรับงานนั้น
 
 หลังอนุมัติ Plannotator จะแสดง checklist ใน terminal และติดตามความคืบหน้าด้วย Markdown checkbox ร่วมกับ `[DONE:n]` แผนใน `.workbench/` เป็นข้อมูลถาวร ส่วน terminal widget เป็นมุมมองสด หากงานหยุดกลางทาง AI ต้องบันทึก blocker, decision และ next action ในหัวข้อ `Handoff` ของแผนก่อนจบช่วงงาน
 
