@@ -21,6 +21,7 @@
   "pi": {
     "extensions": [
       "./extensions/dependency-update-notifier.ts",
+      "./extensions/herdr-integration.ts",
       "./extensions/guardrails.ts",
       "./extensions/steering-choice.ts",
       "./extensions/workspace-runtime.ts",

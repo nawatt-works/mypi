@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { withHerdrBlocked } from "./herdr-integration.ts";
 
 export type AutoPlanMode = "automatic" | "suggest" | "off";
 export type PlannotatorPhase = "idle" | "planning" | "executing";
@@ -161,9 +162,11 @@ export default function autoPlannotator(pi: ExtensionAPI): void {
 						details: { mode, entered: false },
 					};
 				}
-				const approved = await ctx.ui.confirm(
-					"ใช้ Plannotator?",
-					`AI แนะนำให้สร้าง durable plan ก่อนลงมือ\n\nเหตุผล: ${params.reason}`,
+				const approved = await withHerdrBlocked(pi.events, "Plannotator approval", () =>
+					ctx.ui.confirm(
+						"ใช้ Plannotator?",
+						`AI แนะนำให้สร้าง durable plan ก่อนลงมือ\n\nเหตุผล: ${params.reason}`,
+					),
 				);
 				if (!approved) {
 					return {

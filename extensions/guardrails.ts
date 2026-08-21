@@ -2,6 +2,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { withHerdrBlocked } from "./herdr-integration.ts";
 
 type MutationKind = "external-write" | "unknown-write" | "secret-read" | "external-upload";
 
@@ -1100,9 +1101,11 @@ export default function guardrails(pi: ExtensionAPI) {
 				};
 			}
 
-			const choice = await ctx.ui.select(
-				`Local file upload requested\n\n${summary}`,
-				[SESSION_ALLOW_ONCE, SESSION_ALLOW_UPLOAD, DENY],
+			const choice = await withHerdrBlocked(pi.events, "Local file upload approval", () =>
+				ctx.ui.select(
+					`Local file upload requested\n\n${summary}`,
+					[SESSION_ALLOW_ONCE, SESSION_ALLOW_UPLOAD, DENY],
+				),
 			);
 			if (choice === SESSION_ALLOW_UPLOAD) {
 				for (const finding of pendingUploads) {
@@ -1141,9 +1144,11 @@ export default function guardrails(pi: ExtensionAPI) {
 				};
 			}
 
-			const choice = await ctx.ui.select(
-				`Secret file access requested\n\n${summary}`,
-				[SESSION_ALLOW_ONCE, SESSION_ALLOW_SECRET, DENY],
+			const choice = await withHerdrBlocked(pi.events, "Secret file access approval", () =>
+				ctx.ui.select(
+					`Secret file access requested\n\n${summary}`,
+					[SESSION_ALLOW_ONCE, SESSION_ALLOW_SECRET, DENY],
+				),
 			);
 			if (choice === SESSION_ALLOW_SECRET) {
 				for (const finding of pendingSecretReads) {
@@ -1172,9 +1177,11 @@ export default function guardrails(pi: ExtensionAPI) {
 			};
 		}
 
-		const choice = await ctx.ui.select(
-			`External file change requested\n\n${summary}`,
-			[SESSION_ALLOW_ONCE, SESSION_ALLOW_DIRECTORY, DENY],
+		const choice = await withHerdrBlocked(pi.events, "External file change approval", () =>
+			ctx.ui.select(
+				`External file change requested\n\n${summary}`,
+				[SESSION_ALLOW_ONCE, SESSION_ALLOW_DIRECTORY, DENY],
+			),
 		);
 		if (choice === SESSION_ALLOW_ONCE) return;
 		if (choice === SESSION_ALLOW_DIRECTORY) {

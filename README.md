@@ -26,6 +26,11 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
 - `workspace-runtime.ts`
   - สร้าง `.runtime/tmp` ใน workspace เมื่อเริ่ม session
   - ตั้ง `TMPDIR`, `TMP` และ `TEMP` ให้ Pi และ child processes ใช้ตำแหน่งนี้โดยอัตโนมัติ
+- `herdr-integration.ts`
+  - ตรวจ official Herdr Pi integration แบบ background ไม่เกินวันละครั้งเมื่อ Pi รันอยู่ใต้ Herdr
+  - แจ้งเมื่อ integration ยังไม่ติดตั้งหรือล้าสมัย โดยไม่คัดลอก reporter ของ Herdr มา maintain เอง
+  - ใช้ `/mypi-herdr-status` เพื่อตรวจทันที และ `/mypi-herdr-setup` เพื่อติดตั้งหรืออัปเดตผ่าน official installer หลังยืนยัน
+  - bridge `rpiv:ask-user:blocked` และ permission dialogs ของ `my-pi` ไปยัง `herdr:blocked` เพื่อให้ Herdr แสดงสถานะและเล่นเสียง request
 - `local/extensions/azure-devops/`
   - maintain source ไว้ใน repository นี้ แต่ไม่โหลดจาก global package
   - แต่ละ trusted project ต้องชี้ path นี้ผ่าน `.pi/settings.json` และมี `.pi/azure-devops.json`
@@ -70,6 +75,14 @@ pi install /Users/developer/my-project/my-pi
 ```
 
 อย่าใส่ `-l` เพราะ option นั้นจะติดตั้งเฉพาะ project ปัจจุบัน หลังติดตั้งแล้วให้เปิด Pi ใหม่ หรือใช้ `/reload`
+
+หากใช้ Herdr ให้ติดตั้ง official lifecycle reporter ผ่าน command ของ package หลังเปิด Pi:
+
+```text
+/mypi-herdr-setup
+```
+
+Command จะแสดง path ปลายทาง ขออนุมัติก่อนเรียก `herdr integration install pi` และ reload resources เมื่อสำเร็จ ส่วน startup notifier จะแจ้งอีกครั้งเมื่อ reporter ขาดหรือล้าสมัย
 
 ตรวจสอบ package ที่ Pi รู้จักได้ด้วย:
 
