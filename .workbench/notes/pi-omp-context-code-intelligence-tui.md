@@ -2,7 +2,7 @@
 
 > **Status:** อยู่ระหว่างวิเคราะห์<br>
 > **Created:** 2026-08-21 09:43<br>
-> **Updated:** 2026-08-21 09:43<br>
+> **Updated:** 2026-08-21 15:15<br>
 > **Purpose:** สรุปโจทย์ ข้อสังเกต และทางเลือกสำหรับพัฒนา Pi ให้ได้ code intelligence และ TUI ที่ดีขึ้น โดยยังรักษาการควบคุม context เป็นแกนหลัก
 
 ## Executive summary
@@ -211,22 +211,23 @@ Context governor อาจทำงานดังนี้:
 
 ## แนวทาง Code Intelligence
 
-ควรพิจารณา Pi package เดียวที่รวม capability แต่เปิดใช้เป็นกลุ่ม:
+ควรรวม capability ในระดับ distribution หรือ monorepo แต่แยก runtime extension ตาม lifecycle แล้วเปิดใช้เป็นกลุ่ม:
 
 ```text
 pi-code-intelligence
-├── LSP
+├── loader                 # activate capability แบบ additive
+├── pi-lsp                 # long-lived process และ indexing
 │   ├── diagnostics
 │   ├── symbols
 │   ├── definitions
 │   ├── references
 │   ├── rename
 │   └── code actions
-├── AST
+├── pi-ast                 # stateless structural search
 │   ├── structural search
 │   ├── preview rewrite
 │   └── apply rewrite
-└── DAP
+└── pi-debug               # stateful debug session; optional
     ├── launch / attach
     ├── breakpoints
     ├── step / continue
@@ -243,6 +244,112 @@ pi-code-intelligence
 ```
 
 หรือใช้ loader tool ตัวเดียวแล้ว activate tools แบบ additive เฉพาะเมื่อจำเป็น เพื่อรักษา prompt prefix และลดจำนวน tool schemas ที่ LLM เห็น
+
+### ผลค้นคว้าและ benchmark รุ่นแรก
+
+กำหนด scope รุ่นแรกเป็น TypeScript/JavaScript, read-only และทดลอง package ที่มีอยู่ก่อนสร้างเอง โดยเก็บ fixture และผลชั่วคราวที่ `.runtime/code-intelligence-benchmark/` ไม่ติดตั้ง package ลง workspace แบบถาวร
+
+| Package | ผลทดลอง | ข้อสรุป |
+|---|---|---|
+| `pi-ast-grep@0.1.0` | ผ่านโดยไม่แก้ package; structural search ถูกต้อง; cold ประมาณ 816 ms และ warm ประมาณ 8 ms | ใช้เป็น AST MVP แบบ on-demand ได้ |
+| `pi-lsp-adapter@0.1.3` | navigation ถูกต้องหลัง VTSLS พร้อม; lifecycle, trust, pagination และ cleanup ดี | เหมาะเป็น runtime base แต่ diagnostics cold-start มี correctness bug |
+| `lsp-pi@1.0.5` | clean install โหลดไม่ได้จาก import `vscode-languageserver-protocol/node.js`; หลัง patch เป็น `/node` ผล warm ถูกต้องและกระชับ | ใช้เป็น reference ด้าน compact API/output มากกว่าฐาน runtime |
+| `pi-lsp@0.1.7` | navigation ถูกต้องเมื่อ warm แต่ส่ง raw LSP JSON และ diagnostics อ่าน cache เท่านั้น | มี declarative config/trust ที่น่าสนใจ แต่ไม่เหมาะใช้ตรงสำหรับ governed read-only MVP |
+| `@narumitw/pi-lsp@0.49.5` | diagnostics ถูกต้องตั้งแต่ call แรกประมาณ 3–3.5 วินาที; start/stop server ทุก call | ใช้เป็น reference สำหรับ push/pull diagnostics, settle และ grace policy; ไม่มี navigation |
+
+Tool surface ที่วัดจาก name, description, parameters, prompt snippets และ guidelines โดยประมาณ:
+
+| Package | Tools | Surface characters |
+|---|---:|---:|
+| `lsp-pi` หลัง patch | 1 | 1,614 |
+| `@narumitw/pi-lsp` | 2 | 2,147 |
+| `pi-lsp` | 5 | 2,564 |
+| `pi-lsp-adapter` | 7 | 5,183 |
+| `pi-ast-grep` | 1 | 2,908 |
+
+ตัวเลขเป็น single-run บน fixture เล็ก ใช้วิเคราะห์ behavior และ context surface ไม่ใช่ performance benchmark ขั้นสุดท้าย
+
+### Root cause ของ diagnostics false-negative
+
+instrument VTSLS จริงพบ timeline:
+
+```text
+didOpen                 t + 0 ms
+first tool result       t + 477 ms    "No LSP diagnostics"
+publishDiagnostics      t + 2,886 ms  TS2322 จำนวน 1 รายการ
+```
+
+`pi-lsp-adapter` รอคงที่เพียง `diagnosticsWaitMs = 350` ms และ `getDiagnostics(uri)` คืน `[]` ทั้งเมื่อ server publish ผลว่างแล้วและเมื่อยังไม่เคย publish ทำให้สถานะสองชนิดถูกรวมกัน
+
+ไม่ควรเรียกสถานะว่า `ready` หรือ `indexing` จนกว่าจะ track `$/progress` เพราะ diagnostic publication แรกไม่ได้รับประกันว่า workspace indexing เสร็จทั้งหมด สถานะที่มีหลักฐานรองรับกว่าคือ:
+
+```text
+awaiting-publication
+published-empty
+published-with-diagnostics
+timed-out
+```
+
+### กลยุทธ์ Upstream-first
+
+upstream `pi-lsp-adapter` main ตรงกับ npm `0.1.3`, baseline ผ่าน 214 tests กับ 2 skipped รวมทั้ง typecheck และ lint และเคยรับ external PR แล้ว จึงให้เริ่มจาก issue/PR ขนาดเล็กแทน fork
+
+ลำดับที่เสนอ:
+
+1. correctness — แยก no-publication ออกจาก explicit empty publication; invalidate freshness เมื่อ `didOpen`/`didChange`; pending/timeout ห้าม format เป็น clean
+2. bounded waiting — รอ publication ของ document state ปัจจุบัน, ใช้ publication sequence, เพิ่ม timeout และพิจารณา pull diagnostics เมื่อ server advertise capability
+3. context efficiency — format path ให้ relative และเก็บ absolute path เฉพาะ structured details เมื่อจำเป็น
+4. dynamic-loading compatibility — ไม่ inject LSP paragraph ใน `before_agent_start` เมื่อ LSP tools ทั้งหมด inactive
+
+local loader เช่น `mypi_code_intelligence_load` เป็น workspace policy จึงไม่จำเป็นต้อง upstream
+
+### Draft upstream issue
+
+ยังไม่เปิด issue ภายนอกและยังไม่แก้ upstream ตามการตัดสินใจให้เก็บ draft ไว้ก่อน
+
+**Title**
+
+```text
+lsp_diagnostics can report a false clean result before publishDiagnostics arrives
+```
+
+**Body draft**
+
+```text
+On a cold VTSLS start, lsp_diagnostics can return “No LSP diagnostics”
+before the server has published diagnostics for the opened document.
+
+Environment:
+- pi-lsp-adapter 0.1.3
+- Pi 0.84.2
+- VTSLS 0.3.0
+- TypeScript 6.0.3
+- Node.js 24.15.0
+- macOS
+
+Observed timeline:
+- didOpen: t0
+- first tool result: t0 + ~477 ms (“No LSP diagnostics”)
+- publishDiagnostics: t0 + ~2,886 ms (TS2322)
+
+The current default diagnosticsWaitMs is 350 ms, and getDiagnostics()
+returns [] both when no publication has arrived and when an explicit empty
+publication has arrived.
+
+Expected:
+The tool should never report a clean result before receiving a diagnostic
+publication for the current document state. It should either wait within a
+bounded timeout or return an explicit awaiting-publication/timeout state.
+
+I can submit a focused PR with deterministic delayed-publication tests.
+```
+
+### MVP ชั่วคราวก่อน upstream fix
+
+- ใช้ `pi-ast-grep` แบบ read-only และ on-demand
+- ใช้ `pi-lsp-adapter` เฉพาะ hover, definition, references, document/workspace symbols และ pagination
+- ปิด `lsp_diagnostics` ชั่วคราว และถือ `tsc` หรือ repository-native typecheck เป็น authoritative validation
+- ให้ local loader activate tools แบบ additive; ยอมรับ prompt-prefix invalidation หนึ่งครั้งหาก third-party tools ยังมี active-only prompt metadata
 
 ## External multi-agent และ orchestration
 
@@ -395,6 +502,9 @@ Metrics ที่ควรวัด:
 - ยังไม่ควร reimplement compaction/session/provider engine ของ Pi
 - หากเลือก Pi ให้สร้างเพียง context-governance layer ที่บางและวัดผลได้
 - ใช้ package หรือ protocol implementation ที่มีอยู่สำหรับ LSP, AST, DAP, browser และ MCP
+- สำหรับ code intelligence รุ่นแรก เลือก TypeScript/JavaScript และ read-only; ใช้ `pi-ast-grep` เป็น AST baseline
+- ใช้ Upstream-first กับ `pi-lsp-adapter`; ยังไม่ fork และยังไม่เปิด diagnostics จนกว่า no-publication จะแยกจาก clean result
+- แยก LSP, AST และ DAP เป็น runtime extensions ต่างกันภายใต้ distribution/monorepo เดียว เพราะ lifecycle ต่างกัน
 - ใช้ external orchestration แทน in-process subagents ก่อน หากตอบโจทย์ transparency และ isolation ดีกว่า
 - เอนมาทาง Pi เป็น primary แต่ยังใช้ OMP เป็น reference และ A/B baseline
 - สำหรับ TUI ให้เริ่มจาก OMP-inspired theme/extension ไม่ import OMP coding-agent components ตรงและยังไม่ fork core
@@ -411,9 +521,9 @@ Metrics ที่ควรวัด:
 
 ### Code intelligence
 
-- มี Pi packages สำหรับ LSP, AST หรือ DAP ตัวใดที่ควรประเมินก่อนสร้างใหม่
-- ภาษาและ language servers ใดเป็น priority
-- ต้องการ read-only intelligence ก่อน หรือรวม rename/code-action/write ตั้งแต่รุ่นแรก
+- จะเก็บ upstream issue เป็น draft ถึงจุดใดก่อนเปิดจริง และ maintainer ต้องการ pending state หรือ bounded wait เป็น default
+- local loader ควร activate แยก `ast`, `lsp-navigation` และ `lsp-diagnostics` หรือรวมเป็นกลุ่มน้อยกว่านี้
+- หลัง correctness fix ควรใช้ VTSLS ต่อหรือเทียบ `typescript-language-server` บน repository ขนาดใหญ่
 - DAP ควรเป็น persistent debug session หรือ stateless commands
 
 ### TUI
@@ -453,6 +563,18 @@ Metrics ที่ควรวัด:
 - `examples/extensions/rainbow-editor.ts`
 - `examples/extensions/working-indicator.ts`
 
+### Code intelligence ที่ตรวจ
+
+- `pi-ast-grep` v0.1.0
+- `pi-lsp-adapter` v0.1.3 และ <https://github.com/nikmmd/pi-lsp-adapter>
+- `lsp-pi` v1.0.5
+- `pi-lsp` v0.1.7
+- `@narumitw/pi-lsp` v0.49.5
+- `@vtsls/language-server` v0.3.0
+- `typescript-language-server` v6.0.0
+- `@ast-grep/cli` v0.43.0
+- `@narumitw/pi-lsp/src/lsp-client.ts` สำหรับ push/pull diagnostics และ settle/grace behavior
+
 ### OMP ที่ตรวจ
 
 - `@oh-my-pi/pi-coding-agent` v17.4.0
@@ -464,4 +586,5 @@ Metrics ที่ควรวัด:
 
 ## Change log
 
+- 2026-08-21 15:15 — เพิ่ม benchmark TypeScript read-only ของ AST/LSP packages, ตัดสินใจแยก runtime extensions, เลือก Upstream-first สำหรับ `pi-lsp-adapter` และเก็บ draft issue เรื่อง diagnostics false-negative
 - 2026-08-21 09:43 — สรุปการสนทนาเรื่อง context governance, OMP compaction/memory, Pi build-vs-reuse, code intelligence, external orchestration และ OMP-inspired TUI เพื่อส่งต่องานมาที่ workspace นี้
