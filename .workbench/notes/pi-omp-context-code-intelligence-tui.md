@@ -2,7 +2,7 @@
 
 > **Status:** อยู่ระหว่างวิเคราะห์<br>
 > **Created:** 2026-08-21 09:43<br>
-> **Updated:** 2026-08-21 15:15<br>
+> **Updated:** 2026-08-21 15:46<br>
 > **Purpose:** สรุปโจทย์ ข้อสังเกต และทางเลือกสำหรับพัฒนา Pi ให้ได้ code intelligence และ TUI ที่ดีขึ้น โดยยังรักษาการควบคุม context เป็นแกนหลัก
 
 ## Executive summary
@@ -509,6 +509,45 @@ Metrics ที่ควรวัด:
 - เอนมาทาง Pi เป็น primary แต่ยังใช้ OMP เป็น reference และ A/B baseline
 - สำหรับ TUI ให้เริ่มจาก OMP-inspired theme/extension ไม่ import OMP coding-agent components ตรงและยังไม่ fork core
 
+## งานวิเคราะห์และทดสอบก่อน implementation
+
+ไม่จำเป็นต้องทำทุกเรื่องก่อนเริ่ม quick win แต่ diagnostics contract ต้องชัดก่อนเปิด `lsp_diagnostics` ให้ใช้งานจริง
+
+1. **Diagnostics semantics** — เก็บ publication timeline ของ cold clean, cold error, clean → error, error → clean, concurrent files และ no-publication; ห้ามสมมติว่า first empty publication คือผลสุดท้าย
+2. **Language-server comparison** — เทียบ VTSLS กับ `typescript-language-server` บน fixture และ repository ขนาดกลางที่มี TSX, aliases, project references และ workspace packages
+3. **Exact context cost** — วัด provider payload ก่อน/หลัง activate AST, LSP navigation และ diagnostics รวมถึงผลต่อ prompt prefix, compaction และ session resume
+4. **Lifecycle/trust failures** — ทดสอบ crash, timeout, cancellation, shutdown, stale results, symlink, path นอก workspace, untrusted workspace และ orphan processes
+5. **Output contract** — กำหนด relative path, structured state, pagination/truncation และแยก clean, pending, timeout กับ unavailable ให้ชัด
+6. **AST edge cases** — ทดสอบ TS/JS/TSX, syntax error, ignore rules, symlink, invalid query, large result และยืนยัน read-only surface
+7. **Dependency viability** — ตรวจ clean install, Node/ESM compatibility, server pinning, license, release cadence และ upstream responsiveness
+
+เกณฑ์ขั้นต่ำก่อนเปิด diagnostics ใน MVP:
+
+- ไม่คืน false clean หรือ stale diagnostics
+- timeout และ no-publication แสดงเป็น inconclusive state
+- navigation ให้ผลถูกต้องข้าม package
+- inactive tools ไม่เพิ่ม schema/guidance ใน provider payload
+- shutdown แล้วไม่มี server process หรือ waiter ค้าง
+
+## Short-cycle candidates
+
+เวลาเป็นประมาณการหยาบสำหรับการทดลองหรือ implementation ขนาดเล็กหนึ่งรอบ โดยยังไม่รวม review จาก upstream
+
+| ID | หัวข้อ | ลักษณะ | เวลาโดยประมาณ | ผลลัพธ์ |
+|---|---|---|---:|---|
+| Q1 | ทำ AST edge-case matrix | ทดสอบเท่านั้น | 30–60 นาที | ยืนยันว่า `pi-ast-grep` พร้อมเป็น read-only MVP |
+| Q2 | เก็บ diagnostics timeline matrix | instrumentation/ทดสอบ | 1–2 ชั่วโมง | รู้ว่า first publication/empty result เชื่อถือได้เพียงใด |
+| Q3 | วัด exact context surface | disposable Pi probe | 1–2 ชั่วโมง | snapshot tool schemas และ prompt ก่อน/หลัง activation |
+| Q4 | สรุป LSP output contract | วิเคราะห์/API sketch | 30–60 นาที | รูปแบบ relative path, state, pagination และ error ที่ตกลงร่วมกันได้ |
+| Q5 | ทำ OMP TUI component inventory | วิเคราะห์ภาพและ interaction | 30–60 นาที | รายการ theme/extension/core พร้อมลำดับความสำคัญ |
+| Q6 | ทำ theme-only OMP-inspired skin | implementation แบบถอดกลับได้ | 1–2 ชั่วโมง | palette และ visual baseline โดยไม่แตะ Pi core |
+| Q7 | ทำ header/footer/working-indicator prototype | extension prototype | 2–4 ชั่วโมง | ตรวจขอบเขต public TUI API กับ interaction จริง |
+| Q8 | ทดสอบ local loader feasibility | disposable extension spike | 2–4 ชั่วโมง | รู้ว่า additive activation และ prompt leakage ควบคุมได้หรือไม่ |
+| Q9 | สรุป context-governance requirements | วิเคราะห์ policy | 1–2 ชั่วโมง | requirements/non-goals สำหรับ inspect, approval และ compaction audit |
+| Q10 | กำหนด external-agent handoff convention | วิเคราะห์ workflow | 1–2 ชั่วโมง | รูปแบบ task, status และ result โดยยังไม่สร้าง orchestrator |
+
+งานที่ยังไม่ถือเป็น quick win ได้แก่ production diagnostics fix, benchmark monorepo ขนาดใหญ่, DAP, custom transcript renderer, standalone TUI และ context governor เต็มระบบ
+
 ## Open questions
 
 ### Context
@@ -540,12 +579,11 @@ Metrics ที่ควรวัด:
 
 ## Suggested next discussion
 
-1. ระบุภาพหน้าจอ/interaction ของ OMP ที่ต้องการเลียนแบบ
-2. ทำ inventory packages ปัจจุบันและค้นหา LSP/AST/DAP extensions ที่มีอยู่
-3. กำหนด context-governance requirements และ non-goals
-4. ออกแบบ A/B benchmark ก่อน implementation
-5. แบ่งงานเป็นสาม package อิสระ: context governor, code intelligence และ UI skin
-6. เลือก quick-win package แรกโดยหลีกเลี่ยงการแก้ Pi core
+1. เลือกหนึ่ง short-cycle candidate โดยเริ่มจากงานที่ไม่เปลี่ยน production behavior
+2. ทำ probe หรือ benchmark แบบ disposable ใน `.runtime/`
+3. บันทึกผลและตัดสิน go/no-go ก่อนเปลี่ยน source หรือเปิด upstream issue
+4. เมื่อจะทำ TUI ให้ระบุภาพ/interaction ของ OMP ที่ต้องการเลียนแบบก่อน
+5. แยกงานใหญ่เป็น context governor, code intelligence และ UI skin โดยหลีกเลี่ยงการแก้ Pi core
 
 ## References
 
@@ -586,5 +624,6 @@ Metrics ที่ควรวัด:
 
 ## Change log
 
+- 2026-08-21 15:46 — เพิ่ม validation backlog ก่อน implementation และ short-cycle candidates ครอบคลุม code intelligence, context governance, TUI และ orchestration
 - 2026-08-21 15:15 — เพิ่ม benchmark TypeScript read-only ของ AST/LSP packages, ตัดสินใจแยก runtime extensions, เลือก Upstream-first สำหรับ `pi-lsp-adapter` และเก็บ draft issue เรื่อง diagnostics false-negative
 - 2026-08-21 09:43 — สรุปการสนทนาเรื่อง context governance, OMP compaction/memory, Pi build-vs-reuse, code intelligence, external orchestration และ OMP-inspired TUI เพื่อส่งต่องานมาที่ workspace นี้
