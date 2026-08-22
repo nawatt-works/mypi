@@ -445,11 +445,22 @@ export default function planningWorkflow(pi: ExtensionAPI): void {
 		syncToolVisibility();
 	});
 
-	pi.on("before_agent_start", (event, ctx) => {
+	pi.on("before_agent_start", async (event, ctx) => {
 		const guidance = buildPlanningGuidance(mode, activePlan, ctx.getContextUsage()?.percent);
-		const phaseGuidance = event.systemPrompt.includes(PLANNING_MARKER) && activePlan
+		let plannotatorPhase: PlannotatorPhase | undefined;
+		if (activePlan) {
+			const status = await requestPlannotatorPlanMode(pi.events, "status", 500);
+			if (status.status === "handled") plannotatorPhase = status.result.phase;
+		}
+
+		// Plannotator >=0.27 delivers phase framing as a conversation message
+		// instead of modifying systemPrompt. Query its public event API first;
+		// retain marker fallbacks for compatibility with older releases.
+		const planning = plannotatorPhase === "planning" || event.systemPrompt.includes(PLANNING_MARKER);
+		const executing = plannotatorPhase === "executing" || event.systemPrompt.includes(EXECUTING_MARKER);
+		const phaseGuidance = planning && activePlan
 			? `## Active Plannotator path\n\nUse \`${activePlan.filePath}\` as the plan file. Keep it at that exact path and preserve its existing structure. Submit this same path with \`plannotator_submit_plan\`.`
-			: event.systemPrompt.includes(EXECUTING_MARKER) && activePlan
+			: executing && activePlan
 				? `## Execution continuity\n\nThe active plan remains \`${activePlan.filePath}\`. Keep its progress and exact next action current after each verified phase.`
 				: "";
 		const additions = [guidance, phaseGuidance].filter(Boolean);

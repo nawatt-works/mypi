@@ -72,6 +72,7 @@ test("creates and cleans managed ledgers while retaining caller-owned artifacts"
 	const tools = new Map<string, any>();
 	const entries: unknown[] = [];
 	let activeTools: string[] = [];
+	let plannotatorPhase: "idle" | "planning" | "executing" = "idle";
 	const api = {
 		registerTool(tool: any) {
 			tools.set(tool.name, tool);
@@ -89,9 +90,10 @@ test("creates and cleans managed ledgers while retaining caller-owned artifacts"
 					payload: { mode: string };
 					respond: (result: unknown) => void;
 				};
+				if (request.payload.mode === "enter") plannotatorPhase = "planning";
 				request.respond({
 					status: "handled",
-					result: { phase: request.payload.mode === "enter" ? "planning" : "idle" },
+					result: { phase: plannotatorPhase },
 				});
 			},
 		},
@@ -155,6 +157,9 @@ test("creates and cleans managed ledgers while retaining caller-owned artifacts"
 		}, undefined, undefined, ctx);
 		assert.equal(reviewResult.details.entered, true);
 		assert.equal(reviewResult.details.plan.filePath, callerPath);
+		const apiDetectedPlanningPrompt = await beforeStart?.({ systemPrompt: "base" }, ctx);
+		assert.match(apiDetectedPlanningPrompt.systemPrompt, /Active Plannotator path/);
+		assert.match(apiDetectedPlanningPrompt.systemPrompt, /plannotator_submit_plan/);
 		const callerFinish = await finish.execute("id", {
 			outcome: "complete",
 			summary: "verified",
