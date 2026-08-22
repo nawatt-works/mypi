@@ -13,11 +13,14 @@
 
 ## แผนงานใหญ่และการส่งต่องาน
 
-- เมื่อใช้ Plannotator plan mode ให้เก็บแผนที่ `.workbench/plans/<ชื่อที่สื่อความหมาย>.md` และใช้ไฟล์เดิมเมื่อแก้แผนรอบถัดไป
-- แบ่งงานเป็น phase และ Markdown checklist พร้อมวิธี verification ของแต่ละ phase เพื่อให้ terminal widget ติดตามได้
-- ทำเครื่องหมายเสร็จเมื่อผลลัพธ์และ verification ผ่านแล้วเท่านั้น ไม่ใช่เพียงเพราะแก้ source code แล้ว
-- เมื่อหยุดกลางทาง พบ blocker หรือเปลี่ยนการตัดสินใจ ให้อัปเดตหัวข้อ `Handoff`, `Decisions`, `Status` และ `Updated` ในแผน
-- อัปเดต `.workbench/index.md` เมื่อเพิ่มแผน หรือเมื่อสถานะหรือวัตถุประสงค์ของแผนเปลี่ยน
+- หาก skill, workflow หรือผู้ใช้กำหนด path ของ plan artifact ให้ใช้ path และรูปแบบนั้นเป็นหลัก ห้ามย้ายหรือทำสำเนาเข้า folder กลางโดยพลการ
+- หากงาน implementation ยังใหญ่แม้ผู้ใช้แบ่ง scope แล้ว หรือมีหลาย phase/verification จนเสี่ยงสูญเสียสถานะจาก context compaction ให้สร้าง continuity ledger ก่อนลงมือและอัปเดตหลังจบแต่ละช่วง
+- เมื่อไม่มี caller-owned path ให้ใช้ managed ledger ใต้ `.workbench/continuity/`; ledger ชนิดนี้เป็น working state ไม่ต้องเพิ่มใน `.workbench/index.md` และให้ลบเมื่อผลลัพธ์กับ verification เสร็จครบ
+- ใช้ `.workbench/plans/` เป็น fallback สำหรับ durable project plan ที่ไม่มี workflow-specific location เท่านั้น
+- การใช้ Plannotator เป็นเรื่อง review/approval แยกจากการมี continuity ledger งานใหญ่อาจต้องมี ledger โดยไม่ต้องเปิด Plannotator
+- แบ่งงานเป็น phase และ Markdown checklist พร้อมวิธี verification ทำเครื่องหมายเสร็จเมื่อผลลัพธ์และ verification ผ่านแล้วเท่านั้น
+- ก่อนหยุดงานหรือหลังเปลี่ยน decision ให้อัปเดต completed work, blocker, verification และ exact next action ใน active plan/ledger เพื่อให้ resume หลัง compaction ได้
+- อัปเดต `.workbench/index.md` เฉพาะ durable artifact ที่เพิ่ม ย้าย เปลี่ยนสถานะ หรือเปลี่ยนวัตถุประสงค์ ไม่รวม managed continuity ledger
 
 ## ภาษา
 

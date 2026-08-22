@@ -26,8 +26,7 @@
       "./extensions/steering-choice.ts",
       "./node_modules/@juicesharp/rpiv-ask-user-question/index.ts",
       "./node_modules/@plannotator/pi-extension/index.ts",
-      "./extensions/auto-plannotator.ts",
-      "./extensions/plannotator-workflow.ts"
+      "./extensions/planning-workflow.ts"
     ],
     "themes": [
       "./themes"

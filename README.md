@@ -35,13 +35,12 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - เปิด Work Item Create/Update/soft-delete ได้ราย project เมื่อใช้ PAT และ permission แบบ opt-in
   - บังคับ preview และ confirmation ทุก write; non-interactive mode ถูก block
   - ใช้ `/mypi-azure-devops-config` เพื่อตรวจ effective configuration โดยไม่แสดง credential
-- `auto-plannotator.ts`
-  - ให้ AI ประเมินเองว่างานควรใช้ durable plan หรือไม่ และเข้า Plannotator ผ่าน shared event API
-  - ค่าเริ่มต้น `automatic`; ใช้ `/mypi-auto-plan suggest` เพื่อถามก่อนเปิด หรือ `/mypi-auto-plan off` เพื่อปิดใน session ปัจจุบัน
-  - พิจารณางานหลาย phase, งานเสี่ยงสูง, การเปลี่ยนจาก discussion ไป implementation และความเสี่ยงจาก context compaction โดยไม่ใช้ keyword ตายตัว
-- `plannotator-workflow.ts`
-  - เสริมกติกาหลัง Plannotator เพื่อเก็บแผนถาวรใต้ `.workbench/plans/`
-  - กำหนด phase, checklist, verification และ handoff ให้ติดตามต่อได้
+- `planning-workflow.ts`
+  - ให้ AI สร้าง continuity ledger เองเมื่องานยังใหญ่หรือเสี่ยงสูญเสียสถานะจาก context compaction
+  - รับ plan path ที่ skill/workflow กำหนด หรือสร้าง managed fallback ใต้ `.workbench/continuity/`
+  - แยกการใช้ Plannotator สำหรับ human review ออกจากการติดตาม continuity ของงาน
+  - เก็บ active plan pointer ใน Pi session เพื่อ inject path กลับหลัง compaction/resume
+  - ใช้ `/mypi-continuity automatic|off|status` เพื่อควบคุม automatic continuity planning ราย session
 
 ### Third-party packages
 
@@ -216,20 +215,21 @@ Guardrails เป็น best-effort policy layer ไม่ใช่ security san
 
 ## Plan, Todo และ Handoff
 
-ค่าเริ่มต้น AI จะประเมินเองว่าควรเปิด Plannotator หรือไม่ เมื่องานเริ่มมีหลาย phase, มีความเสี่ยงสูง, เปลี่ยนจากการถามตอบไปเป็น implementation ขนาดใหญ่ หรือต้องมี durable state เพื่อรับมือ context compaction AI จะเรียก `mypi_use_plannotator` ก่อนลงมือ แล้วสร้างแผนที่ `.workbench/plans/<ชื่องาน>.md` และส่งเข้า Browser UI ให้ตรวจ แก้ หรืออนุมัติ การเข้า plan mode อัตโนมัติไม่ได้ข้ามการอนุมัติของผู้ใช้
+ระบบ planning แยกการตัดสินใจเป็นสามเรื่อง: ตำแหน่ง artifact เป็นของ skill/workflow, continuity ledger ใช้รักษาสถานะงานใหญ่ และ Plannotator ใช้เฉพาะเมื่อ human review/approval มีประโยชน์ ทั้งสามอย่างใช้ plan file เดียวกันได้แต่ไม่ถูกบังคับให้เกิดพร้อมกัน
+
+เมื่อ skill หรือ workflow ระบุ Markdown path ภายใน workspace AI จะส่ง path เดิมให้ `mypi_start_work_plan` และรักษา schema กับตำแหน่งนั้น หากไม่มี path แต่งานมีหลาย phase, verification หรือเสี่ยงต่อ compaction AI จะสร้าง managed ledger ใต้ `.workbench/continuity/` โดยอัตโนมัติ อ่านก่อนทำงานต่อ และอัปเดต completed work, decisions, blockers, verification กับ exact next action หลังแต่ละช่วง ใน repository นี้ path ดังกล่าวถูก ignore จาก Git และ extension จะลบ managed ledger เมื่อ AI ปิดงานหลัง verification ผ่าน ส่วน caller-owned artifact จะไม่ถูกลบอัตโนมัติ หากนำ extension ไปใช้ใน workspace อื่น ควรกำหนด ignore policy ของ workspace นั้นเอง
 
 ควบคุมพฤติกรรมใน session ปัจจุบันได้ด้วย:
 
 ```text
-/mypi-auto-plan automatic  # AI เข้า plan mode เองเมื่อเห็นว่าจำเป็น (ค่าเริ่มต้น)
-/mypi-auto-plan suggest    # AI แนะนำได้ แต่ถามยืนยันก่อนเข้า plan mode
-/mypi-auto-plan off        # ไม่ให้ AI เปิดเอง
-/mypi-auto-plan status     # แสดงโหมดปัจจุบัน
+/mypi-continuity automatic  # AI สร้าง continuity ledger เองเมื่องานใหญ่ (ค่าเริ่มต้น)
+/mypi-continuity off        # ปิดการตัดสินใจสร้าง ledger เองของ AI ใน session นี้; caller ยังระบุ plan ได้
+/mypi-continuity status     # แสดง mode และ active plan ปัจจุบัน
 ```
 
-คำสั่ง `pi --plan`, `/plannotator` และ `Ctrl+Alt+P` ยังใช้บังคับเปิดด้วยตนเองได้ตามเดิม และการบอก AI ว่า “ใช้ plan” หรือ “ไม่ต้องทำ plan” ถือเป็น override สำหรับงานนั้น
+เครื่องมือ `mypi_start_work_plan` สร้าง/register plan โดยไม่เปิด Browser UI ส่วน `mypi_use_plannotator` เข้า Plannotator แยกต่างหากและ reuse active plan หรือ path ที่ caller กำหนดได้ คำสั่ง `pi --plan`, `/plannotator <path>` และ `Ctrl+Alt+P` ยังใช้เปิดด้วยตนเองได้ตามเดิม
 
-หลังอนุมัติ Plannotator จะแสดง checklist ใน terminal และติดตามความคืบหน้าด้วย Markdown checkbox ร่วมกับ `[DONE:n]` แผนใน `.workbench/` เป็นข้อมูลถาวร ส่วน terminal widget เป็นมุมมองสด หากงานหยุดกลางทาง AI ต้องบันทึก blocker, decision และ next action ในหัวข้อ `Handoff` ของแผนก่อนจบช่วงงาน
+เมื่อใช้ Plannotator หลังอนุมัติจะแสดง checklist ใน terminal และติดตามความคืบหน้าด้วย Markdown checkbox ร่วมกับ `[DONE:n]` แต่ plan ไม่จำเป็นต้องอยู่ `.workbench/plans/`; path ของ workflow/skill มี precedence สูงสุด หากไม่มีจึงค่อยใช้ fallback ตาม lifecycle ของงาน
 
 ดูหลักเกณฑ์รูปแบบแผนได้ที่ `.workbench/plans/README.md` และสถานะการออกแบบที่ `.workbench/notes/persistent-todo-handoff.md`
 

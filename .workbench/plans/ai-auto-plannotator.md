@@ -1,8 +1,8 @@
 # ให้ AI ตัดสินใจเปิด Plannotator
 
-> **Status:** complete<br>
+> **Status:** superseded<br>
 > **Created:** 2026-08-09 09:02<br>
-> **Updated:** 2026-08-09 09:10<br>
+> **Updated:** 2026-08-22 12:40<br>
 > **Purpose:** เพิ่มกลไกให้ AI เข้า Plannotator plan mode เองเมื่องานซับซ้อนหรือเสี่ยงสูญเสียบริบท โดยผู้ใช้ยังควบคุมได้
 
 ## Context
@@ -64,9 +64,10 @@ Plannotator ปัจจุบันเข้า plan mode ได้จาก `p
 
 ## Handoff
 
-งานเสร็จและ verification ผ่าน ไม่มี blocker หลังใช้ `/reload` หรือเปิด Pi ใหม่ AI จะเลือกเข้า Plannotator ได้ ค่าเริ่มต้นเป็น `automatic` และเปลี่ยนราย session ด้วย `/mypi-auto-plan`
+Implementation นี้เคยเสร็จและใช้งานได้ แต่ถูกแทนที่เมื่อ 2026-08-22 ด้วย `planning-workflow.ts` ซึ่งแยก automatic continuity ออกจาก Plannotator review และรองรับ caller-selected artifact path ดูแผนปัจจุบันที่ `flexible-planning-continuity.md`
 
 ## Change log
 
+- 2026-08-22 12:40 — เปลี่ยนสถานะเป็น superseded หลังรื้อ automatic Plannotator เป็น planning workflow แบบแยก concerns
 - 2026-08-09 09:10 — เพิ่ม companion extension, tests, package integration และเอกสารครบ พร้อมปิดแผนหลัง verification ผ่าน
 - 2026-08-09 09:02 — สร้างแผนและกำหนด default mode, event integration และ user override

@@ -2,7 +2,7 @@
 
 > **Status:** ดำเนินการบางส่วน<br>
 > **Created:** 2026-07-27 02:31<br>
-> **Updated:** 2026-08-22 11:57<br>
+> **Updated:** 2026-08-22 12:40<br>
 > **Purpose:** บันทึกผลประเมิน third-party extensions และแนวทางปรับ Pi setup
 
 ## ข้อสรุป
@@ -34,8 +34,8 @@
 
 - นำมาใช้แล้วที่เวอร์ชัน `0.25.1` สำหรับ plan review และ code review
 - ใช้ Browser UI ตอนตรวจและอนุมัติแผน และใช้ terminal widget ตอน execution
-- เสริมด้วย `plannotator-workflow.ts` เพื่อให้แผนอยู่ใน `.workbench/plans/` และมี verification กับ handoff ตามกติกา workspace
-- ต้องโหลด `plannotator-workflow.ts` หลัง Plannotator เพื่อให้คำแนะนำของโปรเจกต์ต่อท้าย phase system prompt ได้
+- เสริมด้วย `planning-workflow.ts` เพื่อให้ workflow/skill ระบุ plan path, AI รักษา continuity ของงานใหญ่ และ reuse ไฟล์เดิมเมื่อขอ review
+- ต้องโหลด `planning-workflow.ts` หลัง Plannotator เพื่อเพิ่ม caller-selected path ลงใน planning/execution prompt
 
 ## Guardrails Coverage
 
@@ -70,6 +70,7 @@
 
 ## Decisions
 
+- 2026-08-22 — แยก continuity planning ออกจาก Plannotator review และให้ caller-owned artifact path มี precedence เหนือ directory กลาง
 - 2026-08-22 — ยกเลิก workspace-local runtime เพราะ harness และ tools จำนวนหนึ่งจัดการ temporary lifecycle เองอยู่แล้ว ให้ใช้ default temporary root ของแต่ละ harness และย้าย extension caches ตามไปด้วย
 - 2026-08-05 — นำ Plannotator มาใช้แทนการพัฒนา Plan/Todo UI ใหม่ และเก็บ handoff ถาวรใน `.workbench/`
 - 2026-08-05 — ใช้ `.runtime/tmp` เป็น default temp พร้อม block system temp ที่ AI ระบุเอง; decision นี้ถูกแทนที่เมื่อ 2026-08-22
@@ -80,6 +81,7 @@
 
 ## Change log
 
+- 2026-08-22 12:40 — แทน auto-plannotator และ fixed plan directory ด้วย planning workflow ที่ route path ตาม artifact owner
 - 2026-08-22 11:57 — ถอด workspace-local runtime และเปลี่ยน guardrails กับ extension caches ให้ใช้ temporary root ของ harness หรือ OS
 - 2026-08-05 12:04 — เพิ่มผลประเมินและการนำ Plannotator มาใช้ พร้อมนโยบาย `.runtime/tmp`, `/dev/null` และ explicit system temp
 - 2026-07-27 09:19 — เพิ่ม Guardrails สำหรับ MCP, custom tools, local uploads, PDF output, Chrome screenshot และ shell/environment risks พร้อมบันทึกข้อจำกัดที่ยังเหลือ
