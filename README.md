@@ -23,9 +23,6 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - ตรวจอัตโนมัติไม่เกินวันละครั้งและใช้ timeout 10 วินาที
   - แจ้งเฉพาะเมื่อพบเวอร์ชันใหม่ และข้ามเงียบเมื่อ startup check ล้มเหลว
   - ใช้ `/mypi-updates` เมื่อต้องการบังคับตรวจทันที
-- `workspace-runtime.ts`
-  - สร้าง `.runtime/tmp` ใน workspace เมื่อเริ่ม session
-  - ตั้ง `TMPDIR`, `TMP` และ `TEMP` ให้ Pi และ child processes ใช้ตำแหน่งนี้โดยอัตโนมัติ
 - `herdr-integration.ts`
   - ตรวจ official Herdr Pi integration แบบ background ไม่เกินวันละครั้งเมื่อ Pi รันอยู่ใต้ Herdr
   - แจ้งเมื่อ integration ยังไม่ติดตั้งหรือล้าสมัย โดยไม่คัดลอก reporter ของ Herdr มา maintain เอง
@@ -125,7 +122,7 @@ npm ci
 
 เนื่องจาก setup นี้เป็น local-path package คำสั่ง `pi update --extensions` จะไม่อัปเดต dependency ภายใน repository ให้ ต้องใช้ npm จาก repository นี้
 
-Extension `dependency-update-notifier.ts` ช่วยตรวจ dependency เหล่านี้วันละครั้ง โดยเก็บ cache ที่ `.runtime/cache/` ซึ่งไม่ถูก commit หากต้องการตรวจทันทีโดยไม่รอรอบถัดไป ให้ใช้:
+Extension `dependency-update-notifier.ts` ช่วยตรวจ dependency เหล่านี้วันละครั้ง โดยเก็บ cache ใต้ temporary directory ที่ harness หรือ OS กำหนด หาก cache ถูกล้าง extension อาจตรวจใหม่ก่อนครบหนึ่งวัน แต่ไม่กระทบผลลัพธ์ หากต้องการตรวจทันทีโดยไม่รอรอบถัดไป ให้ใช้:
 
 ```text
 /mypi-updates
@@ -202,10 +199,10 @@ Create/Update/Delete ไม่ fallback ไป Azure CLI, ต้องยืน�
 
 นโยบาย temporary files:
 
-- Pi และ child processes ที่ใช้ temp directory มาตรฐานจะถูกชี้ไปที่ `<workspace>/.runtime/tmp` ทุก session
+- Pi, child processes และ extensions ใช้ temporary directory ตามค่า default ของ harness หรือ OS โดยไม่เปลี่ยน `TMPDIR`, `TMP` หรือ `TEMP`
+- Guardrails อนุญาตการเขียนใต้ temporary root ที่ `os.tmpdir()` คืนให้ process โดยไม่ถาม แต่ path ภายนอกอื่นยังอยู่ภายใต้นโยบายอนุมัติเดิม
 - `/dev/null` ใช้ทิ้ง output ได้โดยไม่ถาม แต่ไม่ได้อนุญาต path อื่นใต้ `/dev`
-- shell command หรือ tool ที่ระบุ `/tmp`, `/private/tmp` หรือ system temp directory โดยตรงจะถูก block และให้ลองใหม่ใต้ `.runtime/` โดยไม่เปิด permission prompt
-- side effect ภายในของเครื่องมือที่ไม่ได้ส่ง output path ผ่าน `tool_call` ยังเป็นข้อจำกัดแบบ best-effort และอาจใช้ system temp ของตนเองได้
+- side effect ภายในของเครื่องมือที่ไม่ได้ส่ง output path ผ่าน `tool_call` ยังเป็นข้อจำกัดแบบ best-effort
 
 Guardrails เป็น best-effort policy layer ไม่ใช่ security sandbox จึงยังมีข้อจำกัดที่ยอมรับไว้:
 

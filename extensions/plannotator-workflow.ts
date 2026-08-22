@@ -7,7 +7,7 @@ const EXECUTING_MARKER = "[PLANNOTATOR - EXECUTING PLAN]";
 
 const PLANNING_GUIDANCE = `## my-pi project plan rules
 
-- Store the plan at \`.workbench/plans/<descriptive-slug>.md\`; do not use \`PLAN.md\`, \`plans/\`, \`/tmp\`, or \`.runtime/\` for a durable plan.
+- Store the plan at \`.workbench/plans/<descriptive-slug>.md\`; do not use \`PLAN.md\`, \`plans/\`, or a temporary directory for a durable plan.
 - Begin the file with a title followed by \`Status\`, \`Created\`, \`Updated\`, and \`Purpose\` using local time in \`YYYY-MM-DD HH:mm\` format.
 - Organize implementation as clearly named phases. Every executable step must be a Markdown checkbox and every phase must include its verification.
 - Include Context, Approach, Files to modify, Reuse, Risks, Decisions, Steps, Verification, and Handoff sections when they are relevant.
@@ -20,7 +20,7 @@ const EXECUTING_GUIDANCE = `## my-pi execution and handoff rules
 - After a step is genuinely complete and its verification passes, mark its checkbox complete in the plan and include Plannotator's \`[DONE:n]\` marker.
 - Do not mark a step complete merely because code was edited. Record failed verification, blockers, decisions, and the exact next action in the plan's Handoff section.
 - Update \`Status\` and \`Updated\` after a material phase change, and update \`.workbench/index.md\` when status or purpose changes.
-- Put logs, generated samples, caches, and other disposable artifacts under a task-specific subdirectory of \`.runtime/\`, never under \`/tmp\` or \`/private/tmp\` explicitly.`;
+- Let the active AI harness or operating system manage disposable files in its default temporary location.`;
 
 export function augmentPlannotatorPrompt(systemPrompt: string): string {
 	if (systemPrompt.includes(PLANNING_MARKER)) {

@@ -246,7 +246,7 @@ Implementation และ automated verification เสร็จถึง Phase 5
 
 ผู้ใช้ยืนยันว่าหลัง local source ถูกลบและเปิด Pi ใหม่แล้ว `azure_boards_doctor`, Work Item read และ Pull Request read ผ่าน ส่วนการขอเขียน comment ถูกปฏิเสธตาม read-only policy (`update: false`) จึงถือว่า acceptance และ post-removal verification ผ่านครบ
 
-Final automated review ของ implementation เดิมผ่าน: extension import สำเร็จ, `npm test` ผ่าน 37 tests, `git diff --check` ผ่าน, credential scan ไม่พบค่า secret และไม่มีไฟล์ใต้ `.runtime/` ถูกเพิ่มเข้า versioned changes Local source `/Users/developer/office/cpmatch/exim/.pi/extensions/azure-boards/` ไม่มีอยู่แล้ว
+Final automated review ของ implementation เดิมผ่าน: extension import สำเร็จ, `npm test` ผ่าน 37 tests, `git diff --check` ผ่าน, credential scan ไม่พบค่า secret และไม่มี temporary artifact ถูกเพิ่มเข้า versioned changes Local source `/Users/developer/office/cpmatch/exim/.pi/extensions/azure-boards/` ไม่มีอยู่แล้ว
 
 สถานะ deployment ปัจจุบัน: source อยู่ที่ `local/extensions/azure-devops/`, ไม่ได้ลงทะเบียน global และแต่ละ project ต้องเพิ่ม path ใน `.pi/settings.json` เอง ไม่มี blocker เหลือ
 

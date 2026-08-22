@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { mkdtempSync } from "node:fs";
 import { mkdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
-import test from "node:test";
+import test, { after } from "node:test";
 import azureDevOpsExtension, { setAzureToolsActive } from "../local/extensions/azure-devops/index.ts";
 import {
 	AzureDevOpsClient,
@@ -16,9 +18,13 @@ import {
 	defaultPermissions,
 } from "../local/extensions/azure-devops/policy.ts";
 
-const runtimeRoot = join(process.cwd(), ".runtime", "azure-devops-tests");
+const temporaryTestRoot = mkdtempSync(join(tmpdir(), "my-pi-azure-devops-tests-"));
 const PAT_ENV = "AZURE_DEVOPS_TEST_PAT";
 const PAT = "test-pat-must-never-appear";
+
+after(async () => {
+	await rm(temporaryTestRoot, { recursive: true, force: true });
+});
 
 function readOnlyConfig(overrides: Record<string, unknown> = {}) {
 	return normalizeConfig({
@@ -254,7 +260,7 @@ async function startHarness(harness: Harness, cwd: string, trusted = true): Prom
 }
 
 async function fixture(name: string, config?: unknown): Promise<string> {
-	const cwd = join(runtimeRoot, name);
+	const cwd = join(temporaryTestRoot, name);
 	await rm(cwd, { recursive: true, force: true });
 	await mkdir(join(cwd, ".pi"), { recursive: true });
 	if (config !== undefined) {

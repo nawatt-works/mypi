@@ -1,0 +1,39 @@
+{
+  "package": "lsp-pi@1.0.5",
+  "registeredTools": [
+    "lsp"
+  ],
+  "schemaChars": 1186,
+  "calls": {
+    "diagnosticsCold": {
+      "elapsedMs": 3102.3,
+      "outputChars": 67,
+      "text": "action: diagnostics\nTimeout: LSP server did not respond. Try again."
+    },
+    "diagnosticsWarm": {
+      "elapsedMs": 373.9,
+      "outputChars": 83,
+      "text": "action: diagnostics\nERROR [10:43] Type 'number' is not assignable to type 'string'."
+    },
+    "hoverWarm": {
+      "elapsedMs": 22.8,
+      "outputChars": 96,
+      "text": "action: hover\n\n```typescript\n(alias) summarizeUser(user: User): string\nimport summarizeUser\n```\n"
+    },
+    "definitionWarm": {
+      "elapsedMs": 10.2,
+      "outputChars": 38,
+      "text": "action: definition\nsrc/service.ts:3:17"
+    },
+    "referencesWarm": {
+      "elapsedMs": 22.9,
+      "outputChars": 97,
+      "text": "action: references\nsrc/domain.ts:9:17\nsrc/service.ts:1:26\nsrc/service.ts:4:10\nsrc/service.ts:9:10"
+    },
+    "symbolsWarm": {
+      "elapsedMs": 54.6,
+      "outputChars": 79,
+      "text": "action: symbols\ndeactivateAndSummarize (7:1)\ninactive (8:9)\nsummarizeUser (3:1)"
+    }
+  }
+}

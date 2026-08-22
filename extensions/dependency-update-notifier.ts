@@ -1,4 +1,5 @@
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -6,7 +7,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const CHECK_TIMEOUT_MS = 10_000;
 const SETUP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const CACHE_FILE = resolve(SETUP_ROOT, ".runtime", "cache", "dependency-updates.json");
+const CACHE_FILE = resolve(tmpdir(), "my-pi", "dependency-updates.json");
 
 export type DependencyUpdate = {
 	name: string;

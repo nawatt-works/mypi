@@ -1,0 +1,48 @@
+{
+  "package": "pi-lsp@0.1.7",
+  "registeredTools": [
+    "lsp_diagnostics",
+    "lsp_hover",
+    "lsp_definition",
+    "lsp_references",
+    "lsp_symbols"
+  ],
+  "schemaChars": 1117,
+  "calls": {
+    "diagnosticsBeforeStart": {
+      "elapsedMs": 0.1,
+      "outputChars": 139,
+      "text": "LSP diagnostics:\n\n✅ no diagnostics recorded for /Users/developer/my-project/my-pi/benchmarks/code-intelligence/fixture/src/index.ts"
+    },
+    "hoverCold": {
+      "elapsedMs": 637.8,
+      "outputChars": 244,
+      "text": "{\n  \"contents\": {\n    \"kind\": \"markdown\",\n    \"value\": \"\\n```typescript\\nimport summarizeUser\\n```\\n\"\n  },\n  \"range\": {\n    \"start\": {\n      \"line\": 8,\n      \"character\": 12\n    },\n    \"end\": {\n      \"line\": 8,\n      \"character\": 25\n    }\n  }\n}"
+    },
+    "diagnosticsWarm": {
+      "elapsedMs": 0.9,
+      "outputChars": 327,
+      "text": "LSP diagnostics:\n\n⚠️ typescript:\nsrc/index.ts:10:43 - error: typescript: Type 'number' is not assignable to type 'string'. [2322]\n  related: /Users/developer/my-project/my-pi/benchmarks/code-intelligence/fixture/src/domain.ts:3:3 The expected type comes from property 'displayName' which is declared here on type 'User'"
+    },
+    "hoverWarm": {
+      "elapsedMs": 37.3,
+      "outputChars": 287,
+      "text": "{\n  \"contents\": {\n    \"kind\": \"markdown\",\n    \"value\": \"\\n```typescript\\n(alias) summarizeUser(user: User): string\\nimport summarizeUser\\n```\\n\"\n  },\n  \"range\": {\n    \"start\": {\n      \"line\": 8,\n      \"character\": 12\n    },\n    \"end\": {\n      \"line\": 8,\n      \"character\": 25\n    }\n  }\n}"
+    },
+    "definitionWarm": {
+      "elapsedMs": 10.4,
+      "outputChars": 282,
+      "text": "[\n  {\n    \"uri\": \"file:///Users/developer/my-project/my-pi/benchmarks/code-intelligence/fixture/src/service.ts\",\n    \"range\": {\n      \"start\": {\n        \"line\": 2,\n        \"character\": 16\n      },\n      \"end\": {\n        \"line\": 2,\n        \"character\": 29\n      }\n    }\n  }\n]"
+    },
+    "referencesWarm": {
+      "elapsedMs": 12.4,
+      "outputChars": 1119,
+      "text": "[\n  {\n    \"uri\": \"file:///Users/developer/my-project/my-pi/benchmarks/code-intelligence/fixture/src/domain.ts\",\n    \"range\": {\n      \"start\": {\n        \"line\": 8,\n        \"character\": 16\n      },\n      \"end\": {\n        \"line\": 8,\n        \"character\": 26\n      }\n    }\n  },\n  {\n    \"uri\": \"file:///Users/developer/my-project/my-pi/benchmarks/code-intelligence/fixture/src/service.ts\",\n    \"range\": {\n      \"start\": {\n        \"line\": 0,\n        \"character\": 25\n      },\n      \"end\": {\n        \"line\": 0,\n        \"character\": 35\n      }\n    }\n  },\n  {\n    \"uri\": \"file:///Users/developer/my-project/my-pi/benchmarks/code-intelligence/fixture/src/service.ts\",\n    \"range\": {\n      \"start\": {\n        \"line\": 3,\n        \"character\": 9\n      },\n      \"end\": {\n        \"line\": 3,\n        \"character\": 19\n      }\n    }\n  },\n  {\n    \"uri\": \"file:///Users/developer/my-project/my-pi/benchmarks/code-intelligence/fixture/src/service.ts\",\n    \"range\": {\n      \"start\": {\n        \"line\": 8,\n        \"character\": 9\n      },\n      \"end\": {\n        \"line\": 8,\n        \"character\": 19\n      }\n    }\n  }\n]"
+    },
+    "symbolsWarm": {
+      "elapsedMs": 62.6,
+      "outputChars": 1161,
+      "text": "[\n  {\n    \"name\": \"deactivateAndSummarize\",\n    \"kind\": 12,\n    \"location\": {\n      \"uri\": \"file:///Users/developer/my-project/my-pi/benchmarks/code-intelligence/fixture/src/service.ts\",\n      \"range\": {\n        \"start\": {\n          \"line\": 6,\n          \"character\": 0\n        },\n        \"end\": {\n          \"line\": 9,\n          \"character\": 1\n        }\n      }\n    }\n  },\n  {\n    \"name\": \"inactive\",\n    \"kind\": 14,\n    \"location\": {\n      \"uri\": \"file:///Users/developer/my-project/my-pi/benchmarks/code-intelligence/fixture/src/service.ts\",\n      \"range\": {\n        \"start\": {\n          \"line\": 7,\n          \"character\": 8\n        },\n        \"end\": {\n          \"line\": 7,\n          \"character\": 39\n        }\n      }\n    },\n    \"containerName\": \"deactivateAndSummarize\"\n  },\n  {\n    \"name\": \"summarizeUser\",\n    \"kind\": 12,\n    \"location\": {\n      \"uri\": \"file:///Users/developer/my-project/my-pi/benchmarks/code-intelligence/fixture/src/service.ts\",\n      \"range\": {\n        \"start\": {\n          \"line\": 2,\n          \"character\": 0\n        },\n        \"end\": {\n          \"line\": 4,\n          \"character\": 1\n        }\n      }\n    }\n  }\n]"
+    }
+  }
+}

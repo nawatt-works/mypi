@@ -2,7 +2,7 @@
 
 > **Status:** อยู่ระหว่างวิเคราะห์<br>
 > **Created:** 2026-08-21 09:43<br>
-> **Updated:** 2026-08-21 15:46<br>
+> **Updated:** 2026-08-22 11:57<br>
 > **Purpose:** สรุปโจทย์ ข้อสังเกต และทางเลือกสำหรับพัฒนา Pi ให้ได้ code intelligence และ TUI ที่ดีขึ้น โดยยังรักษาการควบคุม context เป็นแกนหลัก
 
 ## Executive summary
@@ -247,7 +247,7 @@ pi-code-intelligence
 
 ### ผลค้นคว้าและ benchmark รุ่นแรก
 
-กำหนด scope รุ่นแรกเป็น TypeScript/JavaScript, read-only และทดลอง package ที่มีอยู่ก่อนสร้างเอง โดยเก็บ fixture และผลชั่วคราวที่ `.runtime/code-intelligence-benchmark/` ไม่ติดตั้ง package ลง workspace แบบถาวร
+กำหนด scope รุ่นแรกเป็น TypeScript/JavaScript, read-only และทดลอง package ที่มีอยู่ก่อนสร้างเอง ปัจจุบันเก็บ harness, fixture, dependency lockfile และผล JSON หลักไว้ที่ `benchmarks/code-intelligence/` ส่วน dependencies, upstream checkout และ process caches ให้สร้างใหม่ใน temporary directory ของ harness หรือ OS
 
 | Package | ผลทดลอง | ข้อสรุป |
 |---|---|---|
@@ -580,7 +580,7 @@ Metrics ที่ควรวัด:
 ## Suggested next discussion
 
 1. เลือกหนึ่ง short-cycle candidate โดยเริ่มจากงานที่ไม่เปลี่ยน production behavior
-2. ทำ probe หรือ benchmark แบบ disposable ใน `.runtime/`
+2. ทำ probe หรือ benchmark แบบ disposable ใน temporary directory ที่ harness หรือ OS กำหนด และ promote เฉพาะ artifact ที่ต้องใช้ซ้ำเข้าตำแหน่งถาวร
 3. บันทึกผลและตัดสิน go/no-go ก่อนเปลี่ยน source หรือเปิด upstream issue
 4. เมื่อจะทำ TUI ให้ระบุภาพ/interaction ของ OMP ที่ต้องการเลียนแบบก่อน
 5. แยกงานใหญ่เป็น context governor, code intelligence และ UI skin โดยหลีกเลี่ยงการแก้ Pi core

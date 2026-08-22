@@ -2,7 +2,7 @@
 
 > **Status:** ดำเนินการบางส่วน<br>
 > **Created:** 2026-07-27 02:31<br>
-> **Updated:** 2026-08-05 12:04<br>
+> **Updated:** 2026-08-22 11:57<br>
 > **Purpose:** บันทึกผลประเมิน third-party extensions และแนวทางปรับ Pi setup
 
 ## ข้อสรุป
@@ -50,8 +50,8 @@
 - ตรวจ shell upload/download ที่ระบุ path เช่น `curl`, `wget`, `scp` และ `rsync`
 - ถามก่อนอ่าน sensitive environment variables และขยายรูปแบบ secret files ที่รู้จัก
 - ยอมให้ managed temporary files ที่ tool สร้างเองและไม่ได้ระบุ output path เช่น screenshot หรือ GitHub clone cache ใต้ `/tmp`
-- ตั้ง temp environment ของ Pi และ child processes ไปที่ `.runtime/tmp` ทุก session
-- ยอม `/dev/null` แบบเจาะจง และ block explicit `/tmp` หรือ `/private/tmp` พร้อมให้ AI ลองใหม่ใต้ `.runtime/` โดยไม่ถามผู้ใช้
+- ใช้ temporary root ที่ harness หรือ OS กำหนด โดยไม่แก้ `TMPDIR`, `TMP` หรือ `TEMP`
+- ยอม temporary root จาก `os.tmpdir()` และ `/dev/null` แบบเจาะจง ส่วน path ภายนอกอื่นยังใช้ approval flow เดิม
 
 ### ข้อจำกัดที่ยังเหลือ
 
@@ -70,8 +70,9 @@
 
 ## Decisions
 
+- 2026-08-22 — ยกเลิก workspace-local runtime เพราะ harness และ tools จำนวนหนึ่งจัดการ temporary lifecycle เองอยู่แล้ว ให้ใช้ default temporary root ของแต่ละ harness และย้าย extension caches ตามไปด้วย
 - 2026-08-05 — นำ Plannotator มาใช้แทนการพัฒนา Plan/Todo UI ใหม่ และเก็บ handoff ถาวรใน `.workbench/`
-- 2026-08-05 — ใช้ `.runtime/tmp` เป็น default temp พร้อม block system temp ที่ AI ระบุเอง แต่ไม่พยายามดัก side effect ภายในที่ tool ไม่เปิดเผย
+- 2026-08-05 — ใช้ `.runtime/tmp` เป็น default temp พร้อม block system temp ที่ AI ระบุเอง; decision นี้ถูกแทนที่เมื่อ 2026-08-22
 - 2026-07-27 — ไม่ถามทุก browser navigation/click เพราะสร้าง prompt noise สูง ให้ใช้ isolated browser profile เมื่อต้องการขอบเขตที่เข้มงวด
 - 2026-07-27 — เปลี่ยนชื่อ custom policy extension เป็น Guardrails เพราะครอบคลุม secrets, uploads, MCP และ custom tools มากกว่า external writes
 - 2026-07-27 — ยังไม่เปลี่ยน setup จนกว่าจะคุยรายละเอียดและเลือก browser integration ที่ต้องการ เพื่อลด tools ที่ทำหน้าที่ซ้ำกัน
@@ -79,6 +80,7 @@
 
 ## Change log
 
+- 2026-08-22 11:57 — ถอด workspace-local runtime และเปลี่ยน guardrails กับ extension caches ให้ใช้ temporary root ของ harness หรือ OS
 - 2026-08-05 12:04 — เพิ่มผลประเมินและการนำ Plannotator มาใช้ พร้อมนโยบาย `.runtime/tmp`, `/dev/null` และ explicit system temp
 - 2026-07-27 09:19 — เพิ่ม Guardrails สำหรับ MCP, custom tools, local uploads, PDF output, Chrome screenshot และ shell/environment risks พร้อมบันทึกข้อจำกัดที่ยังเหลือ
 - 2026-07-27 08:55 — เพิ่มข้อมูลสถานะ วัตถุประสงค์ การตัดสินใจ และประวัติเอกสาร

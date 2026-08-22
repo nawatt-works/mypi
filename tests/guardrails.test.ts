@@ -1,14 +1,16 @@
 import assert from "node:assert/strict";
+import { homedir, tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import guardrails, {
 	analyzeShellMutations,
 	analyzeToolCall,
+	isHarnessTemporaryPath,
 	isNullDevicePath,
-	isSystemTemporaryPath,
 } from "../extensions/guardrails.ts";
 
 const workspace = process.cwd();
-const outsidePath = "/tmp/my-pi-guardrails-test";
+const outsidePath = join(homedir(), ".my-pi-guardrails-test");
 
 function hasFinding(
 	findings: ReturnType<typeof analyzeToolCall>,
@@ -161,25 +163,25 @@ test("guards sensitive environment access and shell transfers", () => {
 	);
 	assert.equal(
 		hasFinding(
-			analyzeShellMutations("curl -o result.txt https://example.com", "/tmp", workspace),
+			analyzeShellMutations("curl -o result.txt https://example.com", tmpdir(), workspace),
 			"external-write",
 		),
-		true,
+		false,
 	);
 	assert.equal(
 		hasFinding(
-			analyzeShellMutations("wget https://example.com/a", "/tmp", workspace),
+			analyzeShellMutations("wget https://example.com/a", tmpdir(), workspace),
 			"external-write",
 		),
-		true,
+		false,
 	);
 });
 
-test("allows only /dev/null while recognizing system temporary paths", () => {
+test("allows the harness temporary directory and /dev/null", () => {
 	assert.equal(isNullDevicePath("/dev/null", workspace), true);
 	assert.equal(isNullDevicePath("/dev/zero", workspace), false);
-	assert.equal(isSystemTemporaryPath("/tmp/my-pi.log", workspace), true);
-	assert.equal(isSystemTemporaryPath("/private/tmp/my-pi.log", workspace), true);
+	assert.equal(isHarnessTemporaryPath(join(tmpdir(), "my-pi.log"), workspace), true);
+	assert.equal(isHarnessTemporaryPath(outsidePath, workspace), false);
 	assert.equal(
 		hasFinding(analyzeShellMutations("npm run dev >/dev/null 2>&1", workspace), "external-write"),
 		false,
@@ -188,38 +190,13 @@ test("allows only /dev/null while recognizing system temporary paths", () => {
 		hasFinding(analyzeShellMutations("npm run dev >/dev/zero 2>&1", workspace), "external-write"),
 		true,
 	);
-});
-
-test("blocks explicit system temp writes without asking the user", async () => {
-	const handlers = new Map<string, (...args: any[]) => any>();
-	let selectCalls = 0;
-	const api = {
-		on(name: string, handler: (...args: any[]) => any) {
-			handlers.set(name, handler);
-		},
-		getAllTools() {
-			return [];
-		},
-	};
-
-	guardrails(api as any);
-	handlers.get("session_start")?.({}, {});
-	const result = await handlers.get("tool_call")?.(
-		{ toolName: "bash", input: { command: "npm run dev >/tmp/sprint-plan-warm.log 2>&1" } },
-		{
-			cwd: workspace,
-			hasUI: true,
-			ui: {
-				select() {
-					selectCalls += 1;
-				},
-			},
-		},
+	assert.equal(
+		hasFinding(
+			analyzeShellMutations(`npm run dev >${join(tmpdir(), "my-pi.log")} 2>&1`, workspace),
+			"external-write",
+		),
+		false,
 	);
-
-	assert.equal(result?.block, true);
-	assert.match(result?.reason ?? "", /\.runtime\//);
-	assert.equal(selectCalls, 0);
 });
 
 test("discovers renamed fetch_content tools and blocks uploads without UI", async () => {

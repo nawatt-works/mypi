@@ -1,4 +1,4 @@
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { readFile, mkdir, rename, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -7,7 +7,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const CHECK_TIMEOUT_MS = 10_000;
 const SETUP_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const CACHE_FILE = resolve(SETUP_ROOT, ".runtime", "cache", "herdr-integration.json");
+const CACHE_FILE = resolve(tmpdir(), "my-pi", "herdr-integration.json");
 
 export type HerdrIntegrationState = "current" | "missing" | "outdated" | "unavailable" | "unknown";
 

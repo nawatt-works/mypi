@@ -1,0 +1,19 @@
+{
+  "package": "pi-ast-grep@0.1.0",
+  "registeredTools": [
+    "ast_grep"
+  ],
+  "schemaChars": 2090,
+  "calls": {
+    "consoleCalls": {
+      "elapsedMs": 816.3,
+      "outputChars": 349,
+      "text": "ast_grep run found 2 matches.\nShowing 2.\n1. src/index.ts:9:1 (TypeScript)\n   code: console.log(summarizeUser(ada));\n   metavars: $A=summarizeUser(ada)\n2. src/index.ts:10:1 (TypeScript)\n   code: console.log(summarizeUser({ id: \"broken\", displayName: 42, active: true }));\n   metavars: $A=summarizeUser({ id: \"broken\", displayName: 42, active: true })"
+    },
+    "formatUserCalls": {
+      "elapsedMs": 8.1,
+      "outputChars": 230,
+      "text": "ast_grep run found 2 matches.\nShowing 2.\n1. src/service.ts:4:10 (TypeScript)\n   code: return formatUser(user);\n   metavars: $A=user\n2. src/service.ts:9:10 (TypeScript)\n   code: return formatUser(inactive);\n   metavars: $A=inactive"
+    }
+  }
+}

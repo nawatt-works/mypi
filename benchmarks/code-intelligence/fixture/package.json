@@ -1,0 +1,8 @@
+{
+  "name": "my-pi-code-intelligence-fixture",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

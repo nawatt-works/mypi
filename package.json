@@ -24,7 +24,6 @@
       "./extensions/herdr-integration.ts",
       "./extensions/guardrails.ts",
       "./extensions/steering-choice.ts",
-      "./extensions/workspace-runtime.ts",
       "./node_modules/@juicesharp/rpiv-ask-user-question/index.ts",
       "./node_modules/@plannotator/pi-extension/index.ts",
       "./extensions/auto-plannotator.ts",

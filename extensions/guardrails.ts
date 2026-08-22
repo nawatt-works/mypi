@@ -205,15 +205,18 @@ export function isNullDevicePath(input: string, cwd: string): boolean {
 	return resolvePolicyPath(input, cwd) === resolvePolicyPath("/dev/null", "/");
 }
 
-export function isSystemTemporaryPath(input: string, cwd: string): boolean {
+export function isHarnessTemporaryPath(input: string, cwd: string): boolean {
 	const target = resolvePolicyPath(input, cwd);
-	const roots = [STARTUP_TEMPORARY_DIRECTORY, "/tmp", "/private/tmp"]
-		.map((root) => resolvePolicyPath(root, "/"));
-	return roots.some((root) => isSameOrInside(target, root));
+	const root = resolvePolicyPath(STARTUP_TEMPORARY_DIRECTORY, "/");
+	return isSameOrInside(target, root);
 }
 
 function isPermittedWriteTarget(input: string, cwd: string): boolean {
-	return isInsideWorkspace(input, cwd) || isNullDevicePath(input, cwd);
+	return (
+		isInsideWorkspace(input, cwd) ||
+		isHarnessTemporaryPath(input, cwd) ||
+		isNullDevicePath(input, cwd)
+	);
 }
 
 export function isSensitivePath(input: string): boolean {
@@ -607,7 +610,7 @@ function analyzeSegment(segment: string, state: ShellState, workspace: string): 
 				arg === "--output-document" ||
 				arg.startsWith("--output-document=")
 			));
-		if (writesUsingRemoteName && state.cwd && !isInsideWorkspace(state.cwd, workspace)) {
+		if (writesUsingRemoteName && state.cwd && !isPermittedWriteTarget(state.cwd, workspace)) {
 			findings.push({
 				kind: "external-write",
 				reason: `${command} downloads into a directory outside workspace`,
@@ -1067,21 +1070,6 @@ export default function guardrails(pi: ExtensionAPI) {
 			ctx.cwd,
 		);
 		if (findings.length === 0) return;
-
-		const explicitSystemTempWrites = findings.filter((finding) => {
-			return (
-				finding.kind === "external-write" &&
-				finding.target !== undefined &&
-				isSystemTemporaryPath(finding.target, ctx.cwd)
-			);
-		});
-		if (explicitSystemTempWrites.length > 0) {
-			const summary = explicitSystemTempWrites.map(displayFinding).join("\n\n");
-			return {
-				block: true,
-				reason: `Blocked an explicit write to the system temporary directory. Retry with a task-specific path under .runtime/ inside the workspace.\n${summary}`,
-			};
-		}
 
 		const approvedUploadsThisCall = new Set<string>();
 		const pendingUploads = findings.filter((finding) => {
