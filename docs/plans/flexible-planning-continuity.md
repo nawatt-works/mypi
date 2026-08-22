@@ -1,9 +1,11 @@
 # แยก Workflow Plan, Continuity Ledger และ Plannotator Review
 
-> **Status:** complete<br>
+> **Status:** superseded<br>
 > **Created:** 2026-08-22 12:40<br>
-> **Updated:** 2026-08-22 12:51<br>
+> **Updated:** 2026-08-22 16:34<br>
 > **Purpose:** รื้อ planning integration ให้ workflow/skill เลือกตำแหน่ง artifact ได้ และให้ AI ดูแล continuity ledger สำหรับงานใหญ่โดยไม่บังคับเปิด Plannotator
+
+> **Historical only:** ห้ามใช้ Approach, Decisions หรือ Steps ด้านล่างเป็น current instructions เพราะ managed fallback และ `.workbench/` policy ถูกยกเลิกแล้ว ให้ใช้ `docs/notes/persistent-todo-handoff.md` เป็นสถานะปัจจุบัน
 
 ## Context
 
@@ -23,7 +25,7 @@
 - `package.json`
 - `AGENTS.md`, `.gitignore`, `README.md`
 - `tests/plannotator-workflow.test.ts`
-- `.workbench/notes/persistent-todo-handoff.md`, `.workbench/plans/README.md`, `.workbench/index.md`
+- `docs/notes/persistent-todo-handoff.md`, `docs/plans/README.md`, `docs/README.md`
 
 ## Reuse
 
@@ -68,9 +70,11 @@
 
 ## Handoff
 
-implementation และเอกสารเสร็จครบแล้ว โดยแทน extension เดิมสองตัวด้วย `planning-workflow.ts` ทดสอบผ่าน 40 รายการ, import extension ใหม่ได้, `git diff --check` ผ่าน และไม่มี managed ledger ค้าง ผู้ใช้ต้อง reload/restart Pi เพื่อให้รายการ extension ใหม่มีผล
+implementation รุ่นนี้เคยเสร็จและผ่าน verification แล้ว แต่ decision เรื่อง managed fallback, skeleton และ auto-delete ถูกยกเลิกเมื่อ 2026-08-22 16:15 ปัจจุบัน `planning-workflow.ts` ทำ pointer-only tracking และให้ artifact owner ควบคุม path, schema และ lifecycle ทั้งหมด ดูสถานะล่าสุดที่ `docs/notes/persistent-todo-handoff.md`
 
 ## Change log
 
+- 2026-08-22 16:34 — เพิ่มคำเตือน historical-only เพื่อไม่ให้ agent ใช้ managed fallback รุ่นเก่าเป็น current instructions
+- 2026-08-22 16:15 — ทำเครื่องหมาย superseded หลังถอด managed fallback และ workspace-owned file lifecycle ออกจาก extension
 - 2026-08-22 12:51 — ปิดแผนหลัง implementation, documentation และ verification ผ่านครบ
 - 2026-08-22 12:40 — สร้างแผนรื้อ planning integration ตาม artifact ownership และ continuity lifecycle ใหม่

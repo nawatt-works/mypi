@@ -116,7 +116,7 @@ Scope, checklist และ path แบบ global ในส่วนถัดไ�
 - `tests/azure-devops.test.ts` — config/policy/client/tool safety tests
 - `package.json` — ลงทะเบียน global extension
 - `README.md` — เพิ่ม extension และวิธีใช้งานราย project
-- `.workbench/index.md` — สถานะแผน
+- `docs/README.md` — สถานะแผน
 
 ### Project ต้นทาง
 
@@ -212,7 +212,7 @@ Scope, checklist และ path แบบ global ในส่วนถัดไ�
 
 - [x] ตรวจ diff ว่าไม่มี PAT/token/secret หรือ generated runtime artifact ถูกเพิ่ม
 - [x] อัปเดต checklist, `Status`, `Updated`, `Handoff`, `Decisions` และ Change log ตามผลจริง
-- [x] อัปเดต `.workbench/index.md` เป็นสถานะ complete เมื่อ verification ทุก phase รวม user acceptance ผ่าน
+- [x] อัปเดต `docs/README.md` เป็นสถานะ complete เมื่อ verification ทุก phase รวม user acceptance ผ่าน
 - [x] Verification: ทบทวน automated test results และผลทดสอบที่ผู้ใช้รายงานครบก่อนทำเครื่องหมาย complete
 
 ## Verification รวม

@@ -1,16 +1,14 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import planningWorkflow, {
 	buildPlanningGuidance,
-	defaultContinuityPath,
 	parseContinuityCommand,
 	requestPlannotatorPlanMode,
 	resolveWorkspacePlanPath,
 	restorePlanningState,
-	slugifyPlanTitle,
 } from "../extensions/planning-workflow.ts";
 
 test("parses continuity modes and aliases", () => {
@@ -20,12 +18,7 @@ test("parses continuity modes and aliases", () => {
 	assert.deepEqual(parseContinuityCommand("ask"), { kind: "invalid" });
 });
 
-test("builds readable managed paths and validates caller-selected paths", () => {
-	assert.equal(slugifyPlanTitle("Refactor Auth / Phase 2"), "refactor-auth-phase-2");
-	assert.equal(
-		defaultContinuityPath("Refactor Auth", new Date(2026, 7, 22, 12, 45)),
-		".workbench/continuity/20260822-1245-refactor-auth.md",
-	);
+test("validates caller-selected paths without choosing a directory", () => {
 	assert.equal(resolveWorkspacePlanPath("workflow/artifacts/plan.md", "/workspace").relativePath, "workflow/artifacts/plan.md");
 	assert.throws(() => resolveWorkspacePlanPath("../plan.md", "/workspace"), /inside the workspace/);
 	assert.throws(() => resolveWorkspacePlanPath(".git/plan.md", "/workspace"), /inside .git/);
@@ -37,7 +30,6 @@ test("restores mode and the latest active plan from Pi session entries", () => {
 		filePath: "workflow/artifacts/plan.md",
 		title: "Workflow plan",
 		reason: "หลาย phase",
-		ownership: "caller" as const,
 	};
 	assert.deepEqual(restorePlanningState([
 		{ type: "custom", customType: "mypi-continuity-mode", data: { mode: "off" } },
@@ -55,18 +47,19 @@ test("separates automatic continuity guidance from optional Plannotator review",
 	assert.match(idle, /mypi_start_work_plan/);
 	assert.match(idle, /separate decision/);
 	assert.match(idle, /about 68%/);
+	assert.match(idle, /choose a suitable Markdown path for this task/);
+	assert.match(idle, /Do not infer that `\.workbench\/`, `workbench\/`, `workspace-meta\/`/);
 
 	const active = buildPlanningGuidance("automatic", {
 		filePath: "workflow/artifacts/plan.md",
 		title: "Workflow plan",
 		reason: "หลาย phase",
-		ownership: "caller",
 	});
 	assert.match(active, /workflow\/artifacts\/plan\.md/);
-	assert.match(active, /never delete or relocate/);
+	assert.match(active, /never creates, rewrites, relocates, indexes, or deletes/);
 });
 
-test("creates and cleans managed ledgers while retaining caller-owned artifacts", async () => {
+test("tracks an owner-selected path without creating, rewriting, or deleting it", async () => {
 	const workspace = mkdtempSync(join(tmpdir(), "my-pi-planning-workflow-"));
 	const handlers = new Map<string, Array<(...args: any[]) => any>>();
 	const tools = new Map<string, any>();
@@ -118,34 +111,34 @@ test("creates and cleans managed ledgers while retaining caller-owned artifacts"
 		assert.equal(activeTools.includes("mypi_start_work_plan"), true, "off disables automatic guidance, not caller-driven plans");
 
 		const start = tools.get("mypi_start_work_plan");
-		const managedResult = await start.execute("id", {
-			title: "Large refactor",
-			reason: "ต้องทำหลาย phase",
+		const callerPath = "development/artifacts/implementation-plan.md";
+		const startResult = await start.execute("id", {
+			title: "Implementation plan",
+			reason: "เป็น artifact ของ workflow",
+			filePath: callerPath,
 		}, undefined, undefined, ctx);
-		const managedPath = managedResult.details.plan.filePath as string;
-		assert.match(managedPath, /^\.workbench\/continuity\//);
-		assert.equal(existsSync(join(workspace, managedPath)), true);
-		assert.match(readFileSync(join(workspace, managedPath), "utf8"), /## Next/);
+		assert.equal(startResult.details.fileChanged, false);
+		assert.equal(existsSync(join(workspace, callerPath)), false, "the extension must not create the artifact");
 
 		const beforeStart = handlers.get("before_agent_start")?.[0];
 		const prompt = await beforeStart?.({ systemPrompt: "base" }, ctx);
-		assert.match(prompt.systemPrompt, new RegExp(managedPath.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+		assert.match(prompt.systemPrompt, /development\/artifacts\/implementation-plan\.md/);
 
 		const finish = tools.get("mypi_finish_work_plan");
-		const managedFinish = await finish.execute("id", {
+		const firstFinish = await finish.execute("id", {
 			outcome: "complete",
 			summary: "verified",
 		}, undefined, undefined, ctx);
-		assert.equal(managedFinish.details.deleted, true);
-		assert.equal(existsSync(join(workspace, managedPath)), false);
+		assert.equal(firstFinish.details.fileChanged, false);
+		assert.equal(existsSync(join(workspace, callerPath)), false);
 
-		const callerPath = "development/artifacts/implementation-plan.md";
+		mkdirSync(join(workspace, "development/artifacts"), { recursive: true });
+		writeFileSync(join(workspace, callerPath), "# Owner format\n\nDo not rewrite.\n", "utf8");
 		await start.execute("id", {
 			title: "Implementation plan",
 			reason: "เป็น artifact ของ workflow",
 			filePath: callerPath,
 		}, undefined, undefined, ctx);
-		assert.equal(existsSync(join(workspace, callerPath)), true);
 		const planningPrompt = await beforeStart?.({
 			systemPrompt: "base\n[PLANNOTATOR - PLANNING PHASE]",
 		}, ctx);
@@ -164,7 +157,7 @@ test("creates and cleans managed ledgers while retaining caller-owned artifacts"
 			outcome: "complete",
 			summary: "verified",
 		}, undefined, undefined, ctx);
-		assert.equal(callerFinish.details.deleted, false);
+		assert.equal(callerFinish.details.fileChanged, false);
 		assert.equal(existsSync(join(workspace, callerPath)), true);
 	} finally {
 		rmSync(workspace, { recursive: true, force: true });

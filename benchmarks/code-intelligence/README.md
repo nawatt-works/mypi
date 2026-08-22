@@ -2,12 +2,12 @@
 
 > **Status:** เก็บไว้เพื่อทำซ้ำ<br>
 > **Created:** 2026-08-21 09:43<br>
-> **Updated:** 2026-08-22 11:55<br>
+> **Updated:** 2026-08-22 16:34<br>
 > **Purpose:** เก็บ benchmark harness, fixture และผลหลักที่ใช้ประกอบการประเมิน code-intelligence extensions โดยไม่พึ่งไฟล์ชั่วคราวของ AI harness
 
 ## ขอบเขต
 
-ชุดนี้เปรียบเทียบ `pi-ast-grep`, `lsp-pi`, `pi-lsp-adapter`, `pi-lsp` และ `@narumitw/pi-lsp` กับ fixture TypeScript เดียวกัน ผลวิเคราะห์และข้อสรุปอยู่ใน `.workbench/notes/pi-omp-context-code-intelligence-tui.md`
+ชุดนี้เปรียบเทียบ `pi-ast-grep`, `lsp-pi`, `pi-lsp-adapter`, `pi-lsp` และ `@narumitw/pi-lsp` กับ fixture TypeScript เดียวกัน ผลวิเคราะห์และข้อสรุปอยู่ใน [ทิศทางพัฒนา Pi โดยเรียนรู้จาก OMP](../../docs/notes/pi-omp-context-code-intelligence-tui.md)
 
 ## วิธีรัน
 
@@ -30,4 +30,5 @@ node run-benchmark.mjs narumi
 
 ## Change log
 
+- 2026-08-22 16:34 — แก้ reference ของผลวิเคราะห์หลังย้าย project documentation จาก `.workbench/` ไป `docs/`
 - 2026-08-22 11:55 — ย้าย durable benchmark artifacts ออกจากพื้นที่ชั่วคราวเดิมก่อนยกเลิกนโยบาย workspace-local runtime

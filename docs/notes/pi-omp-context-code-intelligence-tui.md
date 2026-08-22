@@ -133,7 +133,7 @@ candidate lesson / finding / decision
       ↓
 review หรือ explicit approval
       ↓
-AGENTS.md / .workbench / decision / runbook / skill
+AGENTS.md / project docs / decision / runbook / skill
 ```
 
 Memory ที่ inject ควรมี scope, provenance, token budget และ precedence ชัดเจน โดย repo state กับ user instruction ต้องชนะ derived memory เสมอ

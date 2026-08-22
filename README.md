@@ -36,8 +36,8 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - บังคับ preview และ confirmation ทุก write; non-interactive mode ถูก block
   - ใช้ `/mypi-azure-devops-config` เพื่อตรวจ effective configuration โดยไม่แสดง credential
 - `planning-workflow.ts`
-  - ให้ AI สร้าง continuity ledger เองเมื่องานยังใหญ่หรือเสี่ยงสูญเสียสถานะจาก context compaction
-  - รับ plan path ที่ skill/workflow กำหนด หรือสร้าง managed fallback ใต้ `.workbench/continuity/`
+  - ให้ AI ประเมินว่าเมื่อใดงานใหญ่ควรมี workspace-backed continuity file
+  - ลงทะเบียน exact path ที่ผู้ใช้, skill, workflow หรือ harness เลือกไว้ โดยไม่สร้างหรือแก้ plan file
   - แยกการใช้ Plannotator สำหรับ human review ออกจากการติดตาม continuity ของงาน
   - เก็บ active plan pointer ใน Pi session เพื่อ inject path กลับหลัง compaction/resume
   - ใช้ `/mypi-continuity automatic|off|status` เพื่อควบคุม automatic continuity planning ราย session
@@ -49,7 +49,7 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
 - [`@plannotator/pi-extension`](https://github.com/backnotprop/plannotator)
   - เปิด browser สำหรับตรวจ แก้ และอนุมัติแผนก่อนลงมือ
   - แสดง phase และ checklist progress ใน terminal ระหว่าง execution
-  - เปิดด้วย `pi --plan` หรือสลับระหว่าง session ด้วย `/plannotator`
+  - เปิดด้วย `pi --plan` หรือสลับระหว่าง session ด้วย `/plannotator-plan-mode`
   - ใช้ `/plannotator-review` เพื่อตรวจ diff และส่ง feedback กลับเข้า session
 
 ### Themes
@@ -217,21 +217,23 @@ Guardrails เป็น best-effort policy layer ไม่ใช่ security san
 
 ระบบ planning แยกการตัดสินใจเป็นสามเรื่อง: ตำแหน่ง artifact เป็นของ skill/workflow, continuity ledger ใช้รักษาสถานะงานใหญ่ และ Plannotator ใช้เฉพาะเมื่อ human review/approval มีประโยชน์ ทั้งสามอย่างใช้ plan file เดียวกันได้แต่ไม่ถูกบังคับให้เกิดพร้อมกัน
 
-เมื่อ skill หรือ workflow ระบุ Markdown path ภายใน workspace AI จะส่ง path เดิมให้ `mypi_start_work_plan` และรักษา schema กับตำแหน่งนั้น หากไม่มี path แต่งานมีหลาย phase, verification หรือเสี่ยงต่อ compaction AI จะสร้าง managed ledger ใต้ `.workbench/continuity/` โดยอัตโนมัติ อ่านก่อนทำงานต่อ และอัปเดต completed work, decisions, blockers, verification กับ exact next action หลังแต่ละช่วง ใน repository นี้ path ดังกล่าวถูก ignore จาก Git และ extension จะลบ managed ledger เมื่อ AI ปิดงานหลัง verification ผ่าน ส่วน caller-owned artifact จะไม่ถูกลบอัตโนมัติ หากนำ extension ไปใช้ใน workspace อื่น ควรกำหนด ignore policy ของ workspace นั้นเอง
+เมื่อผู้ใช้, skill, workflow หรือ harness ระบุ Markdown path ภายใน workspace AI จะสร้างหรือแก้ไฟล์ผ่านกลไกของเจ้าของ artifact แล้วส่ง exact path ให้ `mypi_start_work_plan` เพื่อลงทะเบียน continuity pointer เท่านั้น Extension ไม่เลือก folder, ไม่สร้าง skeleton, ไม่เปลี่ยน schema, ไม่เพิ่ม index และไม่ลบไฟล์เมื่อปิดงาน
+
+ถ้าไม่มีผู้กำหนด path หรือ convention ไว้ AI/harness ที่ทำงานนั้นเลือก Markdown path ที่เหมาะกับงานภายใน workspace ได้เอง โดยการเลือกครั้งนั้นไม่กลายเป็น workspace-wide convention และไม่ถือว่า `.workbench/`, `workbench/`, `workspace-meta/` หรือ folder กลางอื่นมีสิทธิ์พิเศษ การปิดงานด้วย `mypi_finish_work_plan` เป็นการหยุด tracking ใน session เท่านั้น ส่วนการเก็บ ย้าย archive หรือลบ plan เป็นหน้าที่ของ artifact owner
 
 ควบคุมพฤติกรรมใน session ปัจจุบันได้ด้วย:
 
 ```text
-/mypi-continuity automatic  # AI สร้าง continuity ledger เองเมื่องานใหญ่ (ค่าเริ่มต้น)
-/mypi-continuity off        # ปิดการตัดสินใจสร้าง ledger เองของ AI ใน session นี้; caller ยังระบุ plan ได้
+/mypi-continuity automatic  # AI เตือนให้สร้าง/register continuity file เมื่องานใหญ่ (ค่าเริ่มต้น)
+/mypi-continuity off        # ปิด automatic guidance ใน session นี้; caller ยัง register plan ได้
 /mypi-continuity status     # แสดง mode และ active plan ปัจจุบัน
 ```
 
-เครื่องมือ `mypi_start_work_plan` สร้าง/register plan โดยไม่เปิด Browser UI ส่วน `mypi_use_plannotator` เข้า Plannotator แยกต่างหากและ reuse active plan หรือ path ที่ caller กำหนดได้ คำสั่ง `pi --plan`, `/plannotator <path>` และ `Ctrl+Alt+P` ยังใช้เปิดด้วยตนเองได้ตามเดิม
+เครื่องมือ `mypi_start_work_plan` register plan โดยไม่แตะเนื้อหาและไม่เปิด Browser UI ส่วน `mypi_use_plannotator` เข้า Plannotator แยกต่างหากและ reuse active plan หรือ path ที่ caller กำหนดได้ คำสั่ง `pi --plan`, `/plannotator-plan-mode <path>` และ `Ctrl+Alt+P` ยังใช้เปิดด้วยตนเองได้ตามเดิม
 
-เมื่อใช้ Plannotator หลังอนุมัติจะแสดง checklist ใน terminal และติดตามความคืบหน้าด้วย Markdown checkbox ร่วมกับ `[DONE:n]` แต่ plan ไม่จำเป็นต้องอยู่ `.workbench/plans/`; path ของ workflow/skill มี precedence สูงสุด หากไม่มีจึงค่อยใช้ fallback ตาม lifecycle ของงาน
+เมื่อใช้ Plannotator หลังอนุมัติจะแสดง checklist ใน terminal และติดตามความคืบหน้าด้วย Markdown checkbox ร่วมกับ `[DONE:n]` โดย Plannotator รองรับ plan file ที่ใดก็ได้ภายใน working directory และไม่ต้องผ่าน folder ของ `my-pi`
 
-ดูหลักเกณฑ์รูปแบบแผนได้ที่ `.workbench/plans/README.md` และสถานะการออกแบบที่ `.workbench/notes/persistent-todo-handoff.md`
+ดูเหตุผลและสถานะการออกแบบได้ที่ [`docs/notes/persistent-todo-handoff.md`](docs/notes/persistent-todo-handoff.md) ส่วน [`docs/plans/`](docs/plans/) เป็นประวัติแผนของ repository นี้ ไม่ใช่ default path สำหรับ tool หรือ skill อื่น
 
 ## ถอดออกจาก Pi
 

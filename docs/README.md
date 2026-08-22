@@ -1,31 +1,33 @@
-# Workbench
+# เอกสาร My Pi
 
 > **Status:** active<br>
 > **Created:** 2026-07-27 08:55<br>
-> **Updated:** 2026-08-22 12:51<br>
-> **Purpose:** แสดงภาพรวมของเอกสารประกอบ เพื่อให้ค้นหาและเข้าใจลำดับงานได้ง่าย
+> **Updated:** 2026-08-22 16:34<br>
+> **Purpose:** แสดงภาพรวมของ design notes และ implementation history ที่ repository `my-pi` เป็นเจ้าของ
 
-เอกสารเรียงตามเวลาอัปเดตล่าสุด แล้วตามเวลาสร้าง หากต้องการรายละเอียดการตัดสินใจหรือสิ่งที่เปลี่ยน ให้เปิดหัวข้อ `Decisions` และ `Change log` ภายในเอกสารนั้น
+`docs/` เป็น project documentation ของ repository นี้ ไม่ใช่ workspace-wide artifact store และไม่ใช่ default path สำหรับ plan, note หรือ output จาก AI tool/skill/harness อื่น
 
 ## Plans
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
-| 2026-08-22 12:51 | 2026-08-22 12:40 | complete | [แยก Workflow Plan, Continuity Ledger และ Plannotator Review](plans/flexible-planning-continuity.md) | ให้ workflow/skill เลือก plan artifact path และให้ AI ดูแล continuity ของงานใหญ่โดยแยกจาก human review |
+| 2026-08-22 16:34 | 2026-08-22 12:40 | superseded | [แยก Workflow Plan, Continuity Ledger และ Plannotator Review](plans/flexible-planning-continuity.md) | implementation รุ่นที่ยังสร้าง managed fallback; ถูกแทนด้วย pointer-only tracking |
 | 2026-08-09 19:25 | 2026-08-09 11:10 | complete | [ย้ายและขยาย Azure DevOps extension](plans/azure-devops-extension-crud.md) | เพิ่ม opt-in Work Item CRUD; ปัจจุบัน maintain ที่ `local/extensions/azure-devops/` และให้แต่ละ project โหลดเอง |
-| 2026-08-22 12:40 | 2026-08-09 09:02 | superseded | [ให้ AI ตัดสินใจเปิด Plannotator](plans/ai-auto-plannotator.md) | implementation เดิมที่ผูกงานใหญ่กับ Plannotator; ถูกแทนที่ด้วย flexible planning + continuity |
-| 2026-08-22 12:40 | 2026-08-05 12:04 | active | [แนวทางเขียนแผนงานใหญ่](plans/README.md) | กำหนด fallback สำหรับ durable project plan เมื่อ workflow/skill ไม่ได้ระบุ artifact path |
+| 2026-08-22 16:34 | 2026-08-09 09:02 | superseded | [ให้ AI ตัดสินใจเปิด Plannotator](plans/ai-auto-plannotator.md) | implementation เดิมที่ผูกงานใหญ่กับ Plannotator; ถูกแทนที่ด้วย flexible planning + continuity |
+| 2026-08-22 16:15 | 2026-08-05 12:04 | reference | [ประวัติแผนของ My Pi](plans/README.md) | อธิบายขอบเขตของ project-owned plan history โดยไม่เป็น default path ให้กลไกอื่น |
 
 ## Notes
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
-| 2026-08-22 12:40 | 2026-07-27 02:31 | ดำเนินการบางส่วน | [Extension Review](notes/extensions-review.md) | ประเมิน third-party extensions และแนวทางปรับ Pi setup |
+| 2026-08-22 16:34 | 2026-07-27 02:31 | ดำเนินการบางส่วน | [Extension Review](notes/extensions-review.md) | ประเมิน third-party extensions และแนวทางปรับ Pi setup |
 | 2026-08-22 11:57 | 2026-08-21 09:43 | อยู่ระหว่างวิเคราะห์ | [ทิศทางพัฒนา Pi โดยเรียนรู้จาก OMP](notes/pi-omp-context-code-intelligence-tui.md) | สรุป context governance, benchmark และ short-cycle candidates สำหรับ code intelligence, orchestration และ OMP-inspired TUI |
-| 2026-08-22 12:51 | 2026-07-27 01:41 | นำมาใช้แล้ว | [Persistent Todo + Handoff](notes/persistent-todo-handoff.md) | แยก artifact routing, automatic continuity และ optional Plannotator review เพื่อส่งต่องานข้าม compaction/session |
+| 2026-08-22 16:15 | 2026-07-27 01:41 | นำมาใช้แล้ว | [Persistent Todo + Handoff](notes/persistent-todo-handoff.md) | ใช้ pointer-only continuity โดยให้ artifact owner คุม path, schema และ lifecycle |
 
 ## Change log
 
+- 2026-08-22 16:34 — ตรวจ historical `.workbench` references, เพิ่ม warning ใน superseded plans และแก้ benchmark link ที่ยังชี้ path เดิม
+- 2026-08-22 16:15 — ย้าย project documentation จาก hidden `.workbench/` มา `docs/` และยกเลิก catch-all workspace policy
 - 2026-08-22 12:51 — ปิดแผน flexible planning หลัง implementation และ verification ผ่านครบ
 - 2026-08-22 12:40 — เพิ่มแผนรื้อ planning integration ให้แยก workflow artifact, continuity ledger และ Plannotator review
 - 2026-08-22 12:40 — ทำเครื่องหมาย auto-Plannotator เดิมเป็น superseded และอัปเดต Persistent Todo + Handoff ตาม workflow ใหม่

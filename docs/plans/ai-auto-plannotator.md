@@ -2,8 +2,10 @@
 
 > **Status:** superseded<br>
 > **Created:** 2026-08-09 09:02<br>
-> **Updated:** 2026-08-22 12:40<br>
+> **Updated:** 2026-08-22 16:34<br>
 > **Purpose:** เพิ่มกลไกให้ AI เข้า Plannotator plan mode เองเมื่องานซับซ้อนหรือเสี่ยงสูญเสียบริบท โดยผู้ใช้ยังควบคุมได้
+
+> **Historical only:** ห้ามใช้ Approach, Decisions, command names หรือ Steps ด้านล่างเป็น current instructions ให้ใช้ `docs/notes/persistent-todo-handoff.md` และ README ปัจจุบันแทน
 
 ## Context
 
@@ -19,8 +21,8 @@ Plannotator ปัจจุบันเข้า plan mode ได้จาก `p
 - `package.json`
 - `tests/workflow-runtime.test.ts`
 - `README.md`
-- `.workbench/notes/persistent-todo-handoff.md`
-- `.workbench/index.md`
+- `docs/notes/persistent-todo-handoff.md`
+- `docs/README.md`
 
 ## Reuse
 
@@ -53,7 +55,7 @@ Plannotator ปัจจุบันเข้า plan mode ได้จาก `p
 
 - [x] เพิ่ม extension ใน package manifest ตามลำดับหลัง Plannotator
 - [x] อัปเดต README และบันทึก workflow ให้ระบุ automatic/suggest/off และ user override
-- [x] อัปเดต `.workbench/index.md`
+- [x] อัปเดต `docs/README.md`
 - [x] Verification: `npm test` ผ่านและตรวจ `git diff --check`
 
 ## Verification
@@ -68,6 +70,7 @@ Implementation นี้เคยเสร็จและใช้งานไ�
 
 ## Change log
 
+- 2026-08-22 16:34 — เพิ่มคำเตือน historical-only เพื่อไม่ให้ agent ใช้ command และ decision รุ่นเก่าเป็น current instructions
 - 2026-08-22 12:40 — เปลี่ยนสถานะเป็น superseded หลังรื้อ automatic Plannotator เป็น planning workflow แบบแยก concerns
 - 2026-08-09 09:10 — เพิ่ม companion extension, tests, package integration และเอกสารครบ พร้อมปิดแผนหลัง verification ผ่าน
 - 2026-08-09 09:02 — สร้างแผนและกำหนด default mode, event integration และ user override

@@ -1,19 +1,15 @@
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
-import { mkdir, unlink, writeFile } from "node:fs/promises";
-import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
+import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export type ContinuityMode = "automatic" | "off";
 export type PlannotatorPhase = "idle" | "planning" | "executing";
-export type PlanOwnership = "managed" | "caller";
 
 export type ActiveWorkPlan = {
 	filePath: string;
 	title: string;
 	reason: string;
-	ownership: PlanOwnership;
 };
 
 type PlannotatorPlanMode = "enter" | "exit" | "toggle" | "status";
@@ -43,7 +39,6 @@ const FINISH_TOOL = "mypi_finish_work_plan";
 const REVIEW_TOOL = "mypi_use_plannotator";
 const MODE_ENTRY = "mypi-continuity-mode";
 const PLAN_ENTRY = "mypi-work-plan";
-const MANAGED_PLAN_DIRECTORY = ".workbench/continuity";
 const PLANNING_MARKER = "[PLANNOTATOR - PLANNING PHASE]";
 const EXECUTING_MARKER = "[PLANNOTATOR - EXECUTING PLAN]";
 const PLANNOTATOR_REQUEST_CHANNEL = "plannotator:request";
@@ -57,37 +52,6 @@ export function parseContinuityCommand(input: string): ContinuityCommand {
 	}
 	if (value === "off") return { kind: "set", mode: "off" };
 	return { kind: "invalid" };
-}
-
-export function slugifyPlanTitle(title: string): string {
-	const slug = title
-		.normalize("NFKC")
-		.toLowerCase()
-		.replace(/[^\p{L}\p{N}]+/gu, "-")
-		.replace(/^-+|-+$/g, "")
-		.slice(0, 64);
-	return slug || "work-plan";
-}
-
-function compactLocalTimestamp(now: Date): string {
-	const number = (value: number) => String(value).padStart(2, "0");
-	return [
-		now.getFullYear(),
-		number(now.getMonth() + 1),
-		number(now.getDate()),
-		"-",
-		number(now.getHours()),
-		number(now.getMinutes()),
-	].join("");
-}
-
-function readableLocalTimestamp(now: Date): string {
-	const compact = compactLocalTimestamp(now);
-	return `${compact.slice(0, 4)}-${compact.slice(4, 6)}-${compact.slice(6, 8)} ${compact.slice(9, 11)}:${compact.slice(11, 13)}`;
-}
-
-export function defaultContinuityPath(title: string, now = new Date()): string {
-	return `${MANAGED_PLAN_DIRECTORY}/${compactLocalTimestamp(now)}-${slugifyPlanTitle(title)}.md`;
 }
 
 export function resolveWorkspacePlanPath(filePath: string, cwd: string): {
@@ -125,8 +89,7 @@ function isActiveWorkPlan(value: unknown): value is ActiveWorkPlan {
 	return (
 		typeof plan.filePath === "string" &&
 		typeof plan.title === "string" &&
-		typeof plan.reason === "string" &&
-		(plan.ownership === "managed" || plan.ownership === "caller")
+		typeof plan.reason === "string"
 	);
 }
 
@@ -166,10 +129,7 @@ export function buildPlanningGuidance(
 	contextPercent?: number | null,
 ): string {
 	if (activePlan) {
-		const ownership = activePlan.ownership === "caller"
-			? "This is caller-owned workflow/skill content: preserve its schema and location; never delete or relocate it automatically."
-			: "This is a managed working ledger: keep it concise and close it only after the requested outcome and verification are complete.";
-		return `## Active work continuity\n\n- Source of truth: \`${activePlan.filePath}\`\n- Read it before continuing implementation, especially after compaction or resume.\n- Update completed work, decisions, verification evidence, blockers, and the exact next action after each material phase.\n- ${ownership}\n- Use \`${FINISH_TOOL}\` only when the work is genuinely complete or intentionally cancelled.\n- Plannotator review is independent; call \`${REVIEW_TOOL}\` only when human review or approval adds value.`;
+		return `## Active work continuity\n\n- Source of truth: \`${activePlan.filePath}\`\n- Read it before continuing implementation, especially after compaction or resume.\n- Follow the artifact owner's format and update policy; record progress, decisions, verification, blockers, and the exact next action only when that format calls for them.\n- Preserve its path, schema, and lifecycle. This extension tracks the pointer only and never creates, rewrites, relocates, indexes, or deletes the file.\n- Use \`${FINISH_TOOL}\` only to stop continuity tracking when the work is genuinely complete or intentionally cancelled.\n- Plannotator review is independent; call \`${REVIEW_TOOL}\` only when human review or approval adds value.`;
 	}
 	if (mode === "off") return "";
 
@@ -178,7 +138,7 @@ export function buildPlanningGuidance(
 			? `\n- Current context usage is about ${Math.round(contextPercent)}%; establish continuity before a long implementation if important state could be lost.`
 			: "";
 
-	return `## Work planning and continuity\n\nBefore substantial implementation, independently decide whether the task needs a workspace-backed continuity ledger. Call \`${START_TOOL}\` as the only tool call in its batch when strong signals apply:\n- several dependent phases, subsystems, or verification steps remain;\n- the user split the task but the assigned part is still large;\n- work will span many turns or must survive compaction/session continuation;\n- decisions, blockers, or partial verification would be costly to reconstruct.\n\nIf a workflow or skill specifies an artifact path, pass that exact workspace-relative Markdown path as \`filePath\`. Otherwise omit \`filePath\` and the tool will create a managed working ledger. Do not create one for small localized work, ordinary Q&A, or disposable exploration.\n\nHuman plan review is a separate decision. Call \`${REVIEW_TOOL}\` only when approval or annotations would materially improve the work; a large task does not automatically require Plannotator. Respect explicit user overrides.${contextWarning}`;
+	return `## Work planning and continuity\n\nBefore substantial implementation, independently decide whether the task needs a workspace-backed continuity file. Strong signals include:\n- several dependent phases, subsystems, or verification steps remain;\n- the user split the task but the assigned part is still large;\n- work will span many turns or must survive compaction/session continuation;\n- decisions, blockers, or partial verification would be costly to reconstruct.\n\nLet the user, skill, workflow, or active harness choose the path, format, and lifecycle. Create or update that Markdown file through its owning mechanism, then call \`${START_TOOL}\` with the exact workspace-relative \`filePath\` to register it. If no owner or project convention specifies a location, choose a suitable Markdown path for this task inside the workspace; that choice does not establish a workspace-wide convention. Do not infer that \`.workbench/\`, \`workbench/\`, \`workspace-meta/\`, or any other shared folder is privileged from its name alone. Do not create a continuity file for small localized work, ordinary Q&A, or disposable exploration.\n\nHuman plan review is a separate decision. Call \`${REVIEW_TOOL}\` only when approval or annotations would materially improve the work; a large task does not automatically require Plannotator. Respect explicit user overrides.${contextWarning}`;
 }
 
 export function requestPlannotatorPlanMode(
@@ -212,11 +172,6 @@ function responseError(response: PlannotatorResponse<PlannotatorPlanModeResult>)
 	return response.error ?? "Plannotator is unavailable.";
 }
 
-function planSkeleton(title: string, reason: string, now = new Date()): string {
-	const timestamp = readableLocalTimestamp(now);
-	return `# ${title}\n\n> **Status:** active<br>\n> **Created:** ${timestamp}<br>\n> **Updated:** ${timestamp}<br>\n> **Purpose:** ${reason}\n\n## Goal\n\n${reason}\n\n## Constraints\n\n- เติมข้อจำกัดที่ต้องรักษาก่อนลงมือ\n\n## Progress\n\n- [ ] แบ่งงานเป็นขั้นตอนและระบุ verification\n\n## Decisions\n\n- ยังไม่มี\n\n## Verification\n\n- ยังไม่ได้ตรวจ\n\n## Next\n\n- แตกขั้นตอนแรกที่ลงมือทำได้ แล้วอัปเดตไฟล์นี้หลังจบแต่ละช่วง\n`;
-}
-
 export default function planningWorkflow(pi: ExtensionAPI): void {
 	let mode: ContinuityMode = DEFAULT_MODE;
 	let activePlan: ActiveWorkPlan | undefined;
@@ -248,59 +203,49 @@ export default function planningWorkflow(pi: ExtensionAPI): void {
 		cwd: string;
 		title: string;
 		reason: string;
-		filePath?: string;
-	}): Promise<{ plan: ActiveWorkPlan; created: boolean }> {
+		filePath: string;
+	}): Promise<{ plan: ActiveWorkPlan }> {
 		if (activePlan) {
-			if (input.filePath) {
-				const requested = resolveWorkspacePlanPath(input.filePath, input.cwd).relativePath;
-				if (requested !== activePlan.filePath) {
-					throw new Error(`Another work plan is already active: ${activePlan.filePath}`);
-				}
+			const requested = resolveWorkspacePlanPath(input.filePath, input.cwd).relativePath;
+			if (requested !== activePlan.filePath) {
+				throw new Error(`Another work plan is already active: ${activePlan.filePath}`);
 			}
-			return { plan: activePlan, created: false };
+			return { plan: activePlan };
 		}
-		const ownership: PlanOwnership = input.filePath ? "caller" : "managed";
-		const requestedPath = input.filePath ?? defaultContinuityPath(input.title);
-		const resolved = resolveWorkspacePlanPath(requestedPath, input.cwd);
-		let created = false;
-		if (!existsSync(resolved.absolutePath)) {
-			await mkdir(dirname(resolved.absolutePath), { recursive: true, mode: 0o700 });
-			await writeFile(resolved.absolutePath, planSkeleton(input.title, input.reason), "utf8");
-			created = true;
-		}
+		const resolved = resolveWorkspacePlanPath(input.filePath, input.cwd);
 
 		activePlan = {
 			filePath: resolved.relativePath,
 			title: input.title.trim(),
 			reason: input.reason.trim(),
-			ownership,
 		};
 		persistPlan("activate", activePlan);
 		syncToolVisibility();
-		return { plan: activePlan, created };
+		return { plan: activePlan };
 	}
 
 	pi.registerTool({
 		name: START_TOOL,
 		label: "Start Work Plan",
 		description:
-			"Create or register a workspace-backed continuity plan before substantial multi-phase work. Use a workflow/skill-provided filePath verbatim when supplied; otherwise omit it for a managed working ledger. This does not open Plannotator.",
+			"Register the exact workspace Markdown path selected by the user, skill, workflow, or active harness for continuity across turns and compaction. The extension tracks only the pointer: it does not create, format, move, index, or delete the file. This does not open Plannotator.",
 		parameters: Type.Object({
 			title: Type.String({ minLength: 1, description: "Short descriptive title for the work" }),
 			reason: Type.String({ minLength: 1, description: "Why this task needs continuity across turns or compaction" }),
-			filePath: Type.Optional(Type.String({
-				description: "Caller-selected workspace-relative .md/.mdx artifact path; omit for a managed continuity ledger",
-			})),
+			filePath: Type.String({
+				minLength: 1,
+				description: "Exact workspace-relative .md/.mdx path selected by the artifact owner or active project/harness convention",
+			}),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-			const input = params as { title: string; reason: string; filePath?: string };
+			const input = params as { title: string; reason: string; filePath: string };
 			const result = await activatePlan({ cwd: ctx.cwd, ...input });
 			return {
 				content: [{
 					type: "text",
-					text: `Active work plan: ${result.plan.filePath}\n${result.created ? "สร้าง skeleton แล้ว" : "ใช้ไฟล์เดิมโดยไม่เขียนทับ"} ให้เปิดอ่านและเติม steps, constraints, verification และ exact next action ก่อน implementation จากนั้นอัปเดตหลังจบแต่ละ phase`,
+					text: `Active work plan: ${result.plan.filePath}\nลงทะเบียน path แล้วโดยไม่ได้สร้างหรือแก้ไฟล์ ให้ทำงานต่อด้วย format และ lifecycle ที่ artifact owner กำหนด`,
 				}],
-				details: { mode, activated: true, created: result.created, plan: result.plan },
+				details: { mode, activated: true, fileChanged: false, plan: result.plan },
 			};
 		},
 	});
@@ -309,12 +254,12 @@ export default function planningWorkflow(pi: ExtensionAPI): void {
 		name: FINISH_TOOL,
 		label: "Finish Work Plan",
 		description:
-			"Close the active continuity plan only after implementation and verification are genuinely complete, or when the work is intentionally cancelled. Managed ledgers are deleted; caller-owned workflow artifacts are retained.",
+			"Stop tracking the active continuity plan after the owning workflow considers it complete or cancelled. This only closes the session pointer and never edits or deletes the artifact.",
 		parameters: Type.Object({
 			outcome: Type.Union([Type.Literal("complete"), Type.Literal("cancelled")]),
 			summary: Type.String({ description: "Concise final outcome or cancellation reason" }),
 		}),
-		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
 			if (!activePlan) {
 				return {
 					content: [{ type: "text", text: "ไม่มี active work plan" }],
@@ -322,20 +267,6 @@ export default function planningWorkflow(pi: ExtensionAPI): void {
 				};
 			}
 			const closingPlan = activePlan;
-			let deleted = false;
-			if (closingPlan.ownership === "managed") {
-				const resolved = resolveWorkspacePlanPath(closingPlan.filePath, ctx.cwd);
-				const managedRoot = resolve(ctx.cwd, MANAGED_PLAN_DIRECTORY);
-				const rel = relative(managedRoot, resolved.absolutePath);
-				if (rel && !rel.startsWith("..") && !isAbsolute(rel)) {
-					try {
-						await unlink(resolved.absolutePath);
-						deleted = true;
-					} catch (error) {
-						if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-					}
-				}
-			}
 			const input = params as { outcome: "complete" | "cancelled"; summary: string };
 			persistPlan("finish", undefined, input.summary);
 			activePlan = undefined;
@@ -343,11 +274,9 @@ export default function planningWorkflow(pi: ExtensionAPI): void {
 			return {
 				content: [{
 					type: "text",
-					text: deleted
-						? `ปิด ${closingPlan.filePath} และลบ managed ledger แล้ว`
-						: `ปิด ${closingPlan.filePath} แล้ว โดยคง caller-owned artifact ไว้`,
+					text: `หยุดติดตาม ${closingPlan.filePath} แล้ว โดยไม่ได้แก้หรือลบ artifact`,
 				}],
-				details: { closed: true, deleted, outcome: input.outcome, plan: closingPlan },
+				details: { closed: true, fileChanged: false, outcome: input.outcome, plan: closingPlan },
 			};
 		},
 	});
@@ -434,14 +363,6 @@ export default function planningWorkflow(pi: ExtensionAPI): void {
 		const restored = restorePlanningState(ctx.sessionManager.getBranch());
 		mode = restored.mode;
 		activePlan = restored.activePlan;
-		if (activePlan) {
-			const resolved = resolveWorkspacePlanPath(activePlan.filePath, ctx.cwd);
-			if (!existsSync(resolved.absolutePath)) {
-				pi.appendEntry(PLAN_ENTRY, { action: "finish", filePath: activePlan.filePath, summary: "Plan file no longer exists." });
-				if (ctx.hasUI) ctx.ui.notify(`ไม่พบ active work plan เดิม: ${activePlan.filePath}`, "warning");
-				activePlan = undefined;
-			}
-		}
 		syncToolVisibility();
 	});
 
