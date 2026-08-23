@@ -199,6 +199,70 @@ test("allows the harness temporary directory and /dev/null", () => {
 	);
 });
 
+test("external mutation approval shows rm targets and dynamic execution context", async () => {
+	const handlers = new Map<string, (...args: any[]) => any>();
+	let prompt = "";
+	let choices: string[] = [];
+	const api = {
+		on(name: string, handler: (...args: any[]) => any) {
+			handlers.set(name, handler);
+		},
+		events: {
+			emit() {},
+		},
+	};
+	const ctx = {
+		cwd: workspace,
+		hasUI: true,
+		ui: {
+			async select(title: string, options: string[]) {
+				prompt = title;
+				choices = options;
+				return "Deny";
+			},
+		},
+	};
+
+	guardrails(api as any);
+	const handler = handlers.get("tool_call");
+	const staticResult = await handler?.(
+		{ toolName: "bash", input: { command: `rm "${outsidePath}"` } },
+		ctx,
+	);
+
+	assert.equal(staticResult?.block, true);
+	assert.ok(prompt.includes(`File or directory to delete: ${outsidePath}`));
+	assert.ok(choices.includes("Allow this directory for this session"));
+
+	const dynamicResult = await handler?.(
+		{ toolName: "bash", input: { command: 'rm "$generated_path"' } },
+		ctx,
+	);
+
+	assert.equal(dynamicResult?.block, true);
+	assert.ok(prompt.includes("File or directory to delete (shell expression): $generated_path"));
+	assert.deepEqual(choices, ["Allow once", "Deny"]);
+
+	const nodeCode = 'require("fs").writeFileSync(process.argv[1], "x")';
+	const nodeResult = await handler?.(
+		{ toolName: "bash", input: { command: `node -e '${nodeCode}' "$generated_path"` } },
+		ctx,
+	);
+
+	assert.equal(nodeResult?.block, true);
+	assert.ok(prompt.includes(`Executed node code: ${nodeCode}`));
+	assert.ok(prompt.includes(`Working directory: ${workspace}`));
+
+	const gitResult = await handler?.(
+		{ toolName: "bash", input: { command: 'cd "$repo_dir" && git checkout main' } },
+		ctx,
+	);
+
+	assert.equal(gitResult?.block, true);
+	assert.ok(prompt.includes("Git working directory (shell expression): $repo_dir"));
+	assert.ok(prompt.includes("Git command: git checkout main"));
+});
+
 test("discovers renamed fetch_content tools and blocks uploads without UI", async () => {
 	const handlers = new Map<string, (...args: any[]) => any>();
 	const api = {

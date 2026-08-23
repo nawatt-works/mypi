@@ -10,11 +10,17 @@ export type MutationFinding = {
 	kind: MutationKind;
 	reason: string;
 	target?: string;
+	targetExpression?: string;
+	targetLabel?: string;
+	detail?: string;
+	detailLabel?: string;
+	workingDirectory?: string;
 	targetIsDirectory?: boolean;
 };
 
 type ShellState = {
 	cwd?: string;
+	cwdExpression?: string;
 	vars: Map<string, string | undefined>;
 };
 
@@ -441,17 +447,25 @@ function extractCommandSubstitutions(command: string): string[] {
 	return results;
 }
 
-function externalFinding(rawTarget: string, state: ShellState, workspace: string, reason: string): MutationFinding | undefined {
+function externalFinding(
+	rawTarget: string,
+	state: ShellState,
+	workspace: string,
+	reason: string,
+	targetLabel?: string,
+): MutationFinding | undefined {
 	const expanded = expandKnownVariables(rawTarget, state);
 	if (expanded === undefined || !state.cwd) {
 		return {
 			kind: "unknown-write",
 			reason: `${reason}; destination is computed dynamically`,
+			targetExpression: rawTarget,
+			targetLabel,
 		};
 	}
 	const target = resolvePolicyPath(expanded, state.cwd);
 	if (isPermittedWriteTarget(target, workspace)) return;
-	return { kind: "external-write", reason, target };
+	return { kind: "external-write", reason, target, targetLabel };
 }
 
 function mutationOperands(command: string, args: string[]): string[] {
@@ -534,6 +548,7 @@ function analyzeSegment(segment: string, state: ShellState, workspace: string): 
 	if (command === "cd") {
 		const destination = args.find((arg) => !arg.startsWith("-")) ?? homedir();
 		const expanded = expandKnownVariables(destination, state);
+		state.cwdExpression = expanded === undefined ? destination : undefined;
 		state.cwd = expanded === undefined || !state.cwd ? undefined : resolvePolicyPath(expanded, state.cwd);
 		return findings;
 	}
@@ -548,18 +563,28 @@ function analyzeSegment(segment: string, state: ShellState, workspace: string): 
 
 	const inlineFlags = INLINE_CODE_FLAGS[command];
 	if (inlineFlags && (inlineFlags.size === 0 || args.some((arg) => inlineFlags.has(arg)))) {
+		const inlineFlagIndex = args.findIndex((arg) => inlineFlags.has(arg));
+		const inlineCode = inlineFlags.size === 0
+			? args.join(" ")
+			: args[inlineFlagIndex + 1];
 		findings.push({
 			kind: "unknown-write",
 			reason: `${command} executes dynamic code that may write outside workspace`,
+			detail: inlineCode || segment,
+			detailLabel: `Executed ${command} code`,
+			workingDirectory: state.cwd,
 		});
 		return findings;
 	}
 
 	if (command === "git") {
 		let gitCwd = state.cwd;
+		let gitCwdExpression = state.cwdExpression;
 		const cIndex = args.findIndex((arg) => arg === "-C");
 		if (cIndex >= 0 && args[cIndex + 1]) {
-			const expanded = expandKnownVariables(args[cIndex + 1]!, state);
+			const rawGitCwd = args[cIndex + 1]!;
+			const expanded = expandKnownVariables(rawGitCwd, state);
+			gitCwdExpression = expanded === undefined ? rawGitCwd : undefined;
 			gitCwd = expanded === undefined || !state.cwd ? undefined : resolvePolicyPath(expanded, state.cwd);
 		}
 		const subcommand = args.find((arg, index) => {
@@ -569,12 +594,20 @@ function analyzeSegment(segment: string, state: ShellState, workspace: string): 
 		});
 		if (subcommand && GIT_MUTATION_SUBCOMMANDS.has(subcommand)) {
 			if (!gitCwd) {
-				findings.push({ kind: "unknown-write", reason: `git ${subcommand} runs from a dynamic directory` });
+				findings.push({
+					kind: "unknown-write",
+					reason: `git ${subcommand} runs from a dynamic directory`,
+					targetExpression: gitCwdExpression,
+					targetLabel: "Git working directory",
+					detail: segment,
+					detailLabel: "Git command",
+				});
 			} else if (!isInsideWorkspace(gitCwd, workspace)) {
 				findings.push({
 					kind: "external-write",
 					reason: `git ${subcommand} modifies a repository outside workspace`,
 					target: gitCwd,
+					targetLabel: "Git working directory",
 				});
 			}
 		}
@@ -688,7 +721,16 @@ function analyzeSegment(segment: string, state: ShellState, workspace: string): 
 		return findings;
 	}
 	for (const operand of operands) {
-		const finding = externalFinding(operand, state, workspace, `${command} modifies a path outside workspace`);
+		const targetLabel = command === "rm" || command === "rmdir" || command === "unlink"
+			? "File or directory to delete"
+			: undefined;
+		const finding = externalFinding(
+			operand,
+			state,
+			workspace,
+			`${command} modifies a path outside workspace`,
+			targetLabel,
+		);
 		if (finding) findings.push(finding);
 	}
 	return findings;
@@ -712,7 +754,7 @@ export function analyzeShellMutations(command: string, cwd: string, workspace = 
 function deduplicateFindings(findings: MutationFinding[]): MutationFinding[] {
 	const seen = new Set<string>();
 	return findings.filter((finding) => {
-		const key = `${finding.kind}:${finding.target ?? ""}:${finding.reason}`;
+		const key = `${finding.kind}:${finding.target ?? ""}:${finding.targetExpression ?? ""}:${finding.detail ?? ""}:${finding.reason}`;
 		if (seen.has(key)) return false;
 		seen.add(key);
 		return true;
@@ -1022,7 +1064,28 @@ export function analyzeToolCall(
 }
 
 function displayFinding(finding: MutationFinding): string {
-	if (finding.target) return `${finding.reason}\n\nTarget: ${finding.target}`;
+	if (finding.target) {
+		const label = finding.targetLabel ?? (finding.kind === "external-upload"
+			? "Local source path"
+			: finding.kind === "secret-read"
+				? "Sensitive file path"
+				: finding.targetIsDirectory
+					? "Target directory"
+					: "Target path");
+		return `${finding.reason}\n\n${label}: ${finding.target}`;
+	}
+	if (finding.targetExpression) {
+		const detail = finding.detail
+			? `\n\n${finding.detailLabel ?? "Details"}: ${finding.detail}`
+			: "";
+		return `${finding.reason}\n\n${finding.targetLabel ?? "Requested path"} (shell expression): ${finding.targetExpression}${detail}\n\nThe exact resolved path cannot be determined before the command runs.`;
+	}
+	if (finding.detail) {
+		const workingDirectory = finding.workingDirectory
+			? `\n\nWorking directory: ${finding.workingDirectory}`
+			: "";
+		return `${finding.reason}\n\n${finding.detailLabel ?? "Details"}: ${finding.detail}${workingDirectory}\n\nThe destination cannot be proven to stay inside the workspace.`;
+	}
 	if (finding.kind === "secret-read") {
 		return `${finding.reason}\n\nThe sensitive source could not be determined exactly.`;
 	}
@@ -1165,10 +1228,14 @@ export default function guardrails(pi: ExtensionAPI) {
 			};
 		}
 
+		const canSaveDirectoryPermission = pending.some((finding) => sessionDirectoryKey(finding));
+		const choices = canSaveDirectoryPermission
+			? [SESSION_ALLOW_ONCE, SESSION_ALLOW_DIRECTORY, DENY]
+			: [SESSION_ALLOW_ONCE, DENY];
 		const choice = await withHerdrBlocked(pi.events, "External file change approval", () =>
 			ctx.ui.select(
 				`External file change requested\n\n${summary}`,
-				[SESSION_ALLOW_ONCE, SESSION_ALLOW_DIRECTORY, DENY],
+				choices,
 			),
 		);
 		if (choice === SESSION_ALLOW_ONCE) return;
