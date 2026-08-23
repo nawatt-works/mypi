@@ -2,7 +2,7 @@
 
 > **Status:** อยู่ระหว่างวิเคราะห์<br>
 > **Created:** 2026-08-21 09:43<br>
-> **Updated:** 2026-08-22 11:57<br>
+> **Updated:** 2026-08-23 22:27<br>
 > **Purpose:** สรุปโจทย์ ข้อสังเกต และทางเลือกสำหรับพัฒนา Pi ให้ได้ code intelligence และ TUI ที่ดีขึ้น โดยยังรักษาการควบคุม context เป็นแกนหลัก
 
 ## Executive summary
@@ -365,6 +365,8 @@ I can submit a focused PR with deterministic delayed-publication tests.
 
 External orchestration ไม่ใช่ OS security boundary โดยตัวมันเอง หาก trust level ต่างกันยังต้องใช้ container, VM หรือ dedicated OS user
 
+ข้อกำหนดเฉพาะของ Pi Coordinator, dynamic Workers และ artifact handoff ที่ตกลงภายหลังบันทึกไว้ใน [Runtime-negotiated Orchestration ผ่าน Pi และ Herdr](runtime-negotiated-herdr-orchestration.md) โดยยังพัก implementation ไว้รอการตัดสินใจ
+
 ## OMP-inspired TUI สำหรับ Pi
 
 ### สิ่งที่ทำได้ผ่าน Pi extension/theme
@@ -624,6 +626,7 @@ Metrics ที่ควรวัด:
 
 ## Change log
 
+- 2026-08-23 22:27 — เชื่อมข้อกำหนด runtime-negotiated orchestration ผ่าน Pi/Herdr ที่แยกเป็นบันทึกเฉพาะและยังไม่เริ่ม implementation
 - 2026-08-21 15:46 — เพิ่ม validation backlog ก่อน implementation และ short-cycle candidates ครอบคลุม code intelligence, context governance, TUI และ orchestration
 - 2026-08-21 15:15 — เพิ่ม benchmark TypeScript read-only ของ AST/LSP packages, ตัดสินใจแยก runtime extensions, เลือก Upstream-first สำหรับ `pi-lsp-adapter` และเก็บ draft issue เรื่อง diagnostics false-negative
 - 2026-08-21 09:43 — สรุปการสนทนาเรื่อง context governance, OMP compaction/memory, Pi build-vs-reuse, code intelligence, external orchestration และ OMP-inspired TUI เพื่อส่งต่องานมาที่ workspace นี้
