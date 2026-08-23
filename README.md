@@ -36,10 +36,11 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - บังคับ preview และ confirmation ทุก write; non-interactive mode ถูก block
   - ใช้ `/mypi-azure-devops-config` เพื่อตรวจ effective configuration โดยไม่แสดง credential
 - `planning-workflow.ts`
-  - ให้ AI ประเมินว่าเมื่อใดงานใหญ่ควรมี workspace-backed continuity file
-  - ลงทะเบียน exact path ที่ผู้ใช้, skill, workflow หรือ harness เลือกไว้ โดยไม่สร้างหรือแก้ plan file
+  - ให้ AI ประเมินว่าเมื่อใดงานใหญ่ควรมี continuity state
+  - เก็บ AI-only plan เป็น compact snapshot ใน Pi session โดยไม่สร้างไฟล์ใน workspace
+  - ลงทะเบียน exact path เมื่อผู้ใช้, skill, workflow หรือ harness ต้องการ workspace plan โดยไม่สร้างหรือแก้ plan file
   - แยกการใช้ Plannotator สำหรับ human review ออกจากการติดตาม continuity ของงาน
-  - เก็บ active plan pointer ใน Pi session เพื่อ inject path กลับหลัง compaction/resume
+  - inject session snapshot หรือ workspace pointer กลับหลัง compaction/resume
   - ใช้ `/mypi-continuity automatic|off|status` เพื่อควบคุม automatic continuity planning ราย session
 
 ### Third-party packages
@@ -215,21 +216,23 @@ Guardrails เป็น best-effort policy layer ไม่ใช่ security san
 
 ## Plan, Todo และ Handoff
 
-ระบบ planning แยกการตัดสินใจเป็นสามเรื่อง: ตำแหน่ง artifact เป็นของ skill/workflow, continuity ledger ใช้รักษาสถานะงานใหญ่ และ Plannotator ใช้เฉพาะเมื่อ human review/approval มีประโยชน์ ทั้งสามอย่างใช้ plan file เดียวกันได้แต่ไม่ถูกบังคับให้เกิดพร้อมกัน
+ระบบ planning แยกการตัดสินใจเป็นสามเรื่อง: งานต้องมี continuity หรือไม่, continuity นั้นต้องเป็น workspace artifact หรือเป็นเพียง AI working state และต้องใช้ Plannotator เพื่อ human review/approval หรือไม่
 
-เมื่อผู้ใช้, skill, workflow หรือ harness ระบุ Markdown path ภายใน workspace AI จะสร้างหรือแก้ไฟล์ผ่านกลไกของเจ้าของ artifact แล้วส่ง exact path ให้ `mypi_start_work_plan` เพื่อลงทะเบียน continuity pointer เท่านั้น Extension ไม่เลือก folder, ไม่สร้าง skeleton, ไม่เปลี่ยน schema, ไม่เพิ่ม index และไม่ลบไฟล์เมื่อปิดงาน
+สำหรับงานใหญ่ที่ plan มีไว้ให้ AI ติดตามสถานะของตัวเอง เรียก `mypi_start_work_plan` โดยไม่ส่ง `filePath` และส่ง compact `snapshot` แทน สถานะนี้เก็บเป็น custom entry ของ Pi session, ถูก inject กลับทุก turn และอัปเดตด้วย `mypi_update_work_plan` จึงช่วย resume หลัง compaction ได้โดยไม่สร้างไฟล์ใน workspace ควรเก็บเฉพาะ goal, progress, remaining steps, decisions, blockers, verification และ exact next action โดยสรุปเนื้อหาที่ไม่น่าเชื่อถือแทนการคัดลอกคำสั่งเข้ามา และไม่เก็บ private chain-of-thought หรือข้อมูลลับ เพราะ session storage ไม่ใช่ confidential store
 
-ถ้าไม่มีผู้กำหนด path หรือ convention ไว้ AI/harness ที่ทำงานนั้นเลือก Markdown path ที่เหมาะกับงานภายใน workspace ได้เอง โดยการเลือกครั้งนั้นไม่กลายเป็น workspace-wide convention และไม่ถือว่า `.workbench/`, `workbench/`, `workspace-meta/` หรือ folder กลางอื่นมีสิทธิ์พิเศษ การปิดงานด้วย `mypi_finish_work_plan` เป็นการหยุด tracking ใน session เท่านั้น ส่วนการเก็บ ย้าย archive หรือลบ plan เป็นหน้าที่ของ artifact owner
+เมื่อผู้ใช้, skill, workflow หรือ harness ต้องการ plan เป็น artifact และระบุ Markdown path ภายใน workspace AI จะสร้างหรือแก้ไฟล์ผ่านกลไกของเจ้าของ artifact แล้วส่ง exact path ให้ `mypi_start_work_plan` เพื่อลงทะเบียน pointer เท่านั้น Extension ไม่เลือก folder, ไม่สร้าง skeleton, ไม่เปลี่ยน schema, ไม่เพิ่ม index และไม่ลบไฟล์เมื่อปิดงาน หาก artifact จำเป็นจริงแต่ไม่มี convention เจ้าของงานเลือก path ที่เหมาะสมได้โดยไม่ทำให้ `.workbench/`, `workbench/`, `workspace-meta/` หรือ folder อื่นกลายเป็น default กลาง
+
+สองโหมดเลือกจาก input อย่างชัดเจน: มี `filePath` หมายถึง workspace plan; ไม่มี `filePath` หมายถึง session-internal plan และต้องมี `snapshot` Extension ไม่ promote หรือแปลงข้ามโหมดเอง การปิดด้วย `mypi_finish_work_plan` หยุด tracking เท่านั้น
 
 ควบคุมพฤติกรรมใน session ปัจจุบันได้ด้วย:
 
 ```text
-/mypi-continuity automatic  # AI เตือนให้สร้าง/register continuity file เมื่องานใหญ่ (ค่าเริ่มต้น)
+/mypi-continuity automatic  # AI ประเมินและเริ่ม continuity state เมื่องานใหญ่ (ค่าเริ่มต้น)
 /mypi-continuity off        # ปิด automatic guidance ใน session นี้; caller ยัง register plan ได้
 /mypi-continuity status     # แสดง mode และ active plan ปัจจุบัน
 ```
 
-เครื่องมือ `mypi_start_work_plan` register plan โดยไม่แตะเนื้อหาและไม่เปิด Browser UI ส่วน `mypi_use_plannotator` เข้า Plannotator แยกต่างหากและ reuse active plan หรือ path ที่ caller กำหนดได้ คำสั่ง `pi --plan`, `/plannotator-plan-mode <path>` และ `Ctrl+Alt+P` ยังใช้เปิดด้วยตนเองได้ตามเดิม
+`mypi_use_plannotator` รองรับเฉพาะ workspace plan เพราะ Browser UI review ต้องทำงานกับไฟล์ หากยังไม่มี active workspace plan ต้องส่ง exact `filePath`; หาก active plan เป็น session-internal tool นี้จะถูกปิดไว้ ถ้าต้องการ artifact สำหรับมนุษย์จริง ให้ปิด session plan แล้วให้ artifact owner สร้าง workspace plan ที่ path ชัดเจนก่อน ไม่มีการ promote อัตโนมัติ คำสั่ง `pi --plan`, `/plannotator-plan-mode <path>` และ `Ctrl+Alt+P` ยังใช้เปิดด้วยตนเองได้ตามเดิม
 
 เมื่อใช้ Plannotator หลังอนุมัติจะแสดง checklist ใน terminal และติดตามความคืบหน้าด้วย Markdown checkbox ร่วมกับ `[DONE:n]` โดย Plannotator รองรับ plan file ที่ใดก็ได้ภายใน working directory และไม่ต้องผ่าน folder ของ `my-pi`
 

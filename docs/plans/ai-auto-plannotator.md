@@ -2,7 +2,7 @@
 
 > **Status:** superseded<br>
 > **Created:** 2026-08-09 09:02<br>
-> **Updated:** 2026-08-22 16:34<br>
+> **Updated:** 2026-08-23 11:19<br>
 > **Purpose:** เพิ่มกลไกให้ AI เข้า Plannotator plan mode เองเมื่องานซับซ้อนหรือเสี่ยงสูญเสียบริบท โดยผู้ใช้ยังควบคุมได้
 
 > **Historical only:** ห้ามใช้ Approach, Decisions, command names หรือ Steps ด้านล่างเป็น current instructions ให้ใช้ `docs/notes/persistent-todo-handoff.md` และ README ปัจจุบันแทน
@@ -66,10 +66,11 @@ Plannotator ปัจจุบันเข้า plan mode ได้จาก `p
 
 ## Handoff
 
-Implementation นี้เคยเสร็จและใช้งานได้ แต่ถูกแทนที่เมื่อ 2026-08-22 ด้วย `planning-workflow.ts` ซึ่งแยก automatic continuity ออกจาก Plannotator review และรองรับ caller-selected artifact path ดูแผนปัจจุบันที่ `flexible-planning-continuity.md`
+Implementation นี้เคยเสร็จและใช้งานได้ แต่ถูกแทนที่ด้วย `planning-workflow.ts` ซึ่งแยก continuity ออกจาก Plannotator review ปัจจุบัน AI-only plan อยู่ใน Pi session และ Plannotator ใช้เฉพาะ explicit workspace plan ดูสถานะล่าสุดที่ `../notes/persistent-todo-handoff.md`; ส่วน `flexible-planning-continuity.md` เป็นแผน superseded เช่นกัน
 
 ## Change log
 
+- 2026-08-23 11:19 — แก้ handoff ไม่ให้ชี้แผน superseded อีกฉบับเป็น current design
 - 2026-08-22 16:34 — เพิ่มคำเตือน historical-only เพื่อไม่ให้ agent ใช้ command และ decision รุ่นเก่าเป็น current instructions
 - 2026-08-22 12:40 — เปลี่ยนสถานะเป็น superseded หลังรื้อ automatic Plannotator เป็น planning workflow แบบแยก concerns
 - 2026-08-09 09:10 — เพิ่ม companion extension, tests, package integration และเอกสารครบ พร้อมปิดแผนหลัง verification ผ่าน

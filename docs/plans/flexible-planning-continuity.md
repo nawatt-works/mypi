@@ -2,7 +2,7 @@
 
 > **Status:** superseded<br>
 > **Created:** 2026-08-22 12:40<br>
-> **Updated:** 2026-08-22 16:34<br>
+> **Updated:** 2026-08-23 11:19<br>
 > **Purpose:** รื้อ planning integration ให้ workflow/skill เลือกตำแหน่ง artifact ได้ และให้ AI ดูแล continuity ledger สำหรับงานใหญ่โดยไม่บังคับเปิด Plannotator
 
 > **Historical only:** ห้ามใช้ Approach, Decisions หรือ Steps ด้านล่างเป็น current instructions เพราะ managed fallback และ `.workbench/` policy ถูกยกเลิกแล้ว ให้ใช้ `docs/notes/persistent-todo-handoff.md` เป็นสถานะปัจจุบัน
@@ -70,10 +70,11 @@
 
 ## Handoff
 
-implementation รุ่นนี้เคยเสร็จและผ่าน verification แล้ว แต่ decision เรื่อง managed fallback, skeleton และ auto-delete ถูกยกเลิกเมื่อ 2026-08-22 16:15 ปัจจุบัน `planning-workflow.ts` ทำ pointer-only tracking และให้ artifact owner ควบคุม path, schema และ lifecycle ทั้งหมด ดูสถานะล่าสุดที่ `docs/notes/persistent-todo-handoff.md`
+implementation รุ่นนี้เคยเสร็จและผ่าน verification แล้ว แต่ decision เรื่อง managed fallback, skeleton และ auto-delete ถูกยกเลิกเมื่อ 2026-08-22 16:15 และ pointer-only รุ่นถัดมาถูกขยายเมื่อ 2026-08-23 ปัจจุบัน AI-only plan เก็บเป็น Pi session state ส่วน explicit `filePath` เท่านั้นที่เป็น workspace plan ดูสถานะล่าสุดที่ `docs/notes/persistent-todo-handoff.md`
 
 ## Change log
 
+- 2026-08-23 11:19 — อัปเดต handoff ให้ชี้ dual session/workspace tracking รุ่นปัจจุบัน โดยคง Approach เดิมไว้เป็นประวัติ
 - 2026-08-22 16:34 — เพิ่มคำเตือน historical-only เพื่อไม่ให้ agent ใช้ managed fallback รุ่นเก่าเป็น current instructions
 - 2026-08-22 16:15 — ทำเครื่องหมาย superseded หลังถอด managed fallback และ workspace-owned file lifecycle ออกจาก extension
 - 2026-08-22 12:51 — ปิดแผนหลัง implementation, documentation และ verification ผ่านครบ

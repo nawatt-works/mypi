@@ -12,10 +12,12 @@
 ## แผนงานใหญ่และการส่งต่องาน
 
 - หากงานยังใหญ่หรือเสี่ยงสูญเสียสถานะจาก context compaction ให้ใช้ planning/continuity mechanism ของ tool, skill, workflow หรือ harness ที่กำลังทำงานอยู่
-- เมื่อมีกลไกระบุ plan path หรือรูปแบบไว้ ให้ใช้ค่าดังกล่าวตามเดิม หากไม่มี path หรือ convention เลย AI/harness ที่ทำงานนั้นเลือกตำแหน่งที่เหมาะสมภายใน workspace ได้เอง โดยไม่ทำให้ตำแหน่งนั้นกลายเป็นกฎกลางของ project
-- `planning-workflow.ts` มีหน้าที่เก็บ pointer ของ active plan ใน Pi session และเตือนให้อ่านต่อหลัง compaction เท่านั้น ไม่เป็นเจ้าของตำแหน่ง เนื้อหา รูปแบบ หรือการลบไฟล์
+- หาก plan มีไว้ให้ AI ติดตามงานของตัวเองเท่านั้นและไม่มีผู้ใช้, skill หรือ workflow ต้องการเป็น artifact ให้ใช้ session-internal plan ของ `planning-workflow.ts` โดยไม่สร้างไฟล์ใน workspace
+- เมื่อ plan ต้องเป็น workspace artifact และมีกลไกระบุ path หรือรูปแบบไว้ ให้ใช้ค่าดังกล่าวตามเดิม หากต้องเป็น artifact แต่ไม่มี path หรือ convention เลย AI/harness ที่ทำงานนั้นเลือกตำแหน่งที่เหมาะสมภายใน workspace ได้เอง โดยไม่ทำให้ตำแหน่งนั้นกลายเป็นกฎกลางของ project
+- `planning-workflow.ts` เก็บ compact snapshot สำหรับ session-internal plan หรือเก็บ pointer สำหรับ workspace plan แล้ว inject กลับหลัง compaction/resume โดยไม่สร้าง เปลี่ยนรูปแบบ ย้าย หรือลบ workspace artifact
 - การใช้ Plannotator เป็นเรื่อง review/approval แยกจากการมี continuity ledger งานใหญ่อาจต้องมี ledger โดยไม่ต้องเปิด Plannotator
-- การอัปเดต progress, checklist, handoff และ verification ให้เป็นไปตาม contract ของ artifact owner ไม่บังคับ schema กลางจาก workspace นี้
+- Plannotator ใช้กับ workspace plan เท่านั้น ห้ามเปลี่ยน session-internal plan เป็น workspace artifact อัตโนมัติเพียงเพื่อเปิด review
+- การอัปเดต progress, checklist, handoff และ verification ของ workspace artifact ให้เป็นไปตาม contract ของ artifact owner ไม่บังคับ schema กลางจาก workspace นี้
 
 ## ภาษา
 
