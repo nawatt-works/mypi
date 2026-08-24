@@ -2,7 +2,7 @@
 
 > **Status:** รอตัดสินใจพัฒนา<br>
 > **Created:** 2026-08-23 22:27<br>
-> **Updated:** 2026-08-23 22:27<br>
+> **Updated:** 2026-08-24 19:36<br>
 > **Purpose:** บันทึกข้อกำหนดและขอบเขตของ Pi Coordinator ที่ใช้ Herdr ควบคุม AI harness workers โดยกำหนดทีม ขั้นตอน และ artifact handoff ระหว่างสนทนา
 
 ## สรุปแนวคิด
@@ -22,7 +22,14 @@ Workflow จึงเกิดขึ้นตอน runtime และเปล�
 - Worker, task, input, expected output และผู้รับช่วงต่อจะตกลงกันเป็นรายกรณีระหว่างสนทนา
 - Artifact แต่ละชนิดใช้ path, schema และ lifecycle ของผู้ใช้, workflow, skill หรือ harness ที่เป็นเจ้าของ ห้ามบังคับย้ายเข้า directory กลาง
 - ไม่มี result contract กลางสำหรับ Worker ทุกตัว Orchestrator กำหนด task-local handoff contract ตามลักษณะงาน
+- Orchestrator ต้องอยู่บน critical path และรับผิดชอบ decomposition, assignment, integration, conflict resolution, verification และการสรุปผลต่อผู้ใช้ ห้ามส่งต่อการควบคุมทีมให้ Worker โดยปริยาย
+- การเปิด Worker ต้องมีประโยชน์ที่ชัดกว่าต้นทุน coordination เช่น ลด critical path, แยก context ที่เสี่ยงปะปน หรือใช้ harness ที่เหมาะกับงานกว่า จำนวนไฟล์หรือป้ายว่าเป็นงานใหญ่ไม่เพียงพอ
+- จำนวน Worker ใน config เป็นเพดาน ไม่ใช่เป้าหมาย และให้เริ่มจากทีมที่เล็กที่สุดที่ทำงานได้
+- งานเขียนขนานกันได้เฉพาะเมื่อ ownership และ write scope ไม่ทับกัน ส่วน shared files, unresolved decisions และ dependency chains ต้องทำแบบ serial
+- เมื่อ Worker ขาดหลักฐานหรือออกนอก scope ให้ส่ง correction กลับ session เดิมก่อน ไม่สร้าง Worker ใหม่เพียงเพื่อหลบ correction loop
 - Orchestrator ต้องตรวจ artifact, diff หรือ verification จริง ไม่ถือข้อความสรุปของ Worker เป็นหลักฐานเพียงอย่างเดียว
+- แยกการตัดสินใจว่าจะทำเองหรือใช้ Workers ออกจากระดับ assurance ที่ต้องการ เพื่อให้เพิ่ม independent review หรือ human gate ได้โดยไม่บังคับรูปแบบทีม
+- แยกสิ่งที่ config ขอให้รันออกจากสิ่งที่ runtime สังเกตได้จริง ห้ามใช้ชื่อ agent, prompt หรือ self-report เป็นหลักฐานว่า harness ที่ต้องการกำลังทำงาน
 - ยังไม่เริ่ม implementation จนกว่าผู้ใช้จะตัดสินใจ
 
 ## ขอบเขตของไฟล์ config
@@ -62,6 +69,8 @@ approvals:
 
 Config ต้องไม่บังคับให้มี Worker ชื่อใด ไม่กำหนดลำดับ step และไม่กำหนด path กลางสำหรับ artifacts ตำแหน่ง config, schema จริง, precedence ระหว่าง user/project config และวิธี validate ยังเป็นเรื่องที่ต้องออกแบบก่อน implementation
 
+ค่า concurrency และ resource limit ใน config เป็นเพียงเพดาน Orchestrator ต้องเลือกจำนวน Worker ที่น้อยที่สุดตามงานจริง ไม่ spawn ให้เต็มเพดานโดยอัตโนมัติ
+
 ห้ามเก็บ token, credential หรือ secret value ลง config หากต้องอ้าง credential ให้บันทึกเพียงชื่อ environment variable หรือกลไก secret owner ที่ระบบรองรับ
 
 ## Runtime planning
@@ -90,13 +99,28 @@ Config ต้องไม่บังคับให้มี Worker ชื่�
 
 Orchestrator สามารถเพิ่ม ลด เปลี่ยน หรือย้อนกลับไปหา Worker เดิมได้ตามผลลัพธ์ โดยต้องเคารพ approval policy และจำนวนรอบสูงสุดที่ตกลงไว้
 
+## Delegation decision
+
+ก่อนสร้าง Worker แต่ละตัว Orchestrator ต้องอธิบายประโยชน์ที่คาดว่าจะได้อย่างน้อยหนึ่งข้อ:
+
+- lane ที่แยกได้ช่วยลด critical path
+- การแยก context ลดความเสี่ยงที่ข้อกำหนดหรือหลักฐานจะปะปนกัน
+- harness หรือ model ที่เลือกเหมาะกับ bounded assignment นั้นอย่างมีนัยสำคัญ
+- ต้องการ fresh independent inspection ตาม assurance ที่ตกลง
+
+ถ้าไม่มีเหตุผลเหล่านี้ Orchestrator ควรทำงานเอง การสร้าง Worker ไม่ได้เป็นความสำเร็จในตัวมันเอง และจำนวน Worker สูงสุดจาก config เป็น ceiling เท่านั้น
+
+เมื่อทำงานขนานกัน ทุก writing Worker ต้องมี exact ownership และ disjoint write scope หากมี shared file, dependency ต่อกัน หรือ design decision ที่ยังไม่จบ ให้ Orchestrator จัดลำดับแบบ serial และรวมผลส่วนกลางเอง
+
 ## Task-local handoff contract
 
 แต่ละครั้งที่มอบหมายงาน Orchestrator ต้องระบุเฉพาะสิ่งที่งานนั้นต้องใช้ ไม่บังคับ schema เดียวกับทุก Worker อย่างน้อยควรสื่อสาร:
 
 - เป้าหมายและขอบเขตของงาน
 - input artifacts, branch, commit, source path หรือข้อสรุปที่ต้องอ่าน
+- exact ownership หรือ bounded responsibility และสิ่งที่ห้ามแตะ
 - ข้อจำกัดและสิ่งที่ห้ามทำ
+- acceptance criteria หรือ observable outcome
 - expected output สำหรับงานนั้น รวมถึง path เมื่อจำเป็น
 - verification หรือหลักฐานที่ต้องแนบ
 - เงื่อนไขที่ต้องหยุดถามแทนการเดา
@@ -147,6 +171,36 @@ Orchestrator ต้องส่ง exact artifact reference ให้ Worker ถ
 
 สถานะ lifecycle จาก Herdr เช่น `working`, `blocked`, `idle` และ `done` ใช้ควบคุม process ได้ แต่ไม่แทนการตรวจคุณภาพของ artifact
 
+หากผลลัพธ์ไม่ครบหรือ scope drift ให้ส่งข้อแก้ไขกลับ Herdr agent/session เดิมเพื่อรักษา context และ worktree เดิม เปลี่ยน Worker เมื่อบทบาทใหม่ต้องการ independent context จริง หรือ session เดิมไม่สามารถทำงานต่อได้เท่านั้น
+
+## Execution และ assurance
+
+Coordinator ต้องตัดสินใจสองเรื่องแยกจากกัน:
+
+| Decision | คำถาม |
+|---|---|
+| Execution | Pi ควรทำเอง, ใช้ Worker หนึ่งตัว, ใช้หลาย Workers หรือทำ serial/parallel อย่างไร |
+| Assurance | หลักฐานจาก Coordinator เพียงพอหรือไม่ หรือต้องมี independent Worker, human approval หรือ durable evidence เพิ่ม |
+
+งานเดียวกันอาจใช้หลาย Workers แต่ assurance ปกติ หรือ Pi ทำ implementation เองแล้วสร้าง fresh Reviewer เฉพาะท้ายงานก็ได้ Policy ระดับ assurance ต้องเพิ่มตามความเสี่ยงและคำขอของผู้ใช้ ไม่ผูกกับจำนวน Worker
+
+ระหว่างแก้ไขให้ใช้ focused verification ที่ตรงกับงานย่อย เมื่อได้ candidate ครบแล้วจึงตรวจภาพรวมจาก exact artifact, branch หรือ commit ที่จะส่งมอบ เพื่อลดการรัน full verification ซ้ำโดยไม่เพิ่มหลักฐาน
+
+## Runtime identity
+
+Coordinator ต้องแยก requested configuration ออกจาก observed runtime ตัวอย่าง state ที่ควรติดตาม:
+
+```text
+requested_harness: codex
+agent_name: developer-auth
+observed_agent_kind: codex | unknown
+pane: <Herdr pane ID>
+worktree: <exact path>
+integration_state: current | missing | unknown
+```
+
+ค่า `observed_agent_kind` ต้องมาจาก Herdr/runtime integration หรือ metadata ที่ตรวจได้ ไม่มาจาก task label, prompt หรือข้อความที่ Worker อ้างเอง หากตรวจ runtime ไม่ได้ให้บันทึกเป็น `unknown` และใช้ระดับความเชื่อมั่นนั้นประกอบการตัดสินใจ ไม่อ้างว่า runtime ตรงกับ config
+
 ## ขอบเขตของ Coordinator implementation
 
 Coordinator layer ที่จะพัฒนาภายหลังควรมี primitive อย่างน้อย:
@@ -158,8 +212,12 @@ Coordinator layer ที่จะพัฒนาภายหลังควร�
 - ส่ง task และติดตาม lifecycle ผ่าน `prompt`, `wait`, `get` และ `read`
 - ส่งข้อความกลับ Worker session เดิมเมื่อมีงานต่อเนื่อง
 - เก็บ mapping ระหว่าง runtime task, Herdr agent, pane, worktree และ artifact references
+- เก็บ requested harness แยกจาก observed agent kind และ integration state
 - ตรวจ limits, approval gates, timeout และ blocked state
+- ประเมินประโยชน์ของ delegation ก่อน spawn และบังคับ disjoint ownership ก่อน parallel writes
 - ให้ Orchestrator อ่านและประเมิน artifact ก่อนตัดสินใจขั้นถัดไป
+- ส่ง correction กลับ Worker session เดิมและรักษา ownership เดิมเมื่อเหมาะสม
+- รองรับ execution decision และ assurance decision เป็นคนละ state
 
 ระบบไม่ควรสร้าง autonomous workflow engine ที่ตัดสินใจทุกอย่างแทนผู้ใช้ และ Herdr ไม่ใช่ OS security boundary หาก Workers มี trust level ต่างกันต้องใช้ container, VM หรือ OS user ที่แยกสิทธิ์เพิ่มเติม
 
@@ -203,10 +261,21 @@ Coordinator layer ที่จะพัฒนาภายหลังควร�
 1. ตกลง config ownership, path และ minimal schema
 2. กำหนด runtime task model ที่ไม่ผูกกับ role หรือ workflow
 3. กำหนด task-local handoff prompt และ artifact-reference model
-4. ทำ disposable probe ให้ Pi ใต้ Herdr สร้าง Worker หนึ่งตัว ส่งงาน เขียน artifact และอ่านกลับ
-5. ทดสอบ `done`, `blocked`, timeout, missing artifact และ Worker exit
-6. สรุปผลแล้วตัดสิน scope ของ MVP ก่อนสร้าง Coordinator extension เต็มรูปแบบ
+4. กำหนด delegation decision, ownership และ correction-to-same-session rules
+5. ทำ disposable probe ให้ Pi ใต้ Herdr สร้าง Worker หนึ่งตัว ส่งงาน เขียน artifact และอ่านกลับ
+6. ยืนยัน requested/observed runtime identity และตรวจ artifact จริงก่อนรับผล
+7. ทดสอบ `done`, `blocked`, timeout, missing artifact, scope drift และ Worker exit
+8. ทดสอบ serial handoff ก่อนเพิ่ม parallel Workers ที่มี disjoint write scope
+9. สรุปผลแล้วตัดสิน scope ของ MVP ก่อนสร้าง Coordinator extension เต็มรูปแบบ
+
+## ที่มาของแนวคิดที่นำมาใช้
+
+ทบทวน Solweaver `v0.9.0` ที่ commit `1965649fbb8be207bfc037c57859faaa3fccbb5f` และนำหลัก coordinator ownership, bounded delegation, explicit ownership, parent verification, correction ที่ responsible Worker, execution/assurance separation และ runtime identity distinction มาปรับให้ทำงานกับ Pi + Herdr และ dynamic Workers:
+
+- <https://github.com/jay7793/solweaver/blob/1965649fbb8be207bfc037c57859faaa3fccbb5f/skills/solweaver/SKILL.md>
+- <https://github.com/jay7793/solweaver/blob/1965649fbb8be207bfc037c57859faaa3fccbb5f/skills/solweaver/references/contracts.md>
 
 ## Change log
 
+- 2026-08-24 19:36 — เพิ่มแนวทางที่จะพัฒนาหลังทบทวน Solweaver: delegation threshold, explicit ownership, correction กลับ session เดิม, execution/assurance separation, focused/candidate verification และ runtime identity
 - 2026-08-23 22:27 — บันทึกข้อกำหนด runtime-negotiated orchestration, dynamic Workers และ artifact-mediated handoff โดยพัก implementation ไว้รอผู้ใช้ตัดสินใจ
