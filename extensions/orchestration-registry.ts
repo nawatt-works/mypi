@@ -58,6 +58,8 @@ export type WorkerRecord = {
 	artifacts: ArtifactRef[];
 	/** Herdr's lifecycle counter, used to tell a delivered prompt from a silent drop. */
 	lastSeq?: number;
+	/** The counter as it stood when work was last assigned, for "did anything happen since". */
+	seqAtHandoff?: number;
 	createdAt: string;
 	updatedAt: string;
 };

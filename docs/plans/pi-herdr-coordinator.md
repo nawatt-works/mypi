@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-08-25 09:19<br>
-> **Updated:** 2026-08-25 10:58<br>
+> **Updated:** 2026-08-25 11:12<br>
 > **Purpose:** พัฒนา Coordinator layer ที่ให้ Pi สร้างและควบคุม Workers ผ่าน Herdr โดยเริ่มจาก probe เพื่อวัดว่า runtime primitive เชื่อถือได้จริงแค่ไหนก่อนเขียน extension
 
 ## Context
@@ -94,7 +94,7 @@
 - [x] เพิ่ม `worker-mode.ts` พร้อม environment signal `MYPI_WORKER=1` และ gate ใน `steering-choice`, Plannotator submit tool, dependency notifier และ Plannotator review tool
 - [x] แยก `herdr-client.ts` ออกจาก `herdr-integration.ts` โดยไม่เปลี่ยนพฤติกรรมของ command เดิม
 - [x] สร้าง registry ที่เก็บ task, agent name, pane, worktree, requested harness, observed kind, identity evidence และ artifact references
-- [ ] สร้าง tools `preview_worker`, `spawn_worker`, `handoff`, `collect` พร้อม approval gate และ evidence check
+- [x] สร้าง tools `mypi_preview_worker`, `mypi_spawn_worker`, `mypi_handoff`, `mypi_collect` พร้อม approval gate และ evidence check
 - [ ] เพิ่ม skill สำหรับ delegation judgment, handoff contract และ verification discipline
 - [ ] Verification: unit tests, `npm test` และทำ research แล้วส่งต่อ implement ครบหนึ่งรอบโดย Coordinator ไม่เคยรับคำสรุปของ Worker เป็นหลักฐาน
 
@@ -119,6 +119,12 @@
 รูปแบบ session reference ต่างกันตาม harness: Pi ให้ `kind: "path"` ชี้ไฟล์ jsonl ส่วน Claude ให้ `kind: "id"` เป็น session UUID registry จึงเก็บทั้ง value และ kind
 
 registry ใช้ `herdr agent list` เป็น source of truth ของ process: worker ที่ไม่อยู่ในรายการถือว่า `gone` ยกเว้นตัวที่ยัง `spawning` ส่วนเมื่อเรียก CLI ไม่ได้จะคง mapping เดิมไว้ ไม่ตีความว่า worker ตาย
+
+**evidence rule แบบ "ผ่านอย่างน้อยหนึ่งอย่าง" หลวมเกินไป** — ทดสอบ chain จริงแล้วพบว่า `collect` ที่อ้าง artifact ซึ่งไม่มีอยู่จริงกลับได้ `complete: true` เพราะ `state_change_seq` ขยับ กฎจึงเปลี่ยนเป็น artifact ที่ตกลงไว้ต้องผ่าน **ครบทุกรายการ** ส่วน lifecycle เป็นหลักฐานประกอบที่ไม่มีสิทธิ์ตัดสินแทน
+
+`collect` ต้องเทียบ `state_change_seq` กับค่าก่อนมอบหมายงาน ไม่ใช่ค่าหลังมอบหมาย เพราะตัว handoff เองก็ทำให้ counter ขยับและจะดูเหมือนมีความคืบหน้าเสมอ registry จึงเก็บ `seqAtHandoff` แยกจาก `lastSeq`
+
+ทดสอบ chain เต็มกับ Worker จริง: preview ไม่สร้างอะไร, spawn สร้าง pane และ agent หลังอนุมัติ, handoff ส่งถึงจริง (`seq` 1719 → 1721), collect ผ่านเมื่อ artifact มีจริงและไม่ผ่านเมื่อ artifact หาย
 
 ### Phase 2 — Assurance และ worktree
 
@@ -168,6 +174,7 @@ probe รันสองรอบเมื่อ 2026-08-25 09:22–09:30 ด้
 
 ## Change log
 
+- 2026-08-25 11:12 — เพิ่ม Coordinator tools ครบสี่ตัวและรัดกฎ evidence ให้ artifact ที่ตกลงไว้ต้องผ่านครบ
 - 2026-08-25 10:58 — เพิ่ม worker registry พร้อม identity reconciliation และยืนยันกับ Worker จริงทั้ง confirmed, mismatch และ gone
 - 2026-08-25 10:26 — แยก `herdr-client.ts` พร้อม JSON envelope handling และยืนยันกับ CLI จริงว่า error มาทาง stderr ที่ exit code 0
 - 2026-08-25 10:02 — ทำ worker mode เสร็จและยืนยันกับ Worker จริง; เปลี่ยนจาก CLI flag เป็น environment signal หลังพบข้อจำกัดของ Pi flag scoping
