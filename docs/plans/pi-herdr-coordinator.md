@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-08-25 09:19<br>
-> **Updated:** 2026-08-25 10:26<br>
+> **Updated:** 2026-08-25 10:58<br>
 > **Purpose:** พัฒนา Coordinator layer ที่ให้ Pi สร้างและควบคุม Workers ผ่าน Herdr โดยเริ่มจาก probe เพื่อวัดว่า runtime primitive เชื่อถือได้จริงแค่ไหนก่อนเขียน extension
 
 ## Context
@@ -24,7 +24,8 @@
 
 ## Files to modify
 
-- `extensions/orchestration.ts` — Coordinator tools, registry และ approval gate (ใหม่)
+- `extensions/orchestration-registry.ts` — runtime task/worker mapping และ identity reconciliation (ใหม่)
+- `extensions/orchestration.ts` — Coordinator tools และ approval gate (ใหม่)
 - `extensions/herdr-client.ts` — Herdr CLI client ที่แยกออกมาใช้ร่วมกัน (ใหม่)
 - `extensions/worker-mode.ts` — environment signal และ helper `isWorkerMode` (ใหม่)
 - `extensions/herdr-integration.ts` — ใช้ client ที่แยกออกมา และขยาย integration check ให้ครอบคลุม kind อื่น
@@ -92,7 +93,7 @@
 
 - [x] เพิ่ม `worker-mode.ts` พร้อม environment signal `MYPI_WORKER=1` และ gate ใน `steering-choice`, Plannotator submit tool, dependency notifier และ Plannotator review tool
 - [x] แยก `herdr-client.ts` ออกจาก `herdr-integration.ts` โดยไม่เปลี่ยนพฤติกรรมของ command เดิม
-- [ ] สร้าง registry ที่เก็บ task, agent name, pane, worktree, requested harness, observed kind, integration state และ artifact references
+- [x] สร้าง registry ที่เก็บ task, agent name, pane, worktree, requested harness, observed kind, identity evidence และ artifact references
 - [ ] สร้าง tools `preview_worker`, `spawn_worker`, `handoff`, `collect` พร้อม approval gate และ evidence check
 - [ ] เพิ่ม skill สำหรับ delegation judgment, handoff contract และ verification discipline
 - [ ] Verification: unit tests, `npm test` และทำ research แล้วส่งต่อ implement ครบหนึ่งรอบโดย Coordinator ไม่เคยรับคำสรุปของ Worker เป็นหลักฐาน
@@ -112,6 +113,12 @@
 **Herdr ปฏิเสธคำสั่งด้วย exit code 0 และเขียน error envelope ลง stderr** — ตรวจกับ CLI จริงพบว่า `herdr agent get <ไม่มีอยู่จริง>` คืน `{"error":{"code":"agent_not_found",...}}` ทาง stderr โดย exit code เป็น 0 ดังนั้น `code !== 0` ใช้เป็นสัญญาณความล้มเหลวไม่ได้ `runHerdr` จึง parse envelope จาก stdout ก่อนแล้วจึง stderr และถือว่าไม่สำเร็จเมื่อมี `error` แม้ exit เป็น 0
 
 `runHerdr` คืนความล้มเหลวเป็นค่า ไม่ throw เพราะ Coordinator ต้องแยก `agent_prompt_stalled`, timeout, agent ที่หายไป และ binary ที่เรียกไม่ได้ ออกจากกันเพื่อเลือกการกระทำถัดไป
+
+**lifecycle integration รายงาน identity หลัง turn แรก ไม่ใช่ตอน spawn** — ทดสอบกับ Claude worker ที่ติดตั้ง integration แล้ว: ตอนเพิ่ง `agent start` ได้ `agent_session: null` แต่หลังส่ง prompt แรกได้ `{"agent":"claude","kind":"id","source":"herdr:claude","value":"28b26b29-..."}` ดังนั้น evidence ระดับ `detection` ทันทีหลัง spawn ยังไม่ใช่คำตอบสุดท้าย Coordinator ต้อง refresh ซ้ำหลัง Worker ทำงานรอบแรกก่อนสรุป
+
+รูปแบบ session reference ต่างกันตาม harness: Pi ให้ `kind: "path"` ชี้ไฟล์ jsonl ส่วน Claude ให้ `kind: "id"` เป็น session UUID registry จึงเก็บทั้ง value และ kind
+
+registry ใช้ `herdr agent list` เป็น source of truth ของ process: worker ที่ไม่อยู่ในรายการถือว่า `gone` ยกเว้นตัวที่ยัง `spawning` ส่วนเมื่อเรียก CLI ไม่ได้จะคง mapping เดิมไว้ ไม่ตีความว่า worker ตาย
 
 ### Phase 2 — Assurance และ worktree
 
@@ -161,6 +168,7 @@ probe รันสองรอบเมื่อ 2026-08-25 09:22–09:30 ด้
 
 ## Change log
 
+- 2026-08-25 10:58 — เพิ่ม worker registry พร้อม identity reconciliation และยืนยันกับ Worker จริงทั้ง confirmed, mismatch และ gone
 - 2026-08-25 10:26 — แยก `herdr-client.ts` พร้อม JSON envelope handling และยืนยันกับ CLI จริงว่า error มาทาง stderr ที่ exit code 0
 - 2026-08-25 10:02 — ทำ worker mode เสร็จและยืนยันกับ Worker จริง; เปลี่ยนจาก CLI flag เป็น environment signal หลังพบข้อจำกัดของ Pi flag scoping
 - 2026-08-25 09:32 — เก็บตัวอย่างที่สองบน `gpt-5.6-luna` ทำให้สมมติฐานเรื่อง `done` ตกไป และยืนยันว่า M6 เป็น intermittent failure
