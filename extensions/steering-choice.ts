@@ -1,4 +1,5 @@
 import { CustomEditor, type ExtensionAPI, type ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isWorkerMode } from "./worker-mode.ts";
 
 const STEER = "Steer — ส่งหลัง turn/tool ปัจจุบัน";
 const FOLLOW_UP = "Wait — รอจน AI ทำงานเดิมครบ";
@@ -52,7 +53,13 @@ export default function steeringChoice(pi: ExtensionAPI) {
 
 	pi.on("session_start", (_event, ctx) => {
 		activeContext = ctx;
-		if (installed || !ctx.hasUI) return;
+		// Checked here rather than at load time: CLI flags are parsed after
+		// extensions are constructed, so `getFlag` is only meaningful once a
+		// session starts. A Coordinator delivers corrections with `herdr agent
+		// prompt`, which submits text and Enter together; if this dialog opens
+		// instead, the message is never delivered and the CLI still reports
+		// success, so a worker must not install it.
+		if (installed || !ctx.hasUI || isWorkerMode()) return;
 		installed = true;
 
 		const previousFactory = ctx.ui.getEditorComponent();

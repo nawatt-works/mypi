@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isWorkerMode } from "./worker-mode.ts";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const CHECK_TIMEOUT_MS = 10_000;
@@ -187,7 +188,7 @@ function notifyUpdates(ctx: ExtensionContext, updates: DependencyUpdate[]): void
 
 export default function dependencyUpdateNotifier(pi: ExtensionAPI) {
 	pi.on("session_start", (_event, ctx) => {
-		if (!ctx.hasUI) return;
+		if (!ctx.hasUI || isWorkerMode()) return;
 
 		// Deliberately do not return this promise: startup must not wait for npm.
 		void checkForUpdates(pi, false)

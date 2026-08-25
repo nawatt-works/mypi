@@ -1,8 +1,8 @@
 # Runtime-negotiated Orchestration ผ่าน Pi และ Herdr
 
-> **Status:** รอตัดสินใจพัฒนา<br>
+> **Status:** อนุมัติให้พัฒนา<br>
 > **Created:** 2026-08-23 22:27<br>
-> **Updated:** 2026-08-24 19:36<br>
+> **Updated:** 2026-08-25 09:19<br>
 > **Purpose:** บันทึกข้อกำหนดและขอบเขตของ Pi Coordinator ที่ใช้ Herdr ควบคุม AI harness workers โดยกำหนดทีม ขั้นตอน และ artifact handoff ระหว่างสนทนา
 
 ## สรุปแนวคิด
@@ -30,7 +30,8 @@ Workflow จึงเกิดขึ้นตอน runtime และเปล�
 - Orchestrator ต้องตรวจ artifact, diff หรือ verification จริง ไม่ถือข้อความสรุปของ Worker เป็นหลักฐานเพียงอย่างเดียว
 - แยกการตัดสินใจว่าจะทำเองหรือใช้ Workers ออกจากระดับ assurance ที่ต้องการ เพื่อให้เพิ่ม independent review หรือ human gate ได้โดยไม่บังคับรูปแบบทีม
 - แยกสิ่งที่ config ขอให้รันออกจากสิ่งที่ runtime สังเกตได้จริง ห้ามใช้ชื่อ agent, prompt หรือ self-report เป็นหลักฐานว่า harness ที่ต้องการกำลังทำงาน
-- ยังไม่เริ่ม implementation จนกว่าผู้ใช้จะตัดสินใจ
+- Worker ที่เป็น Pi จะโหลด global package เดียวกัน จึงต้องมี worker mode แยกพฤติกรรม ไม่แยก repository
+- ผู้ใช้อนุมัติให้พัฒนาเมื่อ 2026-08-25 โดยเขียน mechanism layer เองและทำ probe ก่อน implementation
 
 ## ขอบเขตของไฟล์ config
 
@@ -243,6 +244,8 @@ Coordinator layer ที่จะพัฒนาภายหลังควร�
 
 ## เรื่องที่ต้องตัดสินใจก่อนเริ่มพัฒนา
 
+คำถามทั้งหมดด้านล่างมีข้อสรุปแล้วใน [Pi Coordinator บน Herdr](../plans/pi-herdr-coordinator.md) หัวข้อ Decisions ส่วนที่นี่คงไว้เป็นบันทึกว่าอะไรเคยเป็นคำถามเปิด
+
 1. Config เป็นระดับ user, project หรือรองรับทั้งสองระดับ และ precedence เป็นอย่างไร
 2. ตำแหน่งและชื่อ config ที่ extension เป็นเจ้าของควรเป็นอะไร
 3. Runtime task/worker mapping ต้องรอดเฉพาะ Pi session หรือรอด process restart ด้วย
@@ -255,6 +258,8 @@ Coordinator layer ที่จะพัฒนาภายหลังควร�
 10. ต้องมี dry-run/preview ระดับใดก่อนสร้าง pane, worktree และ agent process
 
 ## จุดเริ่มต้นเมื่ออนุมัติให้พัฒนา
+
+ลำดับด้านล่างถูกแปลงเป็น Phase 0 ถึง Phase 3 ใน [Pi Coordinator บน Herdr](../plans/pi-herdr-coordinator.md) แล้ว
 
 เริ่มจาก design/validation ก่อน production behavior:
 
@@ -277,5 +282,6 @@ Coordinator layer ที่จะพัฒนาภายหลังควร�
 
 ## Change log
 
+- 2026-08-25 09:19 — ผู้ใช้อนุมัติให้พัฒนา เปิดแผน `docs/plans/pi-herdr-coordinator.md` และบันทึกข้อค้นพบจาก runtime: `agent prompt --wait` ไม่ track turn, `agent_session` ผูกกับ lifecycle integration ราย kind และ extension ปัจจุบันต้องมี worker mode
 - 2026-08-24 19:36 — เพิ่มแนวทางที่จะพัฒนาหลังทบทวน Solweaver: delegation threshold, explicit ownership, correction กลับ session เดิม, execution/assurance separation, focused/candidate verification และ runtime identity
 - 2026-08-23 22:27 — บันทึกข้อกำหนด runtime-negotiated orchestration, dynamic Workers และ artifact-mediated handoff โดยพัก implementation ไว้รอผู้ใช้ตัดสินใจ

@@ -11,7 +11,7 @@
     "test": "node --experimental-strip-types --test tests/*.test.ts"
   },
   "dependencies": {
-    "@juicesharp/rpiv-ask-user-question": "^2.1.0",
+    "@juicesharp/rpiv-ask-user-question": "^2.7.0",
     "@plannotator/pi-extension": "^0.27.6",
     "typebox": "^1.3.11"
   },
@@ -20,6 +20,7 @@
   },
   "pi": {
     "extensions": [
+      "./extensions/worker-mode.ts",
       "./extensions/dependency-update-notifier.ts",
       "./extensions/herdr-integration.ts",
       "./extensions/guardrails.ts",

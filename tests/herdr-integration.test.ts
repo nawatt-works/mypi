@@ -5,8 +5,8 @@ import test from "node:test";
 import herdrIntegration, {
 	herdrIntegrationPath,
 	parseHerdrIntegrationStatus,
-	withHerdrBlocked,
 } from "../extensions/herdr-integration.ts";
+import { withHerdrBlocked } from "../extensions/herdr-client.ts";
 
 test("parses official Herdr Pi integration states", () => {
 	assert.equal(parseHerdrIntegrationStatus("pi: current (v2)").state, "current");

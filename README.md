@@ -28,6 +28,11 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - แจ้งเมื่อ integration ยังไม่ติดตั้งหรือล้าสมัย โดยไม่คัดลอก reporter ของ Herdr มา maintain เอง
   - ใช้ `/mypi-herdr-status` เพื่อตรวจทันที และ `/mypi-herdr-setup` เพื่อติดตั้งหรืออัปเดตผ่าน official installer หลังยืนยัน
   - bridge `rpiv:ask-user:blocked` และ permission dialogs ของ `my-pi` ไปยัง `herdr:blocked` เพื่อให้ Herdr แสดงสถานะและเล่นเสียง request
+- `worker-mode.ts`
+  - แยก session ที่ Coordinator สร้างออกจาก session ปกติของผู้ใช้ โดยดูจาก environment `MYPI_WORKER=1`
+  - ปิด steering choice, Plannotator review และ startup dependency check ใน worker เพราะไม่มีผู้ใช้เฝ้า pane
+  - guardrails ยังถามอนุมัติเหมือนเดิม และสถานะถูก bridge ไป Herdr ให้ Coordinator เห็นและส่งต่อผู้ใช้
+  - ใช้ `/mypi-worker-status` เพื่อดูว่า session ปัจจุบันเป็น worker หรือไม่
 - `local/extensions/azure-devops/`
   - maintain source ไว้ใน repository นี้ แต่ไม่โหลดจาก global package
   - แต่ละ trusted project ต้องชี้ path นี้ผ่าน `.pi/settings.json` และมี `.pi/azure-devops.json`

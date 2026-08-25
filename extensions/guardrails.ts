@@ -2,7 +2,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { withHerdrBlocked } from "./herdr-integration.ts";
+import { withHerdrBlocked } from "./herdr-client.ts";
 
 type MutationKind = "external-write" | "unknown-write" | "secret-read" | "external-upload";
 

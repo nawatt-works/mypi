@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-07-27 08:55<br>
-> **Updated:** 2026-08-24 19:36<br>
+> **Updated:** 2026-08-25 09:19<br>
 > **Purpose:** แสดงภาพรวมของ design notes และ implementation history ที่ repository `my-pi` เป็นเจ้าของ
 
 `docs/` เป็น project documentation ของ repository นี้ ไม่ใช่ workspace-wide artifact store และไม่ใช่ default path สำหรับ plan, note หรือ output จาก AI tool/skill/harness อื่น
@@ -11,6 +11,7 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
+| 2026-08-25 09:19 | 2026-08-25 09:19 | active | [Pi Coordinator บน Herdr](plans/pi-herdr-coordinator.md) | พัฒนา Coordinator ที่สร้างและควบคุม Workers ผ่าน Herdr โดยเริ่มจาก probe วัด runtime primitive ก่อนเขียน extension |
 | 2026-08-23 11:19 | 2026-08-22 12:40 | superseded | [แยก Workflow Plan, Continuity Ledger และ Plannotator Review](plans/flexible-planning-continuity.md) | implementation รุ่น managed fallback; ต่อมาถูกแทนด้วย pointer-only และ dual session/workspace tracking |
 | 2026-08-09 19:25 | 2026-08-09 11:10 | complete | [ย้ายและขยาย Azure DevOps extension](plans/azure-devops-extension-crud.md) | เพิ่ม opt-in Work Item CRUD; ปัจจุบัน maintain ที่ `local/extensions/azure-devops/` และให้แต่ละ project โหลดเอง |
 | 2026-08-23 11:19 | 2026-08-09 09:02 | superseded | [ให้ AI ตัดสินใจเปิด Plannotator](plans/ai-auto-plannotator.md) | implementation เดิมที่ผูกงานใหญ่กับ Plannotator; ดู current design ใน Persistent Todo + Handoff |
@@ -20,13 +21,14 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
-| 2026-08-24 19:36 | 2026-08-23 22:27 | รอตัดสินใจพัฒนา | [Runtime-negotiated Orchestration ผ่าน Pi และ Herdr](notes/runtime-negotiated-herdr-orchestration.md) | กำหนด Pi Coordinator ที่สร้าง Workers และ artifact handoff ระหว่างสนทนา โดยใช้ config เฉพาะ runtime policy |
+| 2026-08-25 09:19 | 2026-08-23 22:27 | อนุมัติให้พัฒนา | [Runtime-negotiated Orchestration ผ่าน Pi และ Herdr](notes/runtime-negotiated-herdr-orchestration.md) | กำหนด Pi Coordinator ที่สร้าง Workers และ artifact handoff ระหว่างสนทนา โดยใช้ config เฉพาะ runtime policy |
 | 2026-08-23 11:19 | 2026-07-27 02:31 | ดำเนินการบางส่วน | [Extension Review](notes/extensions-review.md) | ประเมิน third-party extensions และแนวทางปรับ Pi setup |
 | 2026-08-22 11:57 | 2026-08-21 09:43 | อยู่ระหว่างวิเคราะห์ | [ทิศทางพัฒนา Pi โดยเรียนรู้จาก OMP](notes/pi-omp-context-code-intelligence-tui.md) | สรุป context governance, benchmark และ short-cycle candidates สำหรับ code intelligence, orchestration และ OMP-inspired TUI |
 | 2026-08-23 11:19 | 2026-07-27 01:41 | นำมาใช้แล้ว | [Persistent Todo + Handoff](notes/persistent-todo-handoff.md) | แยก AI-only session state ออกจาก workspace plan และ Plannotator review |
 
 ## Change log
 
+- 2026-08-25 09:19 — อนุมัติให้พัฒนา Pi Coordinator บน Herdr และเปิดแผนที่เริ่มจาก probe phase พร้อม worker mode แทนการแยก repository
 - 2026-08-24 19:36 — เพิ่มหลัก bounded delegation, explicit ownership, correction เดิม, execution/assurance separation และ runtime identity ในแบบ Pi/Herdr orchestration
 - 2026-08-23 22:27 — บันทึกข้อกำหนด runtime-negotiated orchestration ผ่าน Pi/Herdr และพัก implementation ไว้รอตัดสินใจ
 - 2026-08-23 11:19 — แยก AI-only plan ไปเก็บใน Pi session และให้ explicit `filePath` เป็นเส้นแบ่ง workspace artifact

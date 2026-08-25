@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { extname, isAbsolute, relative, resolve, sep } from "node:path";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { isWorkerMode } from "./worker-mode.ts";
 
 export type ContinuityMode = "automatic" | "off";
 export type PlannotatorPhase = "idle" | "planning" | "executing";
@@ -237,7 +238,9 @@ export default function planningWorkflow(pi: ExtensionAPI): void {
 		setToolEnabled(START_TOOL, !activePlan);
 		setToolEnabled(UPDATE_TOOL, activePlan?.storage === "session");
 		setToolEnabled(FINISH_TOOL, activePlan !== undefined);
-		setToolEnabled(REVIEW_TOOL, activePlan?.storage !== "session");
+		// Plannotator opens a browser for a human reviewer. A worker has none, so
+		// review stays with the Coordinator and the user.
+		setToolEnabled(REVIEW_TOOL, !isWorkerMode() && activePlan?.storage !== "session");
 	}
 
 	function persistPlan(action: "activate" | "update", plan: ActiveWorkPlan): void;

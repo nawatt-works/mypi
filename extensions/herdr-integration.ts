@@ -3,6 +3,7 @@ import { dirname, join, resolve } from "node:path";
 import { readFile, mkdir, rename, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { isHerdrSession, runHerdr, withHerdrBlocked } from "./herdr-client.ts";
 
 const CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const CHECK_TIMEOUT_MS = 10_000;
@@ -17,23 +18,6 @@ export type HerdrIntegrationStatus = {
 };
 
 type StatusCache = HerdrIntegrationStatus & { checkedAt: string };
-
-type EventBus = {
-	emit(channel: string, data: unknown): void;
-};
-
-export async function withHerdrBlocked<T>(
-	events: EventBus,
-	label: string,
-	operation: () => Promise<T>,
-): Promise<T> {
-	events.emit("herdr:blocked", { active: true, label });
-	try {
-		return await operation();
-	} finally {
-		events.emit("herdr:blocked", { active: false });
-	}
-}
 
 export function parseHerdrIntegrationStatus(output: string): HerdrIntegrationStatus {
 	const line = output
@@ -52,10 +36,6 @@ export function parseHerdrIntegrationStatus(output: string): HerdrIntegrationSta
 export function herdrIntegrationPath(environment: NodeJS.ProcessEnv = process.env): string {
 	const agentDirectory = environment.PI_CODING_AGENT_DIR?.trim() || join(homedir(), ".pi", "agent");
 	return resolve(agentDirectory, "extensions", "herdr-agent-state.ts");
-}
-
-function herdrExecutable(environment: NodeJS.ProcessEnv = process.env): string {
-	return environment.HERDR_BIN_PATH?.trim() || "herdr";
 }
 
 async function readCache(): Promise<StatusCache | undefined> {
@@ -86,20 +66,18 @@ function cacheIsFresh(cache: StatusCache | undefined): boolean {
 }
 
 async function queryIntegrationStatus(pi: ExtensionAPI): Promise<HerdrIntegrationStatus> {
-	try {
-		const result = await pi.exec(herdrExecutable(), ["integration", "status"], {
-			cwd: SETUP_ROOT,
-			timeout: CHECK_TIMEOUT_MS,
-		});
-		if (result.killed) return { state: "unavailable", detail: "Herdr integration status timed out" };
-		const output = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-		if (result.code !== 0) {
-			return { state: "unavailable", detail: output || `herdr exited with code ${result.code}` };
-		}
-		return parseHerdrIntegrationStatus(output);
-	} catch (error) {
-		return { state: "unavailable", detail: error instanceof Error ? error.message : String(error) };
+	const result = await runHerdr(pi, ["integration", "status"], {
+		cwd: SETUP_ROOT,
+		timeout: CHECK_TIMEOUT_MS,
+	});
+	if (result.killed) return { state: "unavailable", detail: "Herdr integration status timed out" };
+	if (!result.ok) {
+		return {
+			state: "unavailable",
+			detail: result.output || `herdr exited with code ${result.code}`,
+		};
 	}
+	return parseHerdrIntegrationStatus(result.output);
 }
 
 function statusMessage(status: HerdrIntegrationStatus): { message: string; type: "info" | "warning" | "error" } {
@@ -143,7 +121,7 @@ export default function herdrIntegration(pi: ExtensionAPI) {
 	});
 
 	pi.on("session_start", (_event, ctx) => {
-		if (!ctx.hasUI || process.env.HERDR_ENV !== "1") return;
+		if (!ctx.hasUI || !isHerdrSession()) return;
 
 		void (async () => {
 			const cache = await readCache();
@@ -200,13 +178,15 @@ export default function herdrIntegration(pi: ExtensionAPI) {
 				return;
 			}
 
-			const result = await pi.exec(herdrExecutable(), ["integration", "install", "pi"], {
+			const result = await runHerdr(pi, ["integration", "install", "pi"], {
 				cwd: SETUP_ROOT,
 				timeout: CHECK_TIMEOUT_MS,
 			});
-			if (result.killed || result.code !== 0) {
-				const detail = [result.stdout, result.stderr].filter(Boolean).join("\n").trim();
-				ctx.ui.notify(`ติดตั้ง Herdr Pi integration ไม่สำเร็จ${detail ? `\n${detail}` : ""}`, "error");
+			if (!result.ok) {
+				ctx.ui.notify(
+					`ติดตั้ง Herdr Pi integration ไม่สำเร็จ${result.output ? `\n${result.output}` : ""}`,
+					"error",
+				);
 				return;
 			}
 
