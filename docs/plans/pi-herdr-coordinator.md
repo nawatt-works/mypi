@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-08-25 09:19<br>
-> **Updated:** 2026-08-25 11:31<br>
+> **Updated:** 2026-08-25 12:34<br>
 > **Purpose:** พัฒนา Coordinator layer ที่ให้ Pi สร้างและควบคุม Workers ผ่าน Herdr โดยเริ่มจาก probe เพื่อวัดว่า runtime primitive เชื่อถือได้จริงแค่ไหนก่อนเขียน extension
 
 ## Context
@@ -96,7 +96,7 @@
 - [x] สร้าง registry ที่เก็บ task, agent name, pane, worktree, requested harness, observed kind, identity evidence และ artifact references
 - [x] สร้าง tools `mypi_preview_worker`, `mypi_spawn_worker`, `mypi_handoff`, `mypi_collect` พร้อม approval gate และ evidence check
 - [x] เพิ่ม skill `herdr-orchestration` สำหรับ delegation judgment, handoff contract และ verification discipline
-- [ ] Verification: ทำ research แล้วส่งต่อ implement ครบหนึ่งรอบกับงานจริง โดย Coordinator ไม่เคยรับคำสรุปของ Worker เป็นหลักฐาน
+- [x] Verification: ทำ research แล้วส่งต่อ implement ครบหนึ่งรอบกับงานจริง โดย Coordinator ไม่เคยรับคำสรุปของ Worker เป็นหลักฐาน
 
 ### บันทึกระหว่าง Phase 1
 
@@ -126,12 +126,39 @@ registry ใช้ `herdr agent list` เป็น source of truth ของ pro
 
 ทดสอบ chain เต็มกับ Worker จริง: preview ไม่สร้างอะไร, spawn สร้าง pane และ agent หลังอนุมัติ, handoff ส่งถึงจริง (`seq` 1719 → 1721), collect ผ่านเมื่อ artifact มีจริงและไม่ผ่านเมื่อ artifact หาย
 
+### ผลการ verification ปลาย Phase 1
+
+รันงานจริงใน `lab/pi-orchestration` เมื่อ 2026-08-25 โดยผู้ใช้เปิด Pi session เป็น Coordinator เอง และให้โจทย์แบบภาษาธรรมชาติที่ไม่ระบุชื่อ tool หรือลำดับขั้น งานคือแก้ `parseDuration` ที่ไม่รองรับ `"2h"` และปล่อยค่าผิดรูปแบบผ่านไปเงียบ ๆ
+
+ทีมที่เกิดขึ้นจริง: `timeout-auditor` (Claude Code) เขียนรายงานวิเคราะห์ แล้ว `timeout-implementer` (Codex) อ่านรายงานนั้นแล้วแก้ code ทั้งสองผ่านการอนุมัติของผู้ใช้ก่อน spawn
+
+พฤติกรรมที่ยืนยันได้:
+
+- เรียก `mypi_preview_worker` ก่อน `mypi_spawn_worker` ทุกครั้ง พร้อม rationale ที่เป็นรูปธรรมและ expected artifacts
+- task ที่ส่งให้ Worker มี exact ownership, ไฟล์ที่ห้ามแตะ, base SHA ที่เจาะจง, acceptance criteria, verification ที่ต้องรัน และเงื่อนไขให้หยุดถาม
+- ส่งต่องานด้วย exact SHA ไม่ใช่คำอธิบายให้ Worker ไปค้นเอง
+- `mypi_collect` รอบแรกคืน incomplete ตอน Worker ยังติด approval และ Coordinator ส่ง correction กลับ session เดิมแทนการสร้าง Worker ใหม่
+- เมื่อ Worker `blocked` Coordinator แสดง pane id ให้ผู้ใช้ไปกดเอง ไม่กดแทนและไม่ปิด guardrail ของ Worker
+- ตรวจ commit ด้วย `git diff-tree` และ parent SHA จริง ไม่ใช้คำสรุปของ Worker เป็นหลักฐาน
+- ไม่ปิด Worker ที่เสร็จงานแล้วทิ้ง เก็บไว้ idle เผื่อ correction
+
+ผลที่ตรวจซ้ำอิสระหลังจบงาน: `main` ยังอยู่ที่ `e1d2def` ไม่มีการ merge, implementation commit `04d1a04` แก้เฉพาะ `src/parse-duration.ts` กับ `tests/parse-duration.test.ts` โดยมี parent เป็น report commit `c518700`, working tree สะอาด, `npm test` ผ่าน 4/4 และ behavior probe ตรงกับทุก decision ที่ผู้ใช้เลือกไว้ (`"2h"` → 7200000, `"abc"`/`"-5s"`/`"1.5m"`/`""` throw TypeError, `undefined` ใช้ fallback)
+
+### ข้อบกพร่องที่พบจากการรันงานจริง
+
+**ไม่มี tool ให้รอ Worker** — เมื่อ Worker ไปติด approval แล้วผู้ใช้มากดทีหลัง Coordinator ไม่มีวิธีรอต่อ จึงประดิษฐ์ polling loop เอง (`sleep 15; herdr agent read ... | tail -180` ซ้ำ ๆ) ทั้งที่ Herdr มี `agent wait --until` อยู่แล้ว ต้นทุนของช่องว่างนี้คือ context และเงินที่หมดไปกับการอ่านหน้าจอซ้ำ session นี้ใช้ไป 2.85 ดอลลาร์กับงานขนาดเล็กมาก จึงควรเพิ่ม `mypi_wait_worker` ที่ห่อ `agent wait --until` ใน Phase 2
+
+**Codex ต้องให้ผู้ใช้อนุมัติ hooks ก่อนจึงรายงาน identity** — Codex worker ค้างที่ `detection` จนกว่าผู้ใช้จะเลือก trust hooks ในหน้าจอของมัน หลังจากนั้น `agent_session` (`kind: "id"`, `source: "herdr:codex"`) จึงปรากฏและ identity ขยับเป็น `lifecycle` Coordinator ควรรู้ว่านี่ไม่ใช่ integration เสีย
+
+**จำนวน approval ต่อหนึ่งงานสูง** — งานสองบทบาทนี้ต้องให้ผู้ใช้กดอนุมัติในหน้าจอ Worker หลายครั้ง (Codex trust directory, trust hooks, `git switch -c`, `git add`, `git commit`, `git rebase --onto`) นอกเหนือจากการอนุมัติ spawn สองครั้ง เป็นต้นทุนความสนใจของผู้ใช้ที่ต้องพิจารณาใน Phase 2 โดยไม่ลดทอน guardrail
+
 ### Phase 2 — Assurance และ worktree
 
 - [ ] แยก execution decision กับ assurance decision เป็นคนละ state
 - [ ] รองรับ correction กลับ session เดิมโดยรักษา ownership และ worktree เดิม
 - [ ] เพิ่ม worktree lifecycle พร้อม `/mypi-orchestrate-status` และ `/mypi-orchestrate-cleanup`
 - [ ] จัดการ `blocked` โดย surface ให้ผู้ใช้พร้อม pane ID และห้ามตอบแทน
+- [ ] เพิ่ม `mypi_wait_worker` ที่ห่อ `agent wait --until` เพื่อเลิก polling loop ที่ Coordinator ประดิษฐ์เอง
 - [ ] Verification: ทดสอบ `done`, `blocked`, timeout, missing artifact, scope drift และ Worker exit
 
 ### Phase 3 — Parallel workers
@@ -174,6 +201,7 @@ probe รันสองรอบเมื่อ 2026-08-25 09:22–09:30 ด้
 
 ## Change log
 
+- 2026-08-25 12:34 — ปิด Phase 1 หลัง verification กับงานจริงผ่านครบ และบันทึกช่องว่างเรื่องการรอ Worker, identity ของ Codex และจำนวน approval ต่องาน
 - 2026-08-25 11:31 — เพิ่ม skill `herdr-orchestration` และยืนยันว่า Pi session จริงโหลด skill จาก package ได้
 - 2026-08-25 11:12 — เพิ่ม Coordinator tools ครบสี่ตัวและรัดกฎ evidence ให้ artifact ที่ตกลงไว้ต้องผ่านครบ
 - 2026-08-25 10:58 — เพิ่ม worker registry พร้อม identity reconciliation และยืนยันกับ Worker จริงทั้ง confirmed, mismatch และ gone
