@@ -8,6 +8,8 @@ import {
 	reconcileWorkers,
 	resolveIdentity,
 	restoreRegistry,
+	assuranceMet,
+	restoreAssurance,
 	type WorkerRecord,
 } from "../extensions/orchestration-registry.ts";
 
@@ -170,4 +172,39 @@ test("refuses names Herdr would reject and duplicate registrations", () => {
 	assert.throws(() => registry.register({ name: "Researcher", task: "t", requestedHarness: "pi" }), /valid Herdr agent name/);
 	registry.register({ name: "researcher", task: "t", requestedHarness: "pi" });
 	assert.throws(() => registry.register({ name: "researcher", task: "t", requestedHarness: "pi" }), /already registered/);
+});
+
+test("keeps the assurance decision apart from how many workers ran", () => {
+	const { pi, entries } = fakePi();
+	const registry = createWorkerRegistry(pi);
+
+	assert.equal(registry.assurance().level, "coordinator");
+	assert.equal(assuranceMet(registry.assurance()), false, "no verified evidence yet");
+
+	registry.recordVerified("implementer");
+	assert.equal(assuranceMet(registry.assurance()), true);
+
+	// Raising the bar does not discard evidence already collected.
+	registry.setAssurance("independent-review", "แก้ code ที่ผู้ใช้พึ่งพา");
+	assert.deepEqual(registry.assurance().verifiedBy, ["implementer"]);
+	assert.equal(assuranceMet(registry.assurance()), false, "one worker cannot review its own work");
+
+	registry.recordVerified("reviewer");
+	assert.equal(assuranceMet(registry.assurance()), true);
+
+	// A human gate never closes by itself.
+	registry.setAssurance("human-approval", "ผู้ใช้ขอตรวจเอง");
+	assert.equal(assuranceMet(registry.assurance()), false);
+
+	const replayed = restoreAssurance(entries);
+	assert.equal(replayed.level, "human-approval");
+	assert.deepEqual(replayed.verifiedBy, ["implementer", "reviewer"]);
+});
+
+test("assurance entries never leak into the worker mapping", () => {
+	const { pi, entries } = fakePi();
+	const registry = createWorkerRegistry(pi);
+	registry.setAssurance("independent-review", "r");
+	registry.recordVerified("ghost");
+	assert.deepEqual(restoreRegistry(entries), []);
 });

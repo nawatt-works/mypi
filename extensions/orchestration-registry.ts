@@ -75,6 +75,26 @@ export type HerdrAgentSnapshot = {
 	agent_session?: { value?: string; kind?: string };
 };
 
+/**
+ * How much evidence the Coordinator owes the user before reporting done. Kept
+ * apart from the execution decision on purpose: a one-Worker task can still
+ * need independent review, and a three-Worker task may not.
+ */
+export type AssuranceLevel = "coordinator" | "independent-review" | "human-approval";
+
+export type AssuranceState = {
+	level: AssuranceLevel;
+	reason: string;
+	/** Workers whose collected evidence passed, in order. */
+	verifiedBy: string[];
+};
+
+export const DEFAULT_ASSURANCE: AssuranceState = {
+	level: "coordinator",
+	reason: "ค่าเริ่มต้น: Coordinator ตรวจหลักฐานเองเพียงพอ",
+	verifiedBy: [],
+};
+
 export type RegisterWorkerInput = {
 	name: string;
 	task: string;
@@ -88,7 +108,9 @@ type RegistryEvent =
 	| { action: "register"; worker: WorkerRecord }
 	| { action: "update"; name: string; patch: Partial<WorkerRecord> }
 	| { action: "artifact"; name: string; artifact: ArtifactRef }
-	| { action: "release"; name: string };
+	| { action: "release"; name: string }
+	| { action: "assurance"; level: AssuranceLevel; reason: string }
+	| { action: "verified"; name: string };
 
 /**
  * Turn any label into a name Herdr accepts, unique among the names already
@@ -141,6 +163,7 @@ export function restoreRegistry(entries: readonly unknown[]): WorkerRecord[] {
 		const data = entry.data;
 		if (!data || typeof data !== "object") continue;
 
+		if (data.action === "assurance" || data.action === "verified") continue;
 		if (data.action === "register" && data.worker?.name) {
 			workers.set(data.worker.name, { ...data.worker, artifacts: [...(data.worker.artifacts ?? [])] });
 			continue;
@@ -200,6 +223,32 @@ export function reconcileWorkers(
 	});
 }
 
+/** Replay only the assurance decisions from a session branch. */
+export function restoreAssurance(entries: readonly unknown[]): AssuranceState {
+	let state: AssuranceState = { ...DEFAULT_ASSURANCE, verifiedBy: [] };
+	for (const rawEntry of entries) {
+		const entry = rawEntry as { type?: string; customType?: string; data?: RegistryEvent };
+		if (entry.type !== "custom" || entry.customType !== REGISTRY_ENTRY) continue;
+		const data = entry.data;
+		if (data?.action === "assurance") {
+			state = { level: data.level, reason: data.reason, verifiedBy: state.verifiedBy };
+		} else if (data?.action === "verified" && !state.verifiedBy.includes(data.name)) {
+			state = { ...state, verifiedBy: [...state.verifiedBy, data.name] };
+		}
+	}
+	return state;
+}
+
+/**
+ * Whether the agreed assurance level has been met. `human-approval` never
+ * settles on its own: only the user can close it.
+ */
+export function assuranceMet(state: AssuranceState): boolean {
+	if (state.level === "human-approval") return false;
+	if (state.level === "independent-review") return new Set(state.verifiedBy).size >= 2;
+	return state.verifiedBy.length > 0;
+}
+
 export type WorkerRegistry = {
 	list(): WorkerRecord[];
 	get(name: string): WorkerRecord | undefined;
@@ -208,6 +257,9 @@ export type WorkerRegistry = {
 	addArtifact(name: string, artifact: ArtifactRef): WorkerRecord | undefined;
 	release(name: string): void;
 	restore(entries: readonly unknown[]): void;
+	assurance(): AssuranceState;
+	setAssurance(level: AssuranceLevel, reason: string): AssuranceState;
+	recordVerified(name: string): AssuranceState;
 	/** Refresh observed identity and liveness from Herdr. */
 	refresh(): Promise<WorkerRecord[]>;
 };
@@ -219,6 +271,7 @@ export type WorkerRegistry = {
  */
 export function createWorkerRegistry(pi: Pick<ExtensionAPI, "appendEntry" | "exec">): WorkerRegistry {
 	let workers: WorkerRecord[] = [];
+	let assurance: AssuranceState = { ...DEFAULT_ASSURANCE, verifiedBy: [] };
 
 	const record = (event: RegistryEvent) => pi.appendEntry(REGISTRY_ENTRY, event);
 	const find = (name: string) => workers.find((worker) => worker.name === name);
@@ -287,6 +340,23 @@ export function createWorkerRegistry(pi: Pick<ExtensionAPI, "appendEntry" | "exe
 
 		restore(entries) {
 			workers = restoreRegistry(entries);
+			assurance = restoreAssurance(entries);
+		},
+
+		assurance: () => ({ ...assurance, verifiedBy: [...assurance.verifiedBy] }),
+
+		setAssurance(level, reason) {
+			assurance = { level, reason, verifiedBy: assurance.verifiedBy };
+			record({ action: "assurance", level, reason });
+			return { ...assurance, verifiedBy: [...assurance.verifiedBy] };
+		},
+
+		recordVerified(name) {
+			if (!assurance.verifiedBy.includes(name)) {
+				assurance = { ...assurance, verifiedBy: [...assurance.verifiedBy, name] };
+				record({ action: "verified", name });
+			}
+			return { ...assurance, verifiedBy: [...assurance.verifiedBy] };
 		},
 
 		async refresh() {

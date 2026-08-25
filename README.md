@@ -39,7 +39,11 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - `mypi_spawn_worker` ขออนุมัติจากผู้ใช้ทุกครั้งก่อนสร้าง pane และ agent พร้อมตรวจ kind กับ Herdr จริง
   - `mypi_handoff` ส่งงานหรือ correction กลับ session เดิม แล้วยืนยันการส่งถึงจาก `state_change_seq`
   - `mypi_collect` รับผลงานเมื่อ artifact ที่ตกลงไว้ผ่านครบเท่านั้น สถานะ lifecycle เป็นได้แค่หลักฐานประกอบ
+  - `mypi_wait_worker` รอ Worker ผ่าน `herdr agent wait` แทนการวนอ่านหน้าจอ
+  - `mypi_set_assurance` บันทึกระดับหลักฐานที่ต้องมีก่อนรายงานว่าเสร็จ แยกจากการตัดสินใจว่าจะใช้ Worker กี่ตัว
+  - spawn ขอ Git worktree ต่อ Worker ได้ และ worktree จะไม่ถูกลบอัตโนมัติ
   - ใช้ `/mypi-orchestrate-status` เพื่อดู Worker, identity และ artifact references ที่บันทึกไว้
+  - ใช้ `/mypi-orchestrate-cleanup` เพื่อลบ worktree ทีละรายการหลังยืนยัน โดยข้ามตัวที่ Worker ยังทำงานอยู่หรือมีงานค้างไม่ commit
 - `local/extensions/azure-devops/`
   - maintain source ไว้ใน repository นี้ แต่ไม่โหลดจาก global package
   - แต่ละ trusted project ต้องชี้ path นี้ผ่าน `.pi/settings.json` และมี `.pi/azure-devops.json`

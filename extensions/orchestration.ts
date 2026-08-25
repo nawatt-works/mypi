@@ -1,14 +1,18 @@
 import { stat } from "node:fs/promises";
-import { isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { herdrCallerContext, isHerdrSession, runHerdr, withHerdrBlocked } from "./herdr-client.ts";
 import {
+	assuranceMet,
 	createWorkerRegistry,
 	normalizeWorkerName,
 	type ArtifactRef,
 	type WorkerRecord,
 	type WorkerRegistry,
+	type WorktreeRef,
+	type AssuranceLevel,
+	type AssuranceState,
 } from "./orchestration-registry.ts";
 import { WORKER_ENV } from "./worker-mode.ts";
 
@@ -16,12 +20,15 @@ const PREVIEW_TOOL = "mypi_preview_worker";
 const SPAWN_TOOL = "mypi_spawn_worker";
 const HANDOFF_TOOL = "mypi_handoff";
 const COLLECT_TOOL = "mypi_collect";
-const ORCHESTRATION_TOOLS = [PREVIEW_TOOL, SPAWN_TOOL, HANDOFF_TOOL, COLLECT_TOOL];
+const WAIT_TOOL = "mypi_wait_worker";
+const ASSURANCE_TOOL = "mypi_set_assurance";
+const ORCHESTRATION_TOOLS = [PREVIEW_TOOL, SPAWN_TOOL, HANDOFF_TOOL, COLLECT_TOOL, WAIT_TOOL, ASSURANCE_TOOL];
 
 const SPAWN_TIMEOUT_MS = 60_000;
 const SPAWN_RETRIES = 4;
 const SHELL_SETTLE_MS = 1_500;
 const DEFAULT_PROMPT_TIMEOUT_MS = 600_000;
+const DEFAULT_WAIT_TIMEOUT_MS = 900_000;
 
 /**
  * Harness kinds come from the installed Herdr binary, never from a list kept
@@ -104,6 +111,55 @@ async function gitRefExists(pi: ExtensionAPI, cwd: string, ref: string): Promise
 	}
 }
 
+/**
+ * The repository a worktree was created from. Needed because closing a Worker's
+ * pane also closes the Herdr workspace the worktree opened, after which only
+ * Git can still remove the checkout.
+ */
+async function worktreeSourceRepo(pi: ExtensionAPI, path: string): Promise<string | undefined> {
+	try {
+		const result = await pi.exec("git", ["rev-parse", "--path-format=absolute", "--git-common-dir"], {
+			cwd: path,
+			timeout: 10_000,
+		});
+		const commonDir = result.stdout.trim();
+		if (result.code !== 0 || !commonDir) return undefined;
+		return dirname(commonDir);
+	} catch {
+		return undefined;
+	}
+}
+
+async function worktreeState(
+	pi: ExtensionAPI,
+	path: string,
+): Promise<{ exists: boolean; dirty: number; head?: string; detail?: string }> {
+	try {
+		const status = await pi.exec("git", ["status", "--porcelain"], { cwd: path, timeout: 10_000 });
+		if (status.code !== 0) {
+			return { exists: false, dirty: 0, detail: status.stderr.trim() || `git exited with ${status.code}` };
+		}
+		const head = await pi.exec("git", ["log", "-1", "--format=%h %s"], { cwd: path, timeout: 10_000 });
+		const dirty = status.stdout.split("\n").filter((line) => line.trim().length > 0).length;
+		return { exists: true, dirty, head: head.stdout.trim() || undefined };
+	} catch (error) {
+		return { exists: false, dirty: 0, detail: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+function describeAssurance(state: AssuranceState): string {
+	const met = assuranceMet(state);
+	const verified = state.verifiedBy.length ? state.verifiedBy.join(", ") : "ยังไม่มี";
+	if (met) return `assurance: ${state.level} — เพียงพอแล้ว (ตรวจผ่านจาก ${verified})`;
+	if (state.level === "human-approval") {
+		return `assurance: human-approval — ต้องให้ผู้ใช้อนุมัติผลก่อนถือว่าจบ (ตรวจผ่านจาก ${verified})`;
+	}
+	if (state.level === "independent-review") {
+		return `assurance: independent-review — ต้องมี Worker อีกตัวที่ไม่ได้ผลิตงานนี้ตรวจซ้ำ (ตรวจผ่านจาก ${verified})`;
+	}
+	return `assurance: ${state.level} — ยังไม่มีหลักฐานที่ตรวจผ่าน`;
+}
+
 export default function orchestration(pi: ExtensionAPI): void {
 	const registry: WorkerRegistry = createWorkerRegistry(pi);
 
@@ -141,10 +197,84 @@ export default function orchestration(pi: ExtensionAPI): void {
 				return;
 			}
 			const workers = await registry.refresh();
-			ctx.ui.notify(
-				workers.length ? workers.map(describeWorker).join("\n\n") : "ยังไม่มี Worker ใน session นี้",
-				"info",
-			);
+			const body = workers.length ? workers.map(describeWorker).join("\n\n") : "ยังไม่มี Worker ใน session นี้";
+			ctx.ui.notify(`${describeAssurance(registry.assurance())}\n\n${body}`, "info");
+		},
+	});
+
+	pi.registerCommand("mypi-orchestrate-cleanup", {
+		description: "ตรวจและลบ Git worktree ของ Worker ทีละรายการหลังยืนยัน",
+		handler: async (_args, ctx) => {
+			if (!ctx.hasUI) return;
+			if (!isHerdrSession()) {
+				ctx.ui.notify("Pi ไม่ได้รันอยู่ใต้ Herdr จึงไม่มี worktree ให้จัดการ", "warning");
+				return;
+			}
+			const workers = (await registry.refresh()).filter((worker) => worker.worktree);
+			if (workers.length === 0) {
+				ctx.ui.notify("ไม่มี Worker ที่ใช้ worktree ใน session นี้", "info");
+				return;
+			}
+
+			for (const worker of workers) {
+				const tree = worker.worktree;
+				if (!tree) continue;
+				const state = await worktreeState(pi, tree.path);
+				const summary = [
+					`worker: ${worker.name} [${worker.status}]`,
+					`branch: ${tree.branch ?? "-"}`,
+					`path: ${tree.path}`,
+					state.exists
+						? `head: ${state.head ?? "-"}\nuncommitted: ${state.dirty} รายการ`
+						: `อ่าน worktree ไม่ได้: ${state.detail ?? "ไม่ทราบสาเหตุ"}`,
+				].join("\n");
+
+				if (worker.status === "live") {
+					ctx.ui.notify(`ข้าม ${worker.name} เพราะ Worker ยังทำงานอยู่ ให้ปิด Worker ก่อน\n${summary}`, "warning");
+					continue;
+				}
+				if (state.dirty > 0) {
+					ctx.ui.notify(`ข้าม ${worker.name} เพราะมีงานที่ยังไม่ commit ${state.dirty} รายการ\n${summary}`, "warning");
+					continue;
+				}
+
+				const approved = await withHerdrBlocked(pi.events, `Remove worktree ${tree.path}`, () =>
+					ctx.ui.confirm(
+						`ลบ worktree ของ "${worker.name}"?`,
+						`${summary}\n\nคำสั่ง: herdr worktree remove --workspace ${tree.workspaceId ?? "-"}\nbranch และ commit ยังอยู่ใน repository ต้นทาง ลบเฉพาะ checkout`,
+					),
+				);
+				if (!approved) {
+					ctx.ui.notify(`ยกเลิกการลบ worktree ของ ${worker.name}`, "info");
+					continue;
+				}
+				let removed = tree.workspaceId
+					? await runHerdr(pi, ["worktree", "remove", "--workspace", tree.workspaceId], { timeout: 30_000 })
+					: undefined;
+
+				// Closing the Worker's pane closes the worktree's workspace, so the
+				// stored id can already be gone. Git still owns the checkout.
+				if (!removed?.ok) {
+					const sourceRepo = await worktreeSourceRepo(pi, tree.path);
+					if (!sourceRepo) {
+						ctx.ui.notify(
+							`ลบ worktree ของ ${worker.name} ไม่สำเร็จ: ${removed?.error?.message ?? removed?.output ?? "ไม่ทราบ repository ต้นทาง"}`,
+							"error",
+						);
+						continue;
+					}
+					const pruned = await pi.exec("git", ["worktree", "remove", tree.path], { cwd: sourceRepo, timeout: 30_000 });
+					if (pruned.code !== 0) {
+						ctx.ui.notify(
+							`ลบ worktree ของ ${worker.name} ไม่สำเร็จ: ${pruned.stderr.trim() || `git exited with ${pruned.code}`}`,
+							"error",
+						);
+						continue;
+					}
+				}
+				registry.update(worker.name, { worktree: undefined });
+				ctx.ui.notify(`ลบ worktree ของ ${worker.name} แล้ว โดย branch ${tree.branch ?? "-"} ยังอยู่`, "info");
+			}
 		},
 	});
 
@@ -216,6 +346,10 @@ export default function orchestration(pi: ExtensionAPI): void {
 			rationale: Type.String({ minLength: 1, description: "Concrete benefit expected from delegating this" }),
 			name: Type.Optional(Type.String({ description: "Preferred worker name" })),
 			cwd: Type.Optional(Type.String({ description: "Absolute working directory for the Worker; defaults to the current one" })),
+			worktree: Type.Optional(Type.Object({
+				branch: Type.String({ minLength: 1, description: "Branch to create for this Worker" }),
+				base: Type.Optional(Type.String({ description: "Exact base ref or SHA; defaults to the repository's current checkout" })),
+			}, { description: "Give this Worker its own Git worktree. Use it when a Worker writes code that must stay off the shared checkout." })),
 			harnessArgs: Type.Optional(Type.Array(Type.String(), { description: "Native arguments passed to the harness after --" })),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
@@ -228,6 +362,7 @@ export default function orchestration(pi: ExtensionAPI): void {
 				rationale: string;
 				name?: string;
 				cwd?: string;
+				worktree?: { branch: string; base?: string };
 				harnessArgs?: string[];
 			};
 			const kinds = await supportedKinds();
@@ -248,6 +383,9 @@ export default function orchestration(pi: ExtensionAPI): void {
 						`cwd: ${cwd}`,
 						`เหตุผล: ${input.rationale}`,
 						workerMode ? `worker mode: ${WORKER_ENV}=1` : "worker mode: ไม่ใช้ (ไม่ใช่ Pi)",
+						input.worktree
+							? `worktree: branch ${input.worktree.branch}${input.worktree.base ? ` จาก ${input.worktree.base}` : ""} (สร้าง workspace ใหม่ และจะไม่ถูกลบอัตโนมัติ)`
+							: "worktree: ใช้ checkout เดิม",
 						"",
 						"task:",
 						input.task,
@@ -258,17 +396,54 @@ export default function orchestration(pi: ExtensionAPI): void {
 				return { content: [{ type: "text", text: `ยกเลิกการสร้าง Worker "${name}"` }], details: { spawned: false } };
 			}
 
-			const caller = herdrCallerContext();
-			const split = await runHerdr(pi, [
-				"pane", "split",
-				...(caller.paneId ? ["--pane", caller.paneId] : ["--current"]),
-				"--direction", "right", "--cwd", cwd, "--no-focus",
-			]);
-			if (!split.ok) throw new Error(`สร้าง pane ไม่สำเร็จ: ${split.error?.message ?? split.output}`);
-			const paneId = (split.result as { pane?: { pane_id?: string } } | undefined)?.pane?.pane_id;
+			let paneId: string | undefined;
+			let workerCwd = cwd;
+			let worktree: WorktreeRef | undefined;
+
+			if (input.worktree) {
+				// A worktree opens its own workspace with a root pane; use that pane
+				// rather than splitting, so the Worker lives beside its checkout.
+				const created = await runHerdr(pi, [
+					"worktree", "create", "--cwd", cwd, "--branch", input.worktree.branch,
+					...(input.worktree.base ? ["--base", input.worktree.base] : []),
+					"--label", name,
+				], { timeout: 30_000 });
+				if (!created.ok) throw new Error(`สร้าง worktree ไม่สำเร็จ: ${created.error?.message ?? created.output}`);
+				const payload = created.result as {
+					worktree?: { path?: string; branch?: string };
+					workspace?: { workspace_id?: string };
+					root_pane?: { pane_id?: string };
+				} | undefined;
+				if (!payload?.worktree?.path || !payload.root_pane?.pane_id) {
+					throw new Error("Herdr ไม่ได้คืน path หรือ pane ของ worktree");
+				}
+				workerCwd = payload.worktree.path;
+				paneId = payload.root_pane.pane_id;
+				worktree = {
+					path: payload.worktree.path,
+					branch: payload.worktree.branch ?? input.worktree.branch,
+					workspaceId: payload.workspace?.workspace_id,
+				};
+			} else {
+				const caller = herdrCallerContext();
+				const split = await runHerdr(pi, [
+					"pane", "split",
+					...(caller.paneId ? ["--pane", caller.paneId] : ["--current"]),
+					"--direction", "right", "--cwd", cwd, "--no-focus",
+				]);
+				if (!split.ok) throw new Error(`สร้าง pane ไม่สำเร็จ: ${split.error?.message ?? split.output}`);
+				paneId = (split.result as { pane?: { pane_id?: string } } | undefined)?.pane?.pane_id;
+			}
 			if (!paneId) throw new Error("Herdr ไม่ได้คืน pane id");
 
-			registry.register({ name, task: input.task, requestedHarness: input.requestedHarness, paneId, cwd });
+			registry.register({
+				name,
+				task: input.task,
+				requestedHarness: input.requestedHarness,
+				paneId,
+				cwd: workerCwd,
+				worktree,
+			});
 
 			if (workerMode) {
 				// Pi refuses to share a CLI flag between extensions, so worker mode
@@ -295,8 +470,13 @@ export default function orchestration(pi: ExtensionAPI): void {
 
 			if (!started.ok) {
 				registry.update(name, { status: "gone" });
-				await runHerdr(pi, ["pane", "close", paneId]);
-				throw new Error(`เริ่ม ${input.requestedHarness} ไม่สำเร็จ: ${started.error?.message ?? started.output}`);
+				// Close a pane we split, but never remove a worktree: it may already
+				// hold work, and removal stays a decision the user makes.
+				if (!worktree) await runHerdr(pi, ["pane", "close", paneId]);
+				throw new Error([
+					`เริ่ม ${input.requestedHarness} ไม่สำเร็จ: ${started.error?.message ?? started.output}`,
+					worktree ? `worktree ${worktree.path} ยังอยู่ ให้ใช้ /mypi-orchestrate-cleanup เมื่อต้องการลบ` : "",
+				].filter(Boolean).join("\n"));
 			}
 
 			registry.update(name, { status: "live" });
@@ -390,6 +570,104 @@ export default function orchestration(pi: ExtensionAPI): void {
 	});
 
 	pi.registerTool({
+		name: ASSURANCE_TOOL,
+		label: "Set Assurance Level",
+		description:
+			"Record how much evidence this work owes the user before it can be reported done. This is a separate " +
+			"decision from how many Workers do the work: a single-Worker task can still need independent review, " +
+			"and a large team can be fine with your own verification. Raise it for risk or because the user asked.",
+		parameters: Type.Object({
+			level: Type.Union([
+				Type.Literal("coordinator"),
+				Type.Literal("independent-review"),
+				Type.Literal("human-approval"),
+			], { description: "coordinator: your own verified evidence is enough. independent-review: a Worker that did not produce the work must verify it. human-approval: the user must approve the result." }),
+			reason: Type.String({ minLength: 1, description: "Why this level, in terms of risk or an explicit user request" }),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+			const input = params as { level: AssuranceLevel; reason: string };
+			const state = registry.setAssurance(input.level, input.reason);
+			return {
+				content: [{ type: "text", text: `${describeAssurance(state)}\nเหตุผล: ${state.reason}` }],
+				details: { assurance: state, met: assuranceMet(state) },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: WAIT_TOOL,
+		label: "Wait For Worker",
+		description:
+			"Block until a Worker reaches a settled state instead of polling its screen. Use this whenever a Worker " +
+			"is still busy, or after asking the user to answer something in the Worker's pane. Reaching a state is " +
+			`not evidence that the work is done: verify with ${COLLECT_TOOL} afterwards.`,
+		parameters: Type.Object({
+			name: Type.String({ minLength: 1, description: "Worker name" }),
+			until: Type.Optional(Type.Array(
+				Type.Union([
+					Type.Literal("idle"),
+					Type.Literal("working"),
+					Type.Literal("blocked"),
+					Type.Literal("done"),
+					Type.Literal("unknown"),
+				]),
+				{ description: "States to wait for; omit to wait for any settled state (idle, done or blocked)" },
+			)),
+			timeoutMs: Type.Optional(Type.Number({ description: `Wait budget in ms (default ${DEFAULT_WAIT_TIMEOUT_MS})` })),
+		}),
+		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+			requireHerdr();
+			const input = params as { name: string; until?: string[]; timeoutMs?: number };
+			const worker = registry.get(input.name);
+			if (!worker) throw new Error(`ไม่พบ Worker "${input.name}" ใน session นี้`);
+
+			const timeout = input.timeoutMs ?? DEFAULT_WAIT_TIMEOUT_MS;
+			const waited = await runHerdr(pi, [
+				"agent", "wait", input.name,
+				...(input.until ?? []).flatMap((state) => ["--until", state]),
+				"--timeout", String(timeout),
+			], { timeout: timeout + 10_000 });
+
+			const current = await agentStatus(pi, input.name);
+			registry.update(input.name, { lastSeq: current.seq });
+
+			if (!waited.ok && !current.status) {
+				registry.update(input.name, { status: "gone" });
+				return {
+					content: [{ type: "text", text: `Worker "${input.name}" ไม่มีอยู่ใน Herdr แล้ว: ${waited.error?.message ?? waited.output}` }],
+					details: { reached: false, status: undefined, exited: true },
+				};
+			}
+			if (!waited.ok) {
+				return {
+					content: [{
+						type: "text",
+						text: [
+							`รอ "${input.name}" ไม่ถึงสถานะที่ต้องการภายใน ${timeout}ms (ตอนนี้ ${current.status ?? "unknown"})`,
+							"Worker อาจยังทำงานอยู่จริง ให้รอต่อหรือตรวจหน้าจอก่อนสรุปว่าค้าง",
+						].join("\n"),
+					}],
+					details: { reached: false, status: current.status, timedOut: true },
+				};
+			}
+
+			const lines = [`Worker "${input.name}" อยู่ในสถานะ ${current.status ?? "unknown"} (state_change_seq ${current.seq ?? "-"})`];
+			if (current.status === "blocked") {
+				lines.push(`กำลังรอผู้ใช้ที่ pane ${worker.paneId ?? "-"} ให้แสดงคำขอต่อผู้ใช้แทนการตอบแทน`);
+			}
+			if (current.status === "unknown") {
+				lines.push("Herdr แยกแยะสถานะไม่ได้ ซึ่งไม่ได้แปลว่างานเสร็จ");
+			}
+			lines.push(`สถานะไม่ใช่หลักฐานว่างานเสร็จ ให้ตรวจด้วย ${COLLECT_TOOL}`);
+
+			return {
+				content: [{ type: "text", text: lines.join("\n") }],
+				details: { reached: true, status: current.status, seq: current.seq },
+			};
+		},
+	});
+
+	pi.registerTool({
 		name: COLLECT_TOOL,
 		label: "Collect Worker Result",
 		description:
@@ -451,8 +729,10 @@ export default function orchestration(pi: ExtensionAPI): void {
 				for (const artifact of input.artifacts) {
 					registry.addArtifact(input.name, { ...artifact, producedBy: input.name });
 				}
+				registry.recordVerified(input.name);
 			}
 			registry.update(input.name, { lastSeq: current.seq });
+			const assurance = registry.assurance();
 
 			const report = items
 				.map((item) => `${item.satisfied ? "✓" : "✗"} ${item.description}${item.required ? "" : " (ประกอบ)"}${item.detail ? ` — ${item.detail}` : ""}`)
@@ -467,11 +747,12 @@ export default function orchestration(pi: ExtensionAPI): void {
 				verdict.complete
 					? "อ่าน artifact จริงก่อนตัดสินใจขั้นถัดไป ข้อความสรุปของ Worker ไม่ใช่หลักฐาน"
 					: `ส่ง correction กลับไปที่ ${input.name} ด้วย ${HANDOFF_TOOL} แทนการสร้าง Worker ใหม่ (artifact ที่ตกลงไว้ยังไม่ผ่าน ${missing.length} รายการ)`,
+				describeAssurance(assurance),
 			].filter(Boolean).join("\n");
 
 			return {
 				content: [{ type: "text", text }],
-				details: { complete: verdict.complete, items, status: current.status },
+				details: { complete: verdict.complete, items, status: current.status, assurance, assuranceMet: assuranceMet(assurance) },
 			};
 		},
 	});

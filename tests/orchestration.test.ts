@@ -213,3 +213,63 @@ test("refuses to orchestrate when Pi is not running under Herdr", async () => {
 		/ไม่ได้รันอยู่ใต้ Herdr/,
 	));
 });
+
+test("waits for a worker instead of polling its screen", async () => {
+	const fake = fakePi({
+		herdrResponses: {
+			"agent start": HELP_TEXT,
+			"agent wait": { result: { agent: { agent_status: "done" } } },
+			"agent get": { result: { agent: { agent_status: "done", state_change_seq: 42 } } },
+		},
+	});
+	orchestration(fake.pi);
+	const wait = fake.tools.get("mypi_wait_worker");
+	const spawnState = fake.handlers.get("session_start");
+	withHerdrEnv(() => spawnState?.({}, { sessionManager: { getBranch: () => [
+		{ type: "custom", customType: "mypi-worker-registry", data: { action: "register", worker: {
+			name: "dev", task: "t", requestedHarness: "pi", identity: "unknown", identityEvidence: "none",
+			status: "live", artifacts: [], paneId: "w7:pB", createdAt: "x", updatedAt: "x",
+		} } },
+	] } }));
+
+	const result = await withHerdrEnv(() => wait.execute("1", { name: "dev" }, undefined, undefined, {}));
+	assert.equal(result.details.reached, true);
+	assert.equal(result.details.status, "done");
+	assert.match(result.content[0].text, /mypi_collect/, "reaching a state is not evidence of finished work");
+
+	const waitCall = fake.calls.find((call) => call.args[1] === "wait");
+	assert.ok(waitCall, "must delegate the wait to herdr rather than sleeping");
+	assert.ok(waitCall.args.includes("--timeout"));
+});
+
+test("reports a blocked worker's pane instead of answering for the user", async () => {
+	const fake = fakePi({
+		herdrResponses: {
+			"agent wait": { result: { agent: { agent_status: "blocked" } } },
+			"agent get": { result: { agent: { agent_status: "blocked", state_change_seq: 7 } } },
+		},
+	});
+	orchestration(fake.pi);
+	withHerdrEnv(() => fake.handlers.get("session_start")?.({}, { sessionManager: { getBranch: () => [
+		{ type: "custom", customType: "mypi-worker-registry", data: { action: "register", worker: {
+			name: "dev", task: "t", requestedHarness: "pi", identity: "unknown", identityEvidence: "none",
+			status: "live", artifacts: [], paneId: "w7:pB", createdAt: "x", updatedAt: "x",
+		} } },
+	] } }));
+
+	const result = await withHerdrEnv(() =>
+		fake.tools.get("mypi_wait_worker").execute("1", { name: "dev", until: ["blocked"] }, undefined, undefined, {}),
+	);
+	assert.equal(result.details.status, "blocked");
+	assert.match(result.content[0].text, /w7:pB/);
+	assert.match(result.content[0].text, /แทนการตอบแทน/);
+});
+
+test("refuses to wait for a worker this session never registered", async () => {
+	const fake = fakePi();
+	orchestration(fake.pi);
+	await assert.rejects(
+		withHerdrEnv(() => fake.tools.get("mypi_wait_worker").execute("1", { name: "ghost" }, undefined, undefined, {})),
+		/ไม่พบ Worker/,
+	);
+});

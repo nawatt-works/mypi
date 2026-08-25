@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-08-25 09:19<br>
-> **Updated:** 2026-08-25 12:34<br>
+> **Updated:** 2026-08-25 13:18<br>
 > **Purpose:** พัฒนา Coordinator layer ที่ให้ Pi สร้างและควบคุม Workers ผ่าน Herdr โดยเริ่มจาก probe เพื่อวัดว่า runtime primitive เชื่อถือได้จริงแค่ไหนก่อนเขียน extension
 
 ## Context
@@ -154,12 +154,22 @@ registry ใช้ `herdr agent list` เป็น source of truth ของ pro
 
 ### Phase 2 — Assurance และ worktree
 
-- [ ] แยก execution decision กับ assurance decision เป็นคนละ state
-- [ ] รองรับ correction กลับ session เดิมโดยรักษา ownership และ worktree เดิม
-- [ ] เพิ่ม worktree lifecycle พร้อม `/mypi-orchestrate-status` และ `/mypi-orchestrate-cleanup`
-- [ ] จัดการ `blocked` โดย surface ให้ผู้ใช้พร้อม pane ID และห้ามตอบแทน
-- [ ] เพิ่ม `mypi_wait_worker` ที่ห่อ `agent wait --until` เพื่อเลิก polling loop ที่ Coordinator ประดิษฐ์เอง
-- [ ] Verification: ทดสอบ `done`, `blocked`, timeout, missing artifact, scope drift และ Worker exit
+- [x] แยก execution decision กับ assurance decision เป็นคนละ state ผ่าน `mypi_set_assurance`
+- [x] รองรับ correction กลับ session เดิมโดยรักษา ownership และ worktree เดิม
+- [x] เพิ่ม worktree lifecycle พร้อม `/mypi-orchestrate-status` และ `/mypi-orchestrate-cleanup`
+- [x] จัดการ `blocked` โดย surface ให้ผู้ใช้พร้อม pane ID และห้ามตอบแทน
+- [x] เพิ่ม `mypi_wait_worker` ที่ห่อ `agent wait --until` เพื่อเลิก polling loop ที่ Coordinator ประดิษฐ์เอง
+- [ ] Verification: ครอบคลุมแล้ว `done`, `blocked`, missing artifact, Worker exit และ dirty worktree; ยังเหลือ timeout กับ scope drift ที่ยังทดสอบเฉพาะระดับ unit
+
+### บันทึกระหว่าง Phase 2
+
+**worktree เปิด workspace ใหม่ ไม่ใช่แค่ pane** — `worktree create` คืน `workspace`, `tab` และ `root_pane` มาให้ spawn จึงใช้ root pane นั้นเป็นที่รัน Worker แทนการ split pane และ checkout ไปอยู่ที่ `~/.herdr/worktrees/<repo>/<branch>`
+
+**workspaceId ที่เก็บไว้กลายเป็นค่าเก่าได้** — พบตอนทดสอบจริงว่าการปิด pane ของ Worker ทำให้ workspace ของ worktree ปิดไปด้วย `herdr worktree remove --workspace` จึงล้มเหลวด้วย `workspace ... not found` และเหลือ checkout ค้างบน disk cleanup จึง fallback ไป `git worktree remove <path>` โดยหา repository ต้นทางจาก `git rev-parse --git-common-dir` ของตัว worktree เอง
+
+**cleanup ต้องข้ามสองกรณีก่อนถาม** — Worker ที่ยัง live และ worktree ที่มีงานยังไม่ commit ทดสอบจริงแล้วทั้งสองกรณี และเมื่อลบสำเร็จ branch กับ commit ยังอยู่ใน repository ต้นทาง ลบเฉพาะ checkout
+
+**assurance ไม่ผูกกับจำนวน Worker** — `coordinator` พอเมื่อมีหลักฐานที่ตรวจผ่านอย่างน้อยหนึ่งชุด, `independent-review` ต้องมี Worker คนละตัวตรวจผ่านอย่างน้อยสองราย และ `human-approval` ไม่ปิดเองไม่ว่ากรณีใด การยกระดับ assurance ไม่ทิ้งหลักฐานที่เก็บมาแล้ว
 
 ### Phase 3 — Parallel workers
 
@@ -201,6 +211,7 @@ probe รันสองรอบเมื่อ 2026-08-25 09:22–09:30 ด้
 
 ## Change log
 
+- 2026-08-25 13:18 — เพิ่ม `mypi_wait_worker`, worktree lifecycle, cleanup ที่มี guard และ assurance state; แก้ cleanup ให้ fallback ไป git เมื่อ workspace ปิดไปแล้ว
 - 2026-08-25 12:34 — ปิด Phase 1 หลัง verification กับงานจริงผ่านครบ และบันทึกช่องว่างเรื่องการรอ Worker, identity ของ Codex และจำนวน approval ต่องาน
 - 2026-08-25 11:31 — เพิ่ม skill `herdr-orchestration` และยืนยันว่า Pi session จริงโหลด skill จาก package ได้
 - 2026-08-25 11:12 — เพิ่ม Coordinator tools ครบสี่ตัวและรัดกฎ evidence ให้ artifact ที่ตกลงไว้ต้องผ่านครบ
