@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-08-25 09:19<br>
-> **Updated:** 2026-08-25 11:12<br>
+> **Updated:** 2026-08-25 11:31<br>
 > **Purpose:** พัฒนา Coordinator layer ที่ให้ Pi สร้างและควบคุม Workers ผ่าน Herdr โดยเริ่มจาก probe เพื่อวัดว่า runtime primitive เชื่อถือได้จริงแค่ไหนก่อนเขียน extension
 
 ## Context
@@ -32,7 +32,7 @@
 - `extensions/steering-choice.ts` — ปิดเมื่ออยู่ใน worker mode
 - `extensions/planning-workflow.ts` — worker mode ใช้ session-internal plan เท่านั้น
 - `extensions/dependency-update-notifier.ts` — ปิดเมื่ออยู่ใน worker mode
-- `skills/` — skill สำหรับ delegation judgment และ handoff contract (ใหม่)
+- `skills/herdr-orchestration/SKILL.md` — delegation judgment, handoff contract และ verification discipline (ใหม่)
 - `package.json`, `README.md`, `AGENTS.md`
 - `tests/orchestration.test.ts`, `tests/worker-mode.test.ts` (ใหม่)
 - `docs/notes/runtime-negotiated-herdr-orchestration.md`, `docs/README.md`
@@ -95,8 +95,8 @@
 - [x] แยก `herdr-client.ts` ออกจาก `herdr-integration.ts` โดยไม่เปลี่ยนพฤติกรรมของ command เดิม
 - [x] สร้าง registry ที่เก็บ task, agent name, pane, worktree, requested harness, observed kind, identity evidence และ artifact references
 - [x] สร้าง tools `mypi_preview_worker`, `mypi_spawn_worker`, `mypi_handoff`, `mypi_collect` พร้อม approval gate และ evidence check
-- [ ] เพิ่ม skill สำหรับ delegation judgment, handoff contract และ verification discipline
-- [ ] Verification: unit tests, `npm test` และทำ research แล้วส่งต่อ implement ครบหนึ่งรอบโดย Coordinator ไม่เคยรับคำสรุปของ Worker เป็นหลักฐาน
+- [x] เพิ่ม skill `herdr-orchestration` สำหรับ delegation judgment, handoff contract และ verification discipline
+- [ ] Verification: ทำ research แล้วส่งต่อ implement ครบหนึ่งรอบกับงานจริง โดย Coordinator ไม่เคยรับคำสรุปของ Worker เป็นหลักฐาน
 
 ### บันทึกระหว่าง Phase 1
 
@@ -174,6 +174,7 @@ probe รันสองรอบเมื่อ 2026-08-25 09:22–09:30 ด้
 
 ## Change log
 
+- 2026-08-25 11:31 — เพิ่ม skill `herdr-orchestration` และยืนยันว่า Pi session จริงโหลด skill จาก package ได้
 - 2026-08-25 11:12 — เพิ่ม Coordinator tools ครบสี่ตัวและรัดกฎ evidence ให้ artifact ที่ตกลงไว้ต้องผ่านครบ
 - 2026-08-25 10:58 — เพิ่ม worker registry พร้อม identity reconciliation และยืนยันกับ Worker จริงทั้ง confirmed, mismatch และ gone
 - 2026-08-25 10:26 — แยก `herdr-client.ts` พร้อม JSON envelope handling และยืนยันกับ CLI จริงว่า error มาทาง stderr ที่ exit code 0

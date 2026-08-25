@@ -65,6 +65,14 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - เปิดด้วย `pi --plan` หรือสลับระหว่าง session ด้วย `/plannotator-plan-mode`
   - ใช้ `/plannotator-review` เพื่อตรวจ diff และส่ง feedback กลับเข้า session
 
+### Skills
+
+- `herdr-orchestration`
+  - แนวทางตัดสินใจว่าจะ delegate หรือทำเอง แยก execution ออกจาก assurance และเริ่มจากทีมที่เล็กที่สุด
+  - รูปแบบ task-local handoff contract โดยไม่บังคับ schema กลางให้ทุก Worker
+  - วินัยการตรวจผลงาน: ข้อความสรุปของ Worker และสถานะ lifecycle ไม่ใช่หลักฐาน
+  - การส่ง correction กลับ session เดิม การจัดการ Worker ที่ blocked และเงื่อนไขของงานขนาน
+
 ### Themes
 
 - `modern-dark`
