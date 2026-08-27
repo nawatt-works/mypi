@@ -339,3 +339,32 @@ test("injects guidance only inside Herdr", () => {
 	const skipped = withoutHerdrEnv(() => outside.handlers.get("before_agent_start")?.({ systemPrompt: "BASE" }));
 	assert.equal(skipped, undefined, "a session outside Herdr must not be told about Workers");
 });
+
+test("labels a Worker's pane with its name", async () => {
+	const fake = fakePi({
+		herdrResponses: {
+			"agent start": HELP_TEXT,
+			"pane split": { result: { pane: { pane_id: "w7:pB" } } },
+		},
+	});
+	orchestration(fake.pi);
+
+	await withHerdrEnv(() =>
+		fake.tools.get("mypi_spawn_worker").execute("1", {
+			task: "review the release candidate",
+			requestedHarness: "codex",
+			rationale: "fresh independent inspection",
+			name: "reviewer",
+		}, undefined, undefined, {
+			cwd: "/repo",
+			hasUI: true,
+			ui: { confirm: async () => true },
+		}),
+	).catch(() => {
+		// agent start is faked away; the rename must still have happened.
+	});
+
+	const rename = fake.calls.find((call) => call.args[0] === "pane" && call.args[1] === "rename");
+	assert.ok(rename, "the pane must be renamed so the user can find the Worker");
+	assert.deepEqual(rename.args, ["pane", "rename", "w7:pB", "reviewer"]);
+});

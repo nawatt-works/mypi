@@ -539,6 +539,10 @@ export default function orchestration(pi: ExtensionAPI): void {
 			}
 			if (!paneId) throw new Error("Herdr ไม่ได้คืน pane id");
 
+			// Label the pane so the user can find this Worker in the UI by name
+			// rather than by an opaque pane id.
+			await runHerdr(pi, ["pane", "rename", paneId, name]);
+
 			registry.register({
 				name,
 				task: input.task,
