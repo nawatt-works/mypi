@@ -51,8 +51,13 @@ team happens to be large.
 Record the level with `mypi_set_assurance` **before** the work is assigned, and
 say what would fail it. Choosing the bar after seeing the result is how a bar
 gets lowered to fit. `coordinator` is satisfied by your own verified evidence;
-`independent-review` needs a Worker that did not produce the work to verify it;
+`independent-review` needs a verifier other than whoever produced the work;
 `human-approval` never settles on its own.
+
+Independence is measured against the producer, not the size of the team. When a
+Worker produces the work, name it in `producedBy`; when you implement it
+yourself, leave it out and one reviewing Worker satisfies the bar. A Worker
+verifying its own output never does.
 
 ## The user chooses the team
 

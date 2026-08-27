@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-08-25 09:19<br>
-> **Updated:** 2026-08-27 10:41<br>
+> **Updated:** 2026-08-27 13:42<br>
 > **Purpose:** พัฒนา Coordinator layer ที่ให้ Pi สร้างและควบคุม Workers ผ่าน Herdr โดยเริ่มจาก probe เพื่อวัดว่า runtime primitive เชื่อถือได้จริงแค่ไหนก่อนเขียน extension
 
 ## Context
@@ -159,7 +159,7 @@ registry ใช้ `herdr agent list` เป็น source of truth ของ pro
 - [x] เพิ่ม worktree lifecycle พร้อม `/mypi-orchestrate-status` และ `/mypi-orchestrate-cleanup`
 - [x] จัดการ `blocked` โดย surface ให้ผู้ใช้พร้อม pane ID และห้ามตอบแทน
 - [x] เพิ่ม `mypi_wait_worker` ที่ห่อ `agent wait --until` เพื่อเลิก polling loop ที่ Coordinator ประดิษฐ์เอง
-- [ ] Verification: ครอบคลุมแล้ว `done`, `blocked`, missing artifact, Worker exit และ dirty worktree; ยังเหลือ timeout กับ scope drift ที่ยังทดสอบเฉพาะระดับ unit
+- [x] Verification: ครอบคลุม `done`, `blocked`, missing artifact, Worker exit, dirty worktree, undelivered handoff และ scope control จากงานจริง; timeout ยังทดสอบเฉพาะระดับ unit
 
 ### บันทึกระหว่าง Phase 2
 
@@ -186,6 +186,18 @@ registry ใช้ `herdr agent list` เป็น source of truth ของ pro
 ทบทวน `AGENTS.md` และ audit policy ของ workspace `Software-Factories` แล้วนำสี่เรื่องมาปรับใช้ ได้แก่ การประกาศอำนาจสามชั้นไว้นอก skill, การ freeze ระดับ assurance ก่อนมอบหมายงานแทนที่จะเลือกหลังเห็นผลงาน, ขอบเขตและเงื่อนไขจบของ correction loop และการแยก advisory ออกจาก scope escalation โดยทั้งสองอย่างไม่ขยาย Definition of Done เงียบ ๆ
 
 ไม่รับโครงสร้าง Mission Control มาด้วย เพราะ directory contract และ precedence แบบรวมศูนย์ขัดกับ working decision ที่ให้ artifact ใช้ path และ lifecycle ของเจ้าของ
+
+### ผลการรันงานจริงหลังเพิ่ม guidance
+
+รันงานเดียวกับที่เคยไม่มีการเสนอทีม โดยผู้ใช้อนุมัติ Worker เอง ผลคือ Coordinator เลือก `independent-review` ก่อนเริ่มงาน ทำ implementation เอง แล้วขอ reviewer อิสระหนึ่งตัว ไม่มี scope drift และไม่แตะไฟล์นอกที่ตกลง ต่างจากรอบก่อน guidance ที่แปลงโปรเจกต์จาก TypeScript เป็น JavaScript โดยไม่มีใครขอ
+
+ระหว่างทางเกิดเคสจริงสามอย่างโดยไม่ได้จัดฉาก คือ Worker ตายกลางคัน (Codex reviewer จบตัวเองที่หน้าจอ update), handoff ที่ส่งไม่ถึงจริงและถูกจับได้ด้วย `agent_prompt_stalled` และ reviewer ขอขยายขอบเขตไปรัน `npm publish --dry-run` ทั้งที่ตกลงเป็น internal package ซึ่ง Coordinator ปฏิเสธเองตามหลัก scope control
+
+**bug ที่พบจากการรันจริง: กฎ independence เดิมเป็นไปไม่ได้ในรูปแบบที่พบบ่อยที่สุด** — เดิมกำหนดให้ `independent-review` ผ่านเมื่อมี `verifiedBy` ต่างชื่อกันตั้งแต่สองราย แต่เมื่อ Coordinator ทำงานเองแล้วมี Worker หนึ่งตัวตรวจ จะมีชื่ออยู่ใน `verifiedBy` ได้แค่รายเดียวเสมอ เพราะงานของ Coordinator ไม่เคยผ่าน `mypi_collect` gate จึงรายงานว่ายังไม่พอทั้งที่ review อิสระเกิดขึ้นจริงแล้ว และ Coordinator ก็ปิดงานไปโดยที่ gate ยังค้าง
+
+แก้โดยวัด independence เทียบกับผู้ผลิตงานแทนจำนวนผู้ตรวจ: `AssuranceState` เก็บ `producedBy` ซึ่ง default เป็น `coordinator` และ `assuranceMet` ผ่านเมื่อมีผู้ตรวจอย่างน้อยหนึ่งรายที่ไม่ใช่ผู้ผลิต ส่วน Worker ที่ตรวจงานตัวเองยังไม่นับ
+
+**friction ที่ยังเหลือ** — เมื่อ Worker ติด dialog ของ harness ตัวเอง Coordinator จะถามผู้ใช้ให้ไปกด แล้วถามซ้ำอีกครั้งว่ากดหรือยัง ทั้งที่ตรวจเองได้ด้วย `mypi_wait_worker --until idle` เกิดขึ้นสามครั้งในรอบเดียว
 
 ### Phase 3 — Parallel workers
 
@@ -227,6 +239,7 @@ probe รันสองรอบเมื่อ 2026-08-25 09:22–09:30 ด้
 
 ## Change log
 
+- 2026-08-27 13:42 — รันงานจริงจนจบวงแล้วแก้กฎ independence ให้วัดเทียบผู้ผลิตงานแทนจำนวนผู้ตรวจ พร้อมปิด verification ของ Phase 2
 - 2026-08-27 10:41 — เพิ่ม guidance injection ที่ประกาศอำนาจสามชั้น, `/mypi-orchestrate`, และกฎ audit contract ใน skill หลังพบว่าบทบาทถูกล็อกอยู่หลัง skill trigger
 - 2026-08-25 13:18 — เพิ่ม `mypi_wait_worker`, worktree lifecycle, cleanup ที่มี guard และ assurance state; แก้ cleanup ให้ fallback ไป git เมื่อ workspace ปิดไปแล้ว
 - 2026-08-25 12:34 — ปิด Phase 1 หลัง verification กับงานจริงผ่านครบ และบันทึกช่องว่างเรื่องการรอ Worker, identity ของ Codex และจำนวน approval ต่องาน

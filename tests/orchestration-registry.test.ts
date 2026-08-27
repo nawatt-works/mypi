@@ -185,12 +185,25 @@ test("keeps the assurance decision apart from how many workers ran", () => {
 	assert.equal(assuranceMet(registry.assurance()), true);
 
 	// Raising the bar does not discard evidence already collected.
-	registry.setAssurance("independent-review", "แก้ code ที่ผู้ใช้พึ่งพา");
+	registry.setAssurance("independent-review", "แก้ code ที่ผู้ใช้พึ่งพา", "implementer");
 	assert.deepEqual(registry.assurance().verifiedBy, ["implementer"]);
 	assert.equal(assuranceMet(registry.assurance()), false, "one worker cannot review its own work");
 
 	registry.recordVerified("reviewer");
 	assert.equal(assuranceMet(registry.assurance()), true);
+
+	// The common shape: the Coordinator implements and a single Worker reviews.
+	// Counting two verifiers would make that unsatisfiable.
+	const solo = createWorkerRegistry(fakePi().pi);
+	solo.setAssurance("independent-review", "release gate");
+	assert.equal(solo.assurance().producedBy, "coordinator");
+	solo.recordVerified("release-review");
+	assert.equal(assuranceMet(solo.assurance()), true, "a reviewer other than the producer is independence");
+
+	const selfReview = createWorkerRegistry(fakePi().pi);
+	selfReview.setAssurance("independent-review", "release gate", "release-review");
+	selfReview.recordVerified("release-review");
+	assert.equal(assuranceMet(selfReview.assurance()), false, "a worker verifying its own work is not independent");
 
 	// A human gate never closes by itself.
 	registry.setAssurance("human-approval", "ผู้ใช้ขอตรวจเอง");

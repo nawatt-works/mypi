@@ -219,12 +219,13 @@ export function buildOrchestrationGuidance(
 function describeAssurance(state: AssuranceState): string {
 	const met = assuranceMet(state);
 	const verified = state.verifiedBy.length ? state.verifiedBy.join(", ") : "ยังไม่มี";
+	const producer = state.producedBy;
 	if (met) return `assurance: ${state.level} — เพียงพอแล้ว (ตรวจผ่านจาก ${verified})`;
 	if (state.level === "human-approval") {
 		return `assurance: human-approval — ต้องให้ผู้ใช้อนุมัติผลก่อนถือว่าจบ (ตรวจผ่านจาก ${verified})`;
 	}
 	if (state.level === "independent-review") {
-		return `assurance: independent-review — ต้องมี Worker อีกตัวที่ไม่ได้ผลิตงานนี้ตรวจซ้ำ (ตรวจผ่านจาก ${verified})`;
+		return `assurance: independent-review — งานนี้ผลิตโดย ${producer} จึงต้องมีตัวอื่นตรวจผ่าน (ตรวจผ่านจาก ${verified})`;
 	}
 	return `assurance: ${state.level} — ยังไม่มีหลักฐานที่ตรวจผ่าน`;
 }
@@ -683,12 +684,15 @@ export default function orchestration(pi: ExtensionAPI): void {
 				Type.Literal("coordinator"),
 				Type.Literal("independent-review"),
 				Type.Literal("human-approval"),
-			], { description: "coordinator: your own verified evidence is enough. independent-review: a Worker that did not produce the work must verify it. human-approval: the user must approve the result." }),
+			], { description: "coordinator: your own verified evidence is enough. independent-review: someone other than the producer must verify it. human-approval: the user must approve the result." }),
 			reason: Type.String({ minLength: 1, description: "Why this level, in terms of risk or an explicit user request" }),
+			producedBy: Type.Optional(Type.String({
+				description: "Who produces the work being judged: omit when you implement it yourself, or give the Worker's name",
+			})),
 		}),
 		async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-			const input = params as { level: AssuranceLevel; reason: string };
-			const state = registry.setAssurance(input.level, input.reason);
+			const input = params as { level: AssuranceLevel; reason: string; producedBy?: string };
+			const state = registry.setAssurance(input.level, input.reason, input.producedBy);
 			return {
 				content: [{ type: "text", text: `${describeAssurance(state)}\nเหตุผล: ${state.reason}` }],
 				details: { assurance: state, met: assuranceMet(state) },

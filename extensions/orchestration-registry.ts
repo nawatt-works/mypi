@@ -85,13 +85,22 @@ export type AssuranceLevel = "coordinator" | "independent-review" | "human-appro
 export type AssuranceState = {
 	level: AssuranceLevel;
 	reason: string;
+	/**
+	 * Who produces the work being judged: `coordinator` when the Coordinator
+	 * implements it itself, otherwise the Worker's name. Independence is measured
+	 * against this, not against the size of the team.
+	 */
+	producedBy: string;
 	/** Workers whose collected evidence passed, in order. */
 	verifiedBy: string[];
 };
 
+export const COORDINATOR_PRODUCER = "coordinator";
+
 export const DEFAULT_ASSURANCE: AssuranceState = {
 	level: "coordinator",
 	reason: "ค่าเริ่มต้น: Coordinator ตรวจหลักฐานเองเพียงพอ",
+	producedBy: COORDINATOR_PRODUCER,
 	verifiedBy: [],
 };
 
@@ -109,7 +118,7 @@ type RegistryEvent =
 	| { action: "update"; name: string; patch: Partial<WorkerRecord> }
 	| { action: "artifact"; name: string; artifact: ArtifactRef }
 	| { action: "release"; name: string }
-	| { action: "assurance"; level: AssuranceLevel; reason: string }
+	| { action: "assurance"; level: AssuranceLevel; reason: string; producedBy?: string }
 	| { action: "verified"; name: string };
 
 /**
@@ -231,7 +240,12 @@ export function restoreAssurance(entries: readonly unknown[]): AssuranceState {
 		if (entry.type !== "custom" || entry.customType !== REGISTRY_ENTRY) continue;
 		const data = entry.data;
 		if (data?.action === "assurance") {
-			state = { level: data.level, reason: data.reason, verifiedBy: state.verifiedBy };
+			state = {
+				level: data.level,
+				reason: data.reason,
+				producedBy: data.producedBy ?? COORDINATOR_PRODUCER,
+				verifiedBy: state.verifiedBy,
+			};
 		} else if (data?.action === "verified" && !state.verifiedBy.includes(data.name)) {
 			state = { ...state, verifiedBy: [...state.verifiedBy, data.name] };
 		}
@@ -242,10 +256,16 @@ export function restoreAssurance(entries: readonly unknown[]): AssuranceState {
 /**
  * Whether the agreed assurance level has been met. `human-approval` never
  * settles on its own: only the user can close it.
+ *
+ * Independence is "someone other than the producer verified it". Counting two
+ * verifiers instead would be unsatisfiable in the most common shape, where the
+ * Coordinator does the work itself and one Worker reviews it.
  */
 export function assuranceMet(state: AssuranceState): boolean {
 	if (state.level === "human-approval") return false;
-	if (state.level === "independent-review") return new Set(state.verifiedBy).size >= 2;
+	if (state.level === "independent-review") {
+		return state.verifiedBy.some((name) => name !== state.producedBy);
+	}
 	return state.verifiedBy.length > 0;
 }
 
@@ -258,7 +278,7 @@ export type WorkerRegistry = {
 	release(name: string): void;
 	restore(entries: readonly unknown[]): void;
 	assurance(): AssuranceState;
-	setAssurance(level: AssuranceLevel, reason: string): AssuranceState;
+	setAssurance(level: AssuranceLevel, reason: string, producedBy?: string): AssuranceState;
 	recordVerified(name: string): AssuranceState;
 	/** Refresh observed identity and liveness from Herdr. */
 	refresh(): Promise<WorkerRecord[]>;
@@ -345,9 +365,10 @@ export function createWorkerRegistry(pi: Pick<ExtensionAPI, "appendEntry" | "exe
 
 		assurance: () => ({ ...assurance, verifiedBy: [...assurance.verifiedBy] }),
 
-		setAssurance(level, reason) {
-			assurance = { level, reason, verifiedBy: assurance.verifiedBy };
-			record({ action: "assurance", level, reason });
+		setAssurance(level, reason, producedBy) {
+			const producer = producedBy?.trim() || COORDINATOR_PRODUCER;
+			assurance = { level, reason, producedBy: producer, verifiedBy: assurance.verifiedBy };
+			record({ action: "assurance", level, reason, producedBy: producer });
 			return { ...assurance, verifiedBy: [...assurance.verifiedBy] };
 		},
 
