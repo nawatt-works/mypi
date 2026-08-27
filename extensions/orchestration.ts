@@ -29,6 +29,7 @@ const SPAWN_RETRIES = 4;
 const SHELL_SETTLE_MS = 1_500;
 const DEFAULT_PROMPT_TIMEOUT_MS = 600_000;
 const DEFAULT_WAIT_TIMEOUT_MS = 900_000;
+const MODE_ENTRY = "mypi-orchestrate-mode";
 
 /**
  * Harness kinds come from the installed Herdr binary, never from a list kept
@@ -147,6 +148,74 @@ async function worktreeState(
 	}
 }
 
+export type OrchestrateMode = "automatic" | "off";
+
+export type OrchestrateCommand =
+	| { kind: "show" }
+	| { kind: "set"; mode: OrchestrateMode }
+	| { kind: "invalid" };
+
+export function parseOrchestrateCommand(args: string): OrchestrateCommand {
+	const value = args.trim().toLowerCase();
+	if (value === "" || value === "status") return { kind: "show" };
+	if (value === "automatic" || value === "on") return { kind: "set", mode: "automatic" };
+	if (value === "off") return { kind: "set", mode: "off" };
+	return { kind: "invalid" };
+}
+
+export function restoreOrchestrateMode(entries: readonly unknown[]): OrchestrateMode {
+	let mode: OrchestrateMode = "automatic";
+	for (const rawEntry of entries) {
+		const entry = rawEntry as { type?: string; customType?: string; data?: { mode?: unknown } };
+		if (entry.type !== "custom" || entry.customType !== MODE_ENTRY) continue;
+		if (entry.data?.mode === "automatic" || entry.data?.mode === "off") mode = entry.data.mode;
+	}
+	return mode;
+}
+
+/**
+ * Told to the model at the start of every turn inside Herdr, because the role
+ * itself must not be locked behind a skill trigger: a session that never
+ * considers delegating never loads the skill that would have told it it could.
+ */
+export function buildOrchestrationGuidance(
+	mode: OrchestrateMode,
+	workers: readonly WorkerRecord[],
+): string {
+	if (mode === "off") return "";
+
+	const live = workers.filter((worker) => worker.status !== "gone");
+	if (live.length > 0) {
+		const roster = live
+			.map((worker) => `- ${worker.name} [${worker.status}] — ${worker.task.split("\n")[0].slice(0, 80)}`)
+			.join("\n");
+		return [
+			"## Workers you are coordinating",
+			"",
+			roster,
+			"",
+			`You stay on the critical path for these. Verify results with \`${COLLECT_TOOL}\` against the artifacts`,
+			"you agreed on; a Worker's own summary is never evidence. Send corrections back to the same Worker",
+			`with \`${HANDOFF_TOOL}\`, and wait with \`${WAIT_TOOL}\` rather than re-reading panes.`,
+		].join("\n");
+	}
+
+	return [
+		"## Coordinating other agents",
+		"",
+		"This session runs inside Herdr and can put other coding agents to work in their own panes.",
+		"Authority is fixed: the user decides who joins and approves every result, you coordinate and stay",
+		"on the critical path, and a Worker only executes one bounded assignment without making design",
+		"decisions of its own.",
+		"",
+		"Before substantial work, judge whether any lane is genuinely separable: a lane that shortens the",
+		"critical path, context worth isolating, a harness better suited to a bounded part, or a fresh",
+		"reviewer the risk calls for. If one holds, propose the smallest team with that reason and let the",
+		`user approve it — read the \`herdr-orchestration\` skill first, then \`${PREVIEW_TOOL}\`. If none holds,`,
+		"do the work yourself and do not raise delegation at all.",
+	].join("\n");
+}
+
 function describeAssurance(state: AssuranceState): string {
 	const met = assuranceMet(state);
 	const verified = state.verifiedBy.length ? state.verifiedBy.join(", ") : "ยังไม่มี";
@@ -162,6 +231,7 @@ function describeAssurance(state: AssuranceState): string {
 
 export default function orchestration(pi: ExtensionAPI): void {
 	const registry: WorkerRegistry = createWorkerRegistry(pi);
+	let mode: OrchestrateMode = "automatic";
 
 	function setToolsEnabled(enabled: boolean): void {
 		const active = pi.getActiveTools();
@@ -183,9 +253,34 @@ export default function orchestration(pi: ExtensionAPI): void {
 	}
 
 	pi.on("session_start", (_event, ctx) => {
-		registry.restore(ctx.sessionManager.getBranch());
+		const branch = ctx.sessionManager.getBranch();
+		registry.restore(branch);
+		mode = restoreOrchestrateMode(branch);
 		// Outside Herdr there is nothing to orchestrate; keep normal sessions clean.
 		setToolsEnabled(isHerdrSession());
+	});
+
+	pi.registerCommand("mypi-orchestrate", {
+		description: "ควบคุมการเสนอทีมอัตโนมัติราย session: automatic, off หรือ status",
+		handler: async (args, ctx) => {
+			if (!ctx.hasUI) return;
+			const command = parseOrchestrateCommand(typeof args === "string" ? args : "");
+			if (command.kind === "invalid") {
+				ctx.ui.notify("ใช้ /mypi-orchestrate automatic|off|status", "warning");
+				return;
+			}
+			if (command.kind === "set") {
+				mode = command.mode;
+				pi.appendEntry(MODE_ENTRY, { mode });
+			}
+			const where = isHerdrSession() ? "" : " (session นี้ไม่ได้รันใต้ Herdr จึงยังไม่มีผล)";
+			ctx.ui.notify(
+				mode === "automatic"
+					? `เปิดการประเมินและเสนอทีมอัตโนมัติ${where}`
+					: `ปิดการเสนอทีมอัตโนมัติ tools ยังเรียกเองได้${where}`,
+				"info",
+			);
+		},
 	});
 
 	pi.registerCommand("mypi-orchestrate-status", {
@@ -276,6 +371,13 @@ export default function orchestration(pi: ExtensionAPI): void {
 				ctx.ui.notify(`ลบ worktree ของ ${worker.name} แล้ว โดย branch ${tree.branch ?? "-"} ยังอยู่`, "info");
 			}
 		},
+	});
+
+	pi.on("before_agent_start", (event) => {
+		if (!isHerdrSession()) return;
+		const guidance = buildOrchestrationGuidance(mode, registry.list());
+		if (!guidance) return;
+		return { systemPrompt: `${event.systemPrompt}\n\n${guidance}` };
 	});
 
 	pi.registerTool({

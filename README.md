@@ -44,6 +44,8 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - spawn ขอ Git worktree ต่อ Worker ได้ และ worktree จะไม่ถูกลบอัตโนมัติ
   - ใช้ `/mypi-orchestrate-status` เพื่อดู Worker, identity และ artifact references ที่บันทึกไว้
   - ใช้ `/mypi-orchestrate-cleanup` เพื่อลบ worktree ทีละรายการหลังยืนยัน โดยข้ามตัวที่ Worker ยังทำงานอยู่หรือมีงานค้างไม่ commit
+  - ประกาศอำนาจสามชั้นและกระตุ้นให้ประเมินการแตกทีมตอนเริ่มงาน เฉพาะเมื่อรันอยู่ใต้ Herdr
+  - ใช้ `/mypi-orchestrate automatic|off|status` เพื่อเปิดหรือปิดการเสนอทีมอัตโนมัติราย session
 - `local/extensions/azure-devops/`
   - maintain source ไว้ใน repository นี้ แต่ไม่โหลดจาก global package
   - แต่ละ trusted project ต้องชี้ path นี้ผ่าน `.pi/settings.json` และมี `.pi/azure-devops.json`

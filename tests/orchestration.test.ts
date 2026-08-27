@@ -1,7 +1,14 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import test from "node:test";
-import orchestration, { evaluateEvidence, parseAgentKinds } from "../extensions/orchestration.ts";
+import orchestration, {
+	buildOrchestrationGuidance,
+	evaluateEvidence,
+	parseAgentKinds,
+	parseOrchestrateCommand,
+	restoreOrchestrateMode,
+	type OrchestrateMode,
+} from "../extensions/orchestration.ts";
 
 const HELP_TEXT = `Options:
       --kind <KIND>
@@ -272,4 +279,63 @@ test("refuses to wait for a worker this session never registered", async () => {
 		withHerdrEnv(() => fake.tools.get("mypi_wait_worker").execute("1", { name: "ghost" }, undefined, undefined, {})),
 		/ไม่พบ Worker/,
 	);
+});
+
+test("parses the per-session orchestration mode command", () => {
+	assert.deepEqual(parseOrchestrateCommand(""), { kind: "show" });
+	assert.deepEqual(parseOrchestrateCommand(" status "), { kind: "show" });
+	assert.deepEqual(parseOrchestrateCommand("on"), { kind: "set", mode: "automatic" });
+	assert.deepEqual(parseOrchestrateCommand("OFF"), { kind: "set", mode: "off" });
+	assert.deepEqual(parseOrchestrateCommand("maybe"), { kind: "invalid" });
+	assert.equal(restoreOrchestrateMode([
+		{ type: "custom", customType: "mypi-orchestrate-mode", data: { mode: "off" } },
+		{ type: "custom", customType: "mypi-orchestrate-mode", data: { mode: "automatic" } },
+	]), "automatic");
+	assert.equal(restoreOrchestrateMode([]), "automatic", "proposing a team is the default");
+});
+
+test("states the three levels of authority before any team exists", () => {
+	const guidance = buildOrchestrationGuidance("automatic", []);
+	assert.match(guidance, /the user decides who joins and approves every result/i);
+	assert.match(guidance, /you coordinate and stay/i);
+	assert.match(guidance, /bounded assignment without making design/i);
+	assert.match(guidance, /do the work yourself and do not raise delegation/i,
+		"the guidance must not push delegation when no lane is separable");
+	assert.match(guidance, /mypi_preview_worker/);
+});
+
+test("switches to the roster once Workers exist, and stays silent when turned off", () => {
+	const workers = [
+		{ name: "auditor", status: "live", task: "วิเคราะห์ timeout\nรายละเอียด", artifacts: [] },
+		{ name: "old", status: "gone", task: "จบไปแล้ว", artifacts: [] },
+	] as any;
+
+	const roster = buildOrchestrationGuidance("automatic", workers);
+	assert.match(roster, /auditor \[live\]/);
+	assert.ok(!roster.includes("old ["), "a worker Herdr no longer has must not be listed as active");
+	assert.ok(!roster.includes("รายละเอียด"), "only the first line of a task belongs in a roster");
+	assert.match(roster, /mypi_collect/);
+
+	assert.equal(buildOrchestrationGuidance("off" as OrchestrateMode, []), "");
+	assert.equal(buildOrchestrationGuidance("off" as OrchestrateMode, workers), "");
+});
+
+test("injects guidance only inside Herdr", () => {
+	const inside = fakePi();
+	const outside = fakePi();
+	withHerdrEnv(() => {
+		orchestration(inside.pi);
+		inside.handlers.get("session_start")?.({}, { sessionManager: { getBranch: () => [] } });
+	});
+	withoutHerdrEnv(() => {
+		orchestration(outside.pi);
+		outside.handlers.get("session_start")?.({}, { sessionManager: { getBranch: () => [] } });
+	});
+
+	const injected = withHerdrEnv(() => inside.handlers.get("before_agent_start")?.({ systemPrompt: "BASE" }));
+	assert.match(injected.systemPrompt, /^BASE/);
+	assert.match(injected.systemPrompt, /Coordinating other agents/);
+
+	const skipped = withoutHerdrEnv(() => outside.handlers.get("before_agent_start")?.({ systemPrompt: "BASE" }));
+	assert.equal(skipped, undefined, "a session outside Herdr must not be told about Workers");
 });

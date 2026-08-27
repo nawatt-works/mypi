@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-08-25 09:19<br>
-> **Updated:** 2026-08-25 13:18<br>
+> **Updated:** 2026-08-27 10:41<br>
 > **Purpose:** พัฒนา Coordinator layer ที่ให้ Pi สร้างและควบคุม Workers ผ่าน Herdr โดยเริ่มจาก probe เพื่อวัดว่า runtime primitive เชื่อถือได้จริงแค่ไหนก่อนเขียน extension
 
 ## Context
@@ -32,7 +32,7 @@
 - `extensions/steering-choice.ts` — ปิดเมื่ออยู่ใน worker mode
 - `extensions/planning-workflow.ts` — worker mode ใช้ session-internal plan เท่านั้น
 - `extensions/dependency-update-notifier.ts` — ปิดเมื่ออยู่ใน worker mode
-- `skills/herdr-orchestration/SKILL.md` — delegation judgment, handoff contract และ verification discipline (ใหม่)
+- `skills/herdr-orchestration/SKILL.md` — authority tiers, delegation judgment, handoff contract, audit contract และ verification discipline (ใหม่)
 - `package.json`, `README.md`, `AGENTS.md`
 - `tests/orchestration.test.ts`, `tests/worker-mode.test.ts` (ใหม่)
 - `docs/notes/runtime-negotiated-herdr-orchestration.md`, `docs/README.md`
@@ -171,6 +171,22 @@ registry ใช้ `herdr agent list` เป็น source of truth ของ pro
 
 **assurance ไม่ผูกกับจำนวน Worker** — `coordinator` พอเมื่อมีหลักฐานที่ตรวจผ่านอย่างน้อยหนึ่งชุด, `independent-review` ต้องมี Worker คนละตัวตรวจผ่านอย่างน้อยสองราย และ `human-approval` ไม่ปิดเองไม่ว่ากรณีใด การยกระดับ assurance ไม่ทิ้งหลักฐานที่เก็บมาแล้ว
 
+### บทบาทที่ถูกล็อกหลัง skill trigger และการแก้
+
+ทดสอบด้วย Coordinator ที่สะอาดบน fixture ที่มี lane แยกได้ห้าทาง แล้วให้โจทย์ที่ไม่มีคำว่าทีมหรือแบ่งงานเลย ผลคือ **ไม่เรียก orchestration tool แม้แต่ครั้งเดียว** และลงมือทำเองจนจบ ระหว่างนั้นแปลงโปรเจกต์จาก TypeScript เป็น JavaScript โดยไม่มีใครขอ ซึ่งเป็น scope drift ที่ไม่มีกลไกใดจับได้เพราะงานไม่ได้ผ่าน Worker
+
+สาเหตุคือ Pi ใส่เฉพาะ `name` และ `description` ของ skill ไว้ใน system prompt ส่วนเนื้อใน `SKILL.md` จะถูกอ่านต่อเมื่อ model เลือกเปิด เมื่อ model ไม่คิดจะแตกทีม มันจึงไม่เคยเห็นประโยคที่นิยามบทบาทตัวเองเลย
+
+`AGENTS.md` แก้ปัญหานี้ไม่ได้เพราะ Pi หา context file จาก cwd และ directory แม่เท่านั้น ไม่มีระดับ user ขณะที่ `my-pi` เป็น global package ที่ตามไปทุก workspace จึงต้องใช้ guidance injection ที่ `before_agent_start` แทน โดยประกาศอำนาจสามชั้น คือ ผู้ใช้ตัดสิน Coordinator ประสาน และ Worker ทำงานที่ถูก bound ไว้โดยไม่ตัดสินใจเชิงออกแบบเอง
+
+ทดลองซ้ำด้วย fixture และ prompt เดิมทุกตัวอักษรหลังเพิ่ม guidance: Coordinator เรียก `mypi_set_assurance` เลือก `independent-review` ก่อน แล้วเสนอ Worker เพียงตัวเดียวเป็น reviewer อิสระที่ไม่แก้ไฟล์ พร้อมเหตุผลที่อ้างถึง assurance bar แล้วหยุดรอผู้ใช้อนุมัติ ไม่ได้แตกทีมตามจำนวนโมดูลซึ่งเป็นคำตอบที่ถูกกว่า
+
+### กฎที่รับมาจาก Software-Factories
+
+ทบทวน `AGENTS.md` และ audit policy ของ workspace `Software-Factories` แล้วนำสี่เรื่องมาปรับใช้ ได้แก่ การประกาศอำนาจสามชั้นไว้นอก skill, การ freeze ระดับ assurance ก่อนมอบหมายงานแทนที่จะเลือกหลังเห็นผลงาน, ขอบเขตและเงื่อนไขจบของ correction loop และการแยก advisory ออกจาก scope escalation โดยทั้งสองอย่างไม่ขยาย Definition of Done เงียบ ๆ
+
+ไม่รับโครงสร้าง Mission Control มาด้วย เพราะ directory contract และ precedence แบบรวมศูนย์ขัดกับ working decision ที่ให้ artifact ใช้ path และ lifecycle ของเจ้าของ
+
 ### Phase 3 — Parallel workers
 
 - [ ] บังคับ declared ownership และตรวจ disjoint write scope จาก git status ของแต่ละ worktree
@@ -211,6 +227,7 @@ probe รันสองรอบเมื่อ 2026-08-25 09:22–09:30 ด้
 
 ## Change log
 
+- 2026-08-27 10:41 — เพิ่ม guidance injection ที่ประกาศอำนาจสามชั้น, `/mypi-orchestrate`, และกฎ audit contract ใน skill หลังพบว่าบทบาทถูกล็อกอยู่หลัง skill trigger
 - 2026-08-25 13:18 — เพิ่ม `mypi_wait_worker`, worktree lifecycle, cleanup ที่มี guard และ assurance state; แก้ cleanup ให้ fallback ไป git เมื่อ workspace ปิดไปแล้ว
 - 2026-08-25 12:34 — ปิด Phase 1 หลัง verification กับงานจริงผ่านครบ และบันทึกช่องว่างเรื่องการรอ Worker, identity ของ Codex และจำนวน approval ต่องาน
 - 2026-08-25 11:31 — เพิ่ม skill `herdr-orchestration` และยืนยันว่า Pi session จริงโหลด skill จาก package ได้
