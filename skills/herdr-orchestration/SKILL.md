@@ -70,6 +70,12 @@ Call `mypi_preview_worker` first and show the plan. Prefer the harness the user
 named. Warn when a harness has no Herdr lifecycle integration installed: its
 identity can then only be recognised from the screen.
 
+Name the `model` and `effort` you intend to run the Worker with, and say why that
+pairing suits the assignment. They change cost and capability as much as the
+harness does, so a proposal that hides them is not something the user can weigh.
+Leaving them out is a choice too: the Worker inherits the harness default, and
+the preview shows what that resolves to.
+
 ## Write a task-local handoff contract
 
 There is no shared result schema. For each assignment, say what that task needs:

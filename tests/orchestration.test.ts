@@ -3,6 +3,7 @@ import { execFile } from "node:child_process";
 import test from "node:test";
 import orchestration, {
 	buildOrchestrationGuidance,
+	harnessRunSettings,
 	evaluateEvidence,
 	parseAgentKinds,
 	parseOrchestrateCommand,
@@ -367,4 +368,53 @@ test("labels a Worker's pane with its name", async () => {
 	const rename = fake.calls.find((call) => call.args[0] === "pane" && call.args[1] === "rename");
 	assert.ok(rename, "the pane must be renamed so the user can find the Worker");
 	assert.deepEqual(rename.args, ["pane", "rename", "w7:pB", "reviewer"]);
+});
+
+test("translates model and effort into the flags each harness actually takes", () => {
+	assert.deepEqual(harnessRunSettings("pi", "gpt-5.6-terra", "high"),
+		{ args: ["--model", "gpt-5.6-terra", "--thinking", "high"], unsupported: [] });
+	assert.deepEqual(harnessRunSettings("claude", "opus", "max"),
+		{ args: ["--model", "opus", "--effort", "max"], unsupported: [] });
+	assert.deepEqual(harnessRunSettings("codex", "gpt-5.6-sol", "xhigh"),
+		{ args: ["--model", "gpt-5.6-sol", "-c", 'model_reasoning_effort="xhigh"'], unsupported: [] });
+	assert.deepEqual(harnessRunSettings("pi"), { args: [], unsupported: [] });
+
+	// An unknown harness must report the gap rather than be started with defaults
+	// while the approval dialog claims otherwise.
+	assert.deepEqual(harnessRunSettings("opencode", "some-model", "high").unsupported,
+		["model (opencode)", "effort (opencode)"]);
+});
+
+test("shows model and effort in the proposal, including what a Pi worker inherits", async () => {
+	const fake = fakePi({ herdrResponses: { "agent start": HELP_TEXT } });
+	orchestration(fake.pi);
+	const preview = fake.tools.get("mypi_preview_worker");
+
+	const chosen = await withHerdrEnv(() => preview.execute("1", {
+		task: "review", requestedHarness: "codex", rationale: "fresh eyes",
+		model: "gpt-5.6-terra", effort: "high",
+	}, undefined, undefined, { cwd: "/repo" }));
+	assert.match(chosen.content[0].text, /- model: gpt-5\.6-terra/);
+	assert.match(chosen.content[0].text, /- effort: high/);
+	assert.deepEqual(chosen.details.harnessArgs, ["--model", "gpt-5.6-terra", "-c", 'model_reasoning_effort="high"']);
+
+	const inherited = await withHerdrEnv(() => preview.execute("2", {
+		task: "review", requestedHarness: "pi", rationale: "fresh eyes",
+	}, undefined, undefined, { cwd: "/repo" }));
+	assert.match(inherited.content[0].text, /- model: harness default/);
+	assert.match(inherited.content[0].text, /- effort: harness default/);
+});
+
+test("refuses to spawn with a setting the harness cannot apply", async () => {
+	const fake = fakePi({ herdrResponses: { "agent start": HELP_TEXT } });
+	orchestration(fake.pi);
+
+	await assert.rejects(
+		withHerdrEnv(() => fake.tools.get("mypi_spawn_worker").execute("1", {
+			task: "t", requestedHarness: "gemini", rationale: "r", effort: "high",
+		}, undefined, undefined, { cwd: "/repo", hasUI: true, ui: { confirm: async () => true } })),
+		/ไม่มี flag สำหรับ/,
+	);
+	assert.ok(!fake.calls.some((call) => call.args[0] === "pane"),
+		"a setting that cannot be applied must stop before anything is created");
 });

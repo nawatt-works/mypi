@@ -1,5 +1,6 @@
-import { stat } from "node:fs/promises";
-import { dirname, isAbsolute, resolve } from "node:path";
+import { readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { herdrCallerContext, isHerdrSession, runHerdr, withHerdrBlocked } from "./herdr-client.ts";
@@ -145,6 +146,62 @@ async function worktreeState(
 		return { exists: true, dirty, head: head.stdout.trim() || undefined };
 	} catch (error) {
 		return { exists: false, dirty: 0, detail: error instanceof Error ? error.message : String(error) };
+	}
+}
+
+export type HarnessRunSettings = {
+	args: string[];
+	/** Settings this harness has no known flag for; never silently dropped. */
+	unsupported: string[];
+};
+
+/**
+ * Translate a requested model and effort into the flags a harness actually
+ * takes. There is no machine-readable source for this, so the table is small
+ * and deliberately incomplete: an unknown harness reports the setting as
+ * unsupported rather than being started with something other than what the
+ * approval dialog showed.
+ */
+export function harnessRunSettings(
+	kind: string,
+	model?: string,
+	effort?: string,
+): HarnessRunSettings {
+	const args: string[] = [];
+	const unsupported: string[] = [];
+
+	if (model) {
+		if (kind === "pi" || kind === "claude" || kind === "codex") args.push("--model", model);
+		else unsupported.push(`model (${kind})`);
+	}
+	if (effort) {
+		if (kind === "pi") args.push("--thinking", effort);
+		else if (kind === "claude") args.push("--effort", effort);
+		else if (kind === "codex") args.push("-c", `model_reasoning_effort="${effort}"`);
+		else unsupported.push(`effort (${kind})`);
+	}
+	return { args, unsupported };
+}
+
+/** What a Pi Worker inherits when the Coordinator names no model of its own. */
+async function piDefaults(
+	pi: ExtensionAPI,
+	environment: NodeJS.ProcessEnv = process.env,
+): Promise<string | undefined> {
+	try {
+		const agentDirectory = environment.PI_CODING_AGENT_DIR?.trim() || join(homedir(), ".pi", "agent");
+		const raw = await readFile(resolve(agentDirectory, "settings.json"), "utf8");
+		const parsed = JSON.parse(raw) as {
+			defaultProvider?: string;
+			defaultModel?: string;
+			defaultThinkingLevel?: string;
+		};
+		if (!parsed.defaultModel) return undefined;
+		const provider = parsed.defaultProvider ? `${parsed.defaultProvider}/` : "";
+		const thinking = parsed.defaultThinkingLevel ? `, thinking ${parsed.defaultThinkingLevel}` : "";
+		return `${provider}${parsed.defaultModel}${thinking}`;
+	} catch {
+		return undefined;
 	}
 }
 
@@ -394,6 +451,8 @@ export default function orchestration(pi: ExtensionAPI): void {
 			requestedHarness: Type.String({ minLength: 1, description: "Herdr agent kind to run, e.g. pi, codex, claude" }),
 			rationale: Type.String({ minLength: 1, description: "Concrete benefit expected from delegating this, not just that the task is large" }),
 			name: Type.Optional(Type.String({ description: "Preferred worker name; normalized to Herdr's [a-z][a-z0-9_-]{0,31} rule" })),
+			model: Type.Optional(Type.String({ description: "Model to run this Worker with; omit to inherit the harness default" })),
+			effort: Type.Optional(Type.String({ description: "Reasoning effort or thinking level; the accepted values are harness-specific" })),
 			expectedArtifacts: Type.Optional(Type.Array(Type.String(), {
 				description: "Exact paths, branches or commits this Worker is expected to produce",
 			})),
@@ -405,6 +464,8 @@ export default function orchestration(pi: ExtensionAPI): void {
 				requestedHarness: string;
 				rationale: string;
 				name?: string;
+				model?: string;
+				effort?: string;
 				expectedArtifacts?: string[];
 			};
 			const kinds = await supportedKinds();
@@ -412,11 +473,20 @@ export default function orchestration(pi: ExtensionAPI): void {
 			const taken = registry.list().map((worker) => worker.name);
 			const name = normalizeWorkerName(input.name ?? input.task, taken);
 			const caller = herdrCallerContext();
+			const run = harnessRunSettings(input.requestedHarness, input.model, input.effort);
+			const inherited = input.model || input.effort
+				? undefined
+				: input.requestedHarness === "pi"
+					? await piDefaults(pi)
+					: undefined;
 
 			const text = [
 				"Worker ที่จะสร้าง (ยังไม่ได้สร้าง):",
 				`- name: ${name}`,
 				`- harness: ${input.requestedHarness}${kindSupported ? "" : "  ← Herdr ไม่รองรับ kind นี้"}`,
+				`- model: ${input.model ?? `harness default${inherited ? ` (${inherited})` : ""}`}`,
+				`- effort: ${input.effort ?? "harness default"}`,
+				...(run.unsupported.length ? [`- ⚠ ไม่รองรับสำหรับ harness นี้: ${run.unsupported.join(", ")}`] : []),
 				`- cwd: ${ctx.cwd}`,
 				`- pane: split จาก ${caller.paneId ?? "pane ปัจจุบัน"} โดยไม่ย้าย focus ของผู้ใช้`,
 				`- worker mode: ${input.requestedHarness === "pi" ? `${WORKER_ENV}=1` : "ไม่ใช้ (ไม่ใช่ Pi)"}`,
@@ -431,7 +501,16 @@ export default function orchestration(pi: ExtensionAPI): void {
 
 			return {
 				content: [{ type: "text", text }],
-				details: { name, kindSupported, supportedKinds: kinds, spawned: false },
+				details: {
+					name,
+					kindSupported,
+					supportedKinds: kinds,
+					spawned: false,
+					model: input.model,
+					effort: input.effort,
+					harnessArgs: run.args,
+					unsupported: run.unsupported,
+				},
 			};
 		},
 	});
@@ -449,6 +528,8 @@ export default function orchestration(pi: ExtensionAPI): void {
 			rationale: Type.String({ minLength: 1, description: "Concrete benefit expected from delegating this" }),
 			name: Type.Optional(Type.String({ description: "Preferred worker name" })),
 			cwd: Type.Optional(Type.String({ description: "Absolute working directory for the Worker; defaults to the current one" })),
+			model: Type.Optional(Type.String({ description: "Model to run this Worker with; omit to inherit the harness default" })),
+			effort: Type.Optional(Type.String({ description: "Reasoning effort or thinking level; the accepted values are harness-specific" })),
 			worktree: Type.Optional(Type.Object({
 				branch: Type.String({ minLength: 1, description: "Branch to create for this Worker" }),
 				base: Type.Optional(Type.String({ description: "Exact base ref or SHA; defaults to the repository's current checkout" })),
@@ -464,6 +545,8 @@ export default function orchestration(pi: ExtensionAPI): void {
 				requestedHarness: string;
 				rationale: string;
 				name?: string;
+				model?: string;
+				effort?: string;
 				cwd?: string;
 				worktree?: { branch: string; base?: string };
 				harnessArgs?: string[];
@@ -473,18 +556,32 @@ export default function orchestration(pi: ExtensionAPI): void {
 				throw new Error(`Herdr ไม่รองรับ kind "${input.requestedHarness}" (รองรับ: ${kinds.join(", ")})`);
 			}
 
+			const run = harnessRunSettings(input.requestedHarness, input.model, input.effort);
+			if (run.unsupported.length > 0) {
+				// Showing a setting in the approval dialog and then not applying it
+				// would make the dialog lie about what the user approved.
+				throw new Error(
+					`harness "${input.requestedHarness}" ไม่มี flag สำหรับ ${run.unsupported.join(", ")} — ` +
+					"ให้ส่งผ่าน harnessArgs เองหรือเลือก harness อื่น",
+				);
+			}
 			const cwd = input.cwd ? resolve(input.cwd) : ctx.cwd;
 			if (input.cwd && !isAbsolute(input.cwd)) throw new Error("cwd ของ Worker ต้องเป็น absolute path");
 			const taken = registry.list().map((worker) => worker.name);
 			const name = normalizeWorkerName(input.name ?? input.task, taken);
 			const workerMode = input.requestedHarness === "pi";
 
+			const piInherited = !input.model && !input.effort && input.requestedHarness === "pi"
+				? await piDefaults(pi)
+				: undefined;
 			const approved = await withHerdrBlocked(pi.events, `Spawn worker ${name}`, () =>
 				ctx.ui.confirm(
 					`สร้าง Worker "${name}" ด้วย ${input.requestedHarness}?`,
 					[
 						`cwd: ${cwd}`,
 						`เหตุผล: ${input.rationale}`,
+						`model: ${input.model ?? `harness default${piInherited ? ` (${piInherited})` : ""}`}`,
+						`effort: ${input.effort ?? "harness default"}`,
 						workerMode ? `worker mode: ${WORKER_ENV}=1` : "worker mode: ไม่ใช้ (ไม่ใช่ Pi)",
 						input.worktree
 							? `worktree: branch ${input.worktree.branch}${input.worktree.base ? ` จาก ${input.worktree.base}` : ""} (สร้าง workspace ใหม่ และจะไม่ถูกลบอัตโนมัติ)`
@@ -559,10 +656,11 @@ export default function orchestration(pi: ExtensionAPI): void {
 				await runHerdr(pi, ["pane", "send-keys", paneId, "enter"]);
 			}
 
+			const startArgs = [...run.args, ...(input.harnessArgs ?? [])];
 			let started = await runHerdr(pi, [
 				"agent", "start", name, "--kind", input.requestedHarness, "--pane", paneId,
 				"--timeout", String(SPAWN_TIMEOUT_MS),
-				...(input.harnessArgs?.length ? ["--", ...input.harnessArgs] : []),
+				...(startArgs.length ? ["--", ...startArgs] : []),
 			], { timeout: SPAWN_TIMEOUT_MS + 10_000 });
 
 			// A freshly split pane needs a moment before its shell is available.
@@ -571,7 +669,7 @@ export default function orchestration(pi: ExtensionAPI): void {
 				started = await runHerdr(pi, [
 					"agent", "start", name, "--kind", input.requestedHarness, "--pane", paneId,
 					"--timeout", String(SPAWN_TIMEOUT_MS),
-					...(input.harnessArgs?.length ? ["--", ...input.harnessArgs] : []),
+					...(startArgs.length ? ["--", ...startArgs] : []),
 				], { timeout: SPAWN_TIMEOUT_MS + 10_000 });
 			}
 

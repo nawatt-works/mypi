@@ -36,7 +36,7 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - ใช้ `/mypi-worker-status` เพื่อดูว่า session ปัจจุบันเป็น worker หรือไม่
 - `orchestration.ts`
   - ให้ Pi เป็น Coordinator ที่สร้างและควบคุม Worker ผ่าน Herdr โดยเปิด tools เฉพาะเมื่อรันอยู่ใต้ Herdr
-  - `mypi_preview_worker` แสดงสิ่งที่จะเกิดขึ้นโดยไม่สร้างอะไร และบังคับให้ระบุเหตุผลของการ delegate
+  - `mypi_preview_worker` แสดงสิ่งที่จะเกิดขึ้นโดยไม่สร้างอะไร รวมถึง model และ effort ที่จะใช้ และบังคับให้ระบุเหตุผลของการ delegate
   - `mypi_spawn_worker` ขออนุมัติจากผู้ใช้ทุกครั้งก่อนสร้าง pane และ agent พร้อมตรวจ kind กับ Herdr จริง
   - `mypi_handoff` ส่งงานหรือ correction กลับ session เดิม แล้วยืนยันการส่งถึงจาก `state_change_seq`
   - `mypi_collect` รับผลงานเมื่อ artifact ที่ตกลงไว้ผ่านครบเท่านั้น สถานะ lifecycle เป็นได้แค่หลักฐานประกอบ
