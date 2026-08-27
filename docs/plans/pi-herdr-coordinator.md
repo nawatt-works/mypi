@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-08-25 09:19<br>
-> **Updated:** 2026-08-27 13:42<br>
+> **Updated:** 2026-08-28 09:12<br>
 > **Purpose:** พัฒนา Coordinator layer ที่ให้ Pi สร้างและควบคุม Workers ผ่าน Herdr โดยเริ่มจาก probe เพื่อวัดว่า runtime primitive เชื่อถือได้จริงแค่ไหนก่อนเขียน extension
 
 ## Context
@@ -199,6 +199,38 @@ registry ใช้ `herdr agent list` เป็น source of truth ของ pro
 
 **friction ที่ยังเหลือ** — เมื่อ Worker ติด dialog ของ harness ตัวเอง Coordinator จะถามผู้ใช้ให้ไปกด แล้วถามซ้ำอีกครั้งว่ากดหรือยัง ทั้งที่ตรวจเองได้ด้วย `mypi_wait_worker --until idle` เกิดขึ้นสามครั้งในรอบเดียว
 
+### ค้างตรวจ: worker mode ไม่ติดตอนใช้งานจริง
+
+ผู้ใช้รายงานเมื่อ 2026-08-28 ว่าใช้ Coordinator ใน workspace `team-work` แล้ว Worker ที่เป็น Pi (`delivery-challenger`, pane `wS:p6`) ถูก spawn โดยไม่มี `MYPI_WORKER=1` ยังไม่ได้ยืนยันสาเหตุและยังไม่แก้
+
+สมมติฐานที่ต้องตรวจก่อน เรียงตามความน่าจะเป็น:
+
+1. **race ระหว่าง `pane send-text` กับ shell ที่ยังไม่พร้อม** — spawn ส่ง `export MYPI_WORKER=1` ทันทีหลัง `pane split` โดยไม่รอและไม่ตรวจว่าข้อความถึง shell prompt จริง ขณะที่ `agent start` มี retry สำหรับ `agent_pane_busy` อยู่แล้ว แปลว่าเรารู้อยู่แล้วว่า pane ที่เพิ่งแยกยังไม่พร้อมทันที แต่ไม่ได้ป้องกันฝั่ง export ถ้า shell ยังไม่ถึง prompt บรรทัด export จะหายไปเงียบ ๆ แล้ว `agent start` สำเร็จในรอบ retry ได้ผลเป็น Worker ที่ไม่มี env
+2. **Coordinator ไม่ได้ใช้ `mypi_spawn_worker`** — transcript ของผู้ใช้แสดงว่ามันเรียก `herdr agent read` ดิบ ๆ อยู่ ถ้าเคยเรียก `herdr agent start` ดิบด้วย env ก็จะไม่ถูกตั้งเลย
+3. spawn สำเร็จแต่ shell ของ pane ไม่ export ต่อไปยัง process ลูกด้วยเหตุอื่น เช่น shell profile เขียนทับ
+
+ไม่ว่าสาเหตุใด ปัญหาเชิงออกแบบร่วมกันคือ **spawn ไม่เคยยืนยันว่า worker mode ติดจริงหลังสตาร์ต** จึงล้มเหลวเงียบ ต่างจากส่วนอื่นของระบบที่ยืนยันผลเสมอ
+
+### ทางเลือกจาก Pi resource flags
+
+ตรวจ `pi --help` ของ v0.84.3 ในเครื่องยืนยันว่ามี flag ชุดนี้จริง:
+
+| flag | ผล |
+|---|---|
+| `-ne` / `--no-extensions` | ปิด extension discovery โดย `-e <path>` ยังโหลดได้ |
+| `-ns` / `--no-skills` | ปิด skill discovery |
+| `-nc` / `--no-context-files` | ปิด AGENTS.md / CLAUDE.md |
+| `-np` / `--no-prompt-templates` | ปิด prompt template |
+| `-xt` / `--exclude-tools <list>` | denylist ของ tool |
+
+ทางเลือกที่ควรพิจารณาแทนหรือเสริม env:
+
+- **`-ne` บวก `-e` เฉพาะ extension ที่ Worker ต้องใช้** ทำให้ชุด extension ของ Worker เป็นค่าที่กำหนดแน่นอน ไม่ต้องพึ่ง env และไม่มี race เพราะ flag เดินทางผ่าน `agent start ... -- <args>` ซึ่ง atomic ต่างจากการพิมพ์ข้อความเข้า shell แลกกับการต้อง maintain รายชื่อ extension ให้ตรงกับที่ package มี
+- **`-xt` ตัดเฉพาะ tool ที่บล็อกคน** เช่น `plannotator_submit_plan` เป็นการแก้แคบกว่าและไม่แตะ extension อื่น แต่ครอบคลุมเฉพาะ tool ไม่ครอบคลุมพฤติกรรมอย่าง steering choice ที่ไม่ใช่ tool
+- **ยืนยันหลังสตาร์ตไม่ว่าจะใช้วิธีใด** เช่นอ่าน env ของ process จริงหรือให้ Worker รายงานกลับ แล้วถือว่า spawn ล้มเหลวเมื่อ worker mode ไม่ติด
+
+เอกสารยังระบุ `PI_MODEL`, `PI_PROVIDER`, `PI_REASONING_LEVEL` เป็น env ที่ Pi อ่าน ซึ่งเป็นอีกทางสำหรับ model/effort นอกเหนือจาก flag ที่ใช้อยู่ และ `PI_CODING_AGENT_DIR` แยก profile ของ Worker ได้ทั้งก้อน
+
 ### Phase 3 — Parallel workers
 
 - [ ] บังคับ declared ownership และตรวจ disjoint write scope จาก git status ของแต่ละ worktree
@@ -239,6 +271,7 @@ probe รันสองรอบเมื่อ 2026-08-25 09:22–09:30 ด้
 
 ## Change log
 
+- 2026-08-28 09:12 — บันทึกรายงานว่า worker mode ไม่ติดตอนใช้งานจริง พร้อมสมมติฐานและทางเลือกจาก Pi resource flags โดยยังไม่แก้
 - 2026-08-27 13:42 — รันงานจริงจนจบวงแล้วแก้กฎ independence ให้วัดเทียบผู้ผลิตงานแทนจำนวนผู้ตรวจ พร้อมปิด verification ของ Phase 2
 - 2026-08-27 10:41 — เพิ่ม guidance injection ที่ประกาศอำนาจสามชั้น, `/mypi-orchestrate`, และกฎ audit contract ใน skill หลังพบว่าบทบาทถูกล็อกอยู่หลัง skill trigger
 - 2026-08-25 13:18 — เพิ่ม `mypi_wait_worker`, worktree lifecycle, cleanup ที่มี guard และ assurance state; แก้ cleanup ให้ fallback ไป git เมื่อ workspace ปิดไปแล้ว
