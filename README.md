@@ -13,6 +13,7 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - ถามก่อนอ่านไฟล์ที่อาจเป็น secret เช่น `.env`, credentials และ private keys
   - ถามก่อนเขียน แก้ไข ลบ หรือเพิ่มไฟล์นอก workspace
   - ตรวจ nested MCP/custom filesystem tools รวมถึง path ที่ส่งผ่านตัวแปร shell เมื่อวิเคราะห์ได้
+  - ตัวเลือกอนุญาตราย directory ระบุ path ที่ให้สิทธิ์จริง ซึ่งสำหรับ target ที่เป็นไฟล์คือ directory แม่
   - ถามก่อนอัปโหลด local file, อ่าน sensitive environment variables และเขียนไปยัง output path ภายนอกที่รู้ล่วงหน้า
 - `steering-choice.ts`
   - เมื่อ AI กำลังทำงาน การกด Enter จะแสดงตัวเลือก `Steer`, `Wait` หรือ `Cancel`

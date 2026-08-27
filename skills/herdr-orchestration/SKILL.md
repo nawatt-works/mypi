@@ -149,6 +149,13 @@ approval, and those prompts are bridged to Herdr so you can see them. Show the
 request to the user with the pane id and let them answer. Never approve on their
 behalf and never disable a Worker's guardrails.
 
+After telling them, wait with `mypi_wait_worker --until idle` instead of asking
+whether they answered yet. The Worker leaving `blocked` is the confirmation, and
+asking for one costs a round trip that the Worker's own state already gives you.
+Say what the decision changes for the work — which check is skipped, which
+assurance bar goes unmet — so the answer does not require reading the Worker's
+screen.
+
 ## Identity: what was asked for versus what is running
 
 Track the requested harness separately from the observed kind. Evidence is

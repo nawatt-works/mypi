@@ -38,7 +38,6 @@ const DIRECT_MUTATION_TOOLS = new Set([
 const READ_ONLY_TOOLS = new Set(["find", "ls", "glob"]);
 const CONTENT_READ_TOOLS = new Set(["read", "grep"]);
 const SESSION_ALLOW_ONCE = "Allow once";
-const SESSION_ALLOW_DIRECTORY = "Allow this directory for this session";
 const SESSION_ALLOW_SECRET = "Allow this secret file for this session";
 const SESSION_ALLOW_UPLOAD = "Allow this file upload for this session";
 const DENY = "Deny";
@@ -1100,6 +1099,16 @@ function sessionDirectoryKey(finding: MutationFinding): string | undefined {
 	return finding.targetIsDirectory ? finding.target : dirname(finding.target);
 }
 
+/**
+ * Name the directories the permission actually covers. The granted scope is not
+ * the path on screen: for a file target it is the parent directory, so a label
+ * saying only "this directory" hides how wide the grant is.
+ */
+function directoryPermissionLabel(keys: readonly string[]): string {
+	if (keys.length === 1) return `Allow ${keys[0]} for this session`;
+	return `Allow these directories for this session: ${keys.join(", ")}`;
+}
+
 export default function guardrails(pi: ExtensionAPI) {
 	const allowedDirectories = new Set<string>();
 	const allowedSecretFiles = new Set<string>();
@@ -1228,9 +1237,14 @@ export default function guardrails(pi: ExtensionAPI) {
 			};
 		}
 
-		const canSaveDirectoryPermission = pending.some((finding) => sessionDirectoryKey(finding));
-		const choices = canSaveDirectoryPermission
-			? [SESSION_ALLOW_ONCE, SESSION_ALLOW_DIRECTORY, DENY]
+		const directoryKeys = [...new Set(
+			pending.map((finding) => sessionDirectoryKey(finding)).filter((key): key is string => Boolean(key)),
+		)];
+		const allowDirectoryChoice = directoryKeys.length
+			? directoryPermissionLabel(directoryKeys)
+			: undefined;
+		const choices = allowDirectoryChoice
+			? [SESSION_ALLOW_ONCE, allowDirectoryChoice, DENY]
 			: [SESSION_ALLOW_ONCE, DENY];
 		const choice = await withHerdrBlocked(pi.events, "External file change approval", () =>
 			ctx.ui.select(
@@ -1239,11 +1253,8 @@ export default function guardrails(pi: ExtensionAPI) {
 			),
 		);
 		if (choice === SESSION_ALLOW_ONCE) return;
-		if (choice === SESSION_ALLOW_DIRECTORY) {
-			for (const finding of pending) {
-				const key = sessionDirectoryKey(finding);
-				if (key) allowedDirectories.add(key);
-			}
+		if (allowDirectoryChoice !== undefined && choice === allowDirectoryChoice) {
+			for (const key of directoryKeys) allowedDirectories.add(key);
 			return;
 		}
 

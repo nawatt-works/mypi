@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { homedir, tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import test from "node:test";
 import guardrails, {
 	analyzeShellMutations,
@@ -232,7 +232,12 @@ test("external mutation approval shows rm targets and dynamic execution context"
 
 	assert.equal(staticResult?.block, true);
 	assert.ok(prompt.includes(`File or directory to delete: ${outsidePath}`));
-	assert.ok(choices.includes("Allow this directory for this session"));
+	// The option must name the directory it actually grants: for a file target
+	// that is the parent directory, which is wider than the path on screen.
+	assert.ok(
+		choices.includes(`Allow ${dirname(outsidePath)} for this session`),
+		`directory option must name its scope, got: ${choices.join(" | ")}`,
+	);
 
 	const dynamicResult = await handler?.(
 		{ toolName: "bash", input: { command: 'rm "$generated_path"' } },
