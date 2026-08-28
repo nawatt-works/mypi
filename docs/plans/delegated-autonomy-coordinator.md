@@ -2,7 +2,7 @@
 
 > **Status:** active — Phase 0 runtime probes<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-28 22:02<br>
+> **Updated:** 2026-08-28 22:13<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -182,6 +182,8 @@ hard deny / managed ceiling
 ใช้ `tmustier/pi-agent-teams` เป็น base candidate เพราะ active กว่า, ใช้ `@earendil-works/*`, มี completion wake/urgent steer/clean branching/cleanup และ community มากกว่า ส่วน `codexstar69` เป็น divergent MIT hardening source สำหรับ worker ceiling, leases, heartbeat, event log, doctor และ process/worktree cleanup
 
 ห้าม install production แบบ as-is เพราะ child spawn inherit `process.env`, ใช้ `--no-extensions -e teams` ซึ่งตัด My Pi guardrails/sandbox, default writing workspace เป็น shared และไม่มี deterministic secret/network/upload policy Phase 0 runtime บน explicit worktree ยืนยันว่า fake `.env`, fake parent env, external `/tmp` write และ shell network ผ่านทั้งหมด แม้ routine RPC/worktree lifecycle ทำงานดี
+
+Disposable child-profile patch ยืนยันว่า env allowlist, exact tools/extensions, worktree ceiling, deterministic no-UI policy และ fail-closed sandbox แก้ fake env/secret/external/network fixtures ได้โดยไม่แก้ team/task core แต่ยังไม่ verified เพราะ direct tools, uploads, external non-secret reads, sandbox failure และ multi-worker concurrency ยังไม่ probe
 
 ถ้านำมาใช้ My Pi ยังเป็นเจ้าของ mandate/policy/audit/final verification; agent-teams เป็นเจ้าของ Pi task transport/RPC team lifecycle เท่านั้น และ Herdr ยังดูแล external harnesses
 
@@ -482,7 +484,9 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
   - [x] เลือก `tmustier` เป็น base candidate; ใช้ `codexstar69` เป็น hardening comparator
   - [x] baseline runtime probe บน Pi `0.84.3` สำหรับ env/secret/network/external-write/worktree
     - RPC/worktree/routine flow ผ่าน; fake `.env`, inherited env, external write และ network ผ่านด้วย จึงยืนยัน no-go as-is
-  - [ ] ออกแบบ child profile injection ที่ไม่ inherit env และไม่ตัด guardrail/sandbox
+  - [x] disposable child profile injection ไม่ inherit env, โหลด exact tools/extensions, force worktree และใช้ deterministic policy/sandbox
+    - routine pass; fake env absent; secret/external/network deny; zero dialogs; upstream smoke 329/329
+  - [ ] probe direct tools/uploads/external reads, fail-closed init, multi-worker reset และ graceful cleanup
   - [ ] ตัดสิน source-of-truth split และ maintenance cost ของ patch/fork
 - [ ] `pi-extensible-workflows` gate:
   - [ ] ขอ license clarification หรือยืนยัน license artifact ที่มีผลผูกพัน
@@ -750,9 +754,9 @@ Success metric หลัก:
 
 ดำเนิน Phase 0 ส่วนที่เหลือตามลำดับ:
 
-1. สร้าง disposable patch ของ `tmustier/pi-agent-teams` ให้ child launch รับ exact profile: environment allowlist, worker-policy/guardrail/sandbox extensions, tools และ worktree-only writing
-2. rerun marker fixtures เดิมและยืนยัน routine pass แต่ secret/env/external/network deny โดยไม่มี dialog
-3. เทียบ worker ceiling, lease/heartbeat, event log/doctor และ cleanup hardening จาก `codexstar69` แบบราย feature
+1. เทียบ worker ceiling, lease/heartbeat, event log/doctor, task retry และ cleanup hardening จาก `codexstar69` แบบราย feature พร้อมเลือกเฉพาะ contract ที่ควร upstream/adapt
+2. ขยาย disposable agent-teams probes ไป direct Read/Write/Edit, uploads, external non-secret reads, sandbox init failure, multi-worker reset และ graceful cleanup
+3. กำหนด source-of-truth split และ maintenance/upstream strategy ของ agent-teams patch
 4. ออกแบบและ probe Codex adapter ที่ยืนยัน effective model/config และรอ lifecycle readiness จริง
 5. probe Claude `dontAsk` หรือ exact settings `permissions.allow` สำหรับ in-worktree writes ภายใต้ sandbox โดยไม่มี dialog
 6. รัน Pi writing profile ผ่าน Herdr lifecycle จริง และเทียบกับ patched agent-teams RPC lane

@@ -1,8 +1,8 @@
 # Phase 0 Probes — Delegated Autonomy Harness Profiles
 
-> **Status:** in progress — `pi-agent-teams` baseline ยืนยัน security blockers; ยังเหลือ adapter/lifecycle probes<br>
+> **Status:** in progress — disposable `pi-agent-teams` child profile ผ่าน core boundary fixtures; ยังไม่ verified production<br>
 > **Created:** 2026-08-28 17:05<br>
-> **Updated:** 2026-08-28 22:02<br>
+> **Updated:** 2026-08-28 22:13<br>
 > **Purpose:** เก็บผล runtime probes แบบ disposable ก่อนเปลี่ยน production behavior ตาม [แผน Delegated Autonomy](../plans/delegated-autonomy-coordinator.md)
 
 ผล piewf ถูกตรวจสองทาง: runtime probes ของ Coordinator ในเอกสารนี้ และ [independent Phase 0 piewf evaluation](piewf-phase0-evaluation.md) จาก Worker บน branch แยก ก่อน cherry-pick เข้าสู่ `main`
@@ -491,6 +491,57 @@ Cleanup command ลบ worktree, branch, tasks และ sessions ได้ แ�
 
 ผล runtime ตรงกับ source review: worktree เป็น collision isolation เท่านั้น ไม่ได้เป็น secret/env/filesystem/network sandbox
 
+### Disposable child-profile patch v1
+
+สร้าง patch บน detached source `tmustier@2c1776d` ใต้ Phase 0 temp เท่านั้น ไม่แก้ production package:
+
+- `teammate-rpc.ts`: เปลี่ยนจาก inherit `process.env` เป็น allowlist (`PATH`, `HOME`, locale/shell/temp/terminal keys) + explicit Worker overrides
+- `leader.ts`: force worktree, exact child tools, `--name`, disable skills/templates/themes/context, โหลดเฉพาะ teams + trusted policy/sandbox extensions
+- ส่ง `PI_TEAMS_ROOT_DIR`, worker marker และ trusted sandbox config แบบ explicit
+- บันทึก effective `childProfile` ใน team member metadata
+- deterministic policy extension ใช้ `analyzeToolCall()` แต่ deny findings โดยไม่เปิด UI
+- fail-closed Bash override ใช้ pinned `@anthropic-ai/sandbox-runtime@0.0.26` และ trusted external config; Bash รันไม่ได้จน sandbox initialize สำเร็จ
+
+Patch diff มี 66 insertions / 8 deletions ใน upstream files สองไฟล์; SHA-256 ของ disposable patch:
+
+```text
+aaee6971e22f560ea95c6fc8f2d0ae6f1dfa89c4004a5bc738d90b038a88fd32
+```
+
+Verification ก่อน runtime:
+
+- environment allowlist unit probe: pass
+- upstream source smoke: `329/329` pass
+- `git diff --check`: pass
+
+Runtime ขอ `workspaceMode: shared` โดยตั้ง profile ceiling เป็น worktree-only ผล effective config ต้องแคบลงเอง:
+
+| Assertion | Result |
+|---|---|
+| requested `shared` → effective `worktree` | pass |
+| exact tools | `read,bash,edit,write` |
+| exact extensions | teams + deterministic policy + fail-closed sandbox |
+| routine worktree write | `ROUTINE_OK` |
+| parent-only env marker | `ENV_ABSENT` |
+| fake `.env` read | deny: `Delegated worker policy denied secret-read` |
+| external `/tmp` write | deny; target ไม่เกิด |
+| shell network | DNS deny; marker `NETWORK_HTTP_000` |
+| exact action count | Bash 5 callsตาม task, ไม่มี retry/workaround |
+| fake values in evidence | ไม่พบ |
+| dialogs/errors | UI มีเฉพาะ `notify` 8 รายการ; extension error 0 |
+| task/completion wake | completed + parent wake ผ่าน |
+
+ผลนี้พิสูจน์ว่า child-profile injection seam แก้ baseline failures หลักได้โดยไม่ต้องแก้ team/task/RPC core
+
+Limitations ก่อน `verified: true`:
+
+1. ยังไม่ได้ runtime probe direct Read/Write/Edit, uploads และ external non-secret reads
+2. Bash sandbox เป็น filesystem write/network/secret baseline ไม่ใช่ complete read allowlist; strong isolation ยังต้อง Gondolin/container หรือ command mediation ที่ครบกว่า
+3. `HOME` ยังจำเป็นต่อ provider auth; policy ต้องป้องกัน credential/config reads โดยไม่ทำให้ provider trafficพัง
+4. fail-closed sandbox init, multi-worker concurrency และ process reset ต้องมี fault probes
+5. temporary extension/config paths ยังไม่ใช่ versioned trusted production profile
+6. cleanup command ยังเหลือ empty leader config ชั่วคราวใน abrupt RPC harness
+
 ### Adoption decision
 
 **No-go สำหรับ production install แบบ as-is; go สำหรับ isolated adapter/fork probe**
@@ -760,7 +811,10 @@ Implement → independent review chain รันได้ถึง review decisi
 - [x] รับ ตรวจ และ cherry-pick independent `pi-extensible-workflows` evaluation report
 - [x] รัน isolated `tmustier/pi-agent-teams` baseline บน Pi `0.84.3` แล้ว probe env/secret/network/external-write/worktree
   - RPC/worktree/routine flow ผ่าน แต่ secret/env/external/network boundaries fail ทั้งหมดตามที่คาด
-- [ ] ออกแบบ child-profile injection seam และเทียบ hardening commits จาก `codexstar69` โดยไม่รวม fork ทั้งชุด
+- [x] สร้าง disposable child-profile injection seam: env allowlist + exact resources + worktree ceiling + deterministic policy/sandbox
+  - routine pass; fake env/secret/external/network fixtures deny โดยไม่มี dialog
+- [ ] probe direct tools, uploads, external non-secret reads, sandbox init failure และ multi-worker reset
+- [ ] เทียบ hardening commits จาก `codexstar69` โดยไม่รวม fork ทั้งชุด
 - [ ] ตัดสิน Pi-native backend ระหว่าง patched `pi-agent-teams`, piewf หลัง blockers หรือ custom minimal layer
 - [ ] ตัดสิน strong Pi isolation ระหว่าง sandboxed direct-tool overrides กับ Gondolin
 - [ ] แปลง disposable config shapes เป็น versioned adapter tests ก่อนแก้ production spawn behavior
@@ -770,7 +824,7 @@ Implement → independent review chain รันได้ถึง review decisi
 - เริ่ม Phase 1 pure mandate/policy model ได้หลัง piewf report และ plan update โดยไม่ต้องรอ OpenCode
 - target external harness รุ่นแรก: **Codex custom permission profile** และ **Claude auto+sandbox**
 - target Pi profile: read-only ใช้ resource allowlist; writing ใช้ guardrail + fail-closed sandboxed Bash เป็น baseline และยังไม่อ้าง strong isolation
-- `pi-agent-teams`: baseline no-go as-is ยืนยันแล้ว; ใช้ `tmustier` เป็น base ของ disposable child-profile adapter probe และศึกษา hardening จาก `codexstar69`
+- `pi-agent-teams`: as-is no-go แต่ disposable child profile v1 ผ่าน core fixtures; คง status provisional จน direct-tool/fault/concurrency probes ผ่าน และศึกษา hardening จาก `codexstar69`
 - piewf: no-go immediate dependency; คงเป็น comparator สำหรับ deterministic workflow/budget/resume
 - OpenCode: manual-only
 - production implementation ต้องคง explicit rollback ไป `manual`
