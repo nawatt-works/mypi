@@ -2,7 +2,7 @@
 
 > **Status:** active — Phase 0 runtime probes<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-28 19:13<br>
+> **Updated:** 2026-08-28 19:26<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -354,6 +354,8 @@ enabled = false
 
 Phase 0 ยืนยันว่า profile นี้ทำ routine workspace write ได้และ deny fake secret, `/tmp` external write และ shell network ได้โดยไม่มี human prompt แต่ protected `.git` ทำให้ local commit ไม่ผ่าน; ค่าเริ่มต้นจึงให้ Coordinator commit หลัง collect
 
+Herdr probe ยืนยัน boundary เดิม แต่พบ blocker ใหม่: requested `gpt-5.4-mini`/low เปลี่ยนเป็น effective `gpt-5.6-luna`/medium, interactive TUI ยังโหลด user config และ Herdr readiness/working state รายงาน `done` ก่อน execution จบ จึงยังไม่ verified สำหรับ unattended control loop
+
 Probe ต้องยืนยัน:
 
 - routine edit/test ใน worktree ไม่ถามผู้ใช้; commit เป็น separate capability และค่าเริ่มต้นให้ Coordinator ทำหลัง collect
@@ -373,6 +375,8 @@ claude --permission-mode auto --restricted --safe-mode --strict-mcp-config \
 ```
 
 Temporary settings ต้องมี explicit Read denies, `sandbox.enabled`, `allowUnsandboxedCommands: false`, `failIfUnavailable: true`, filesystem denies และ network deny/allowlist ตาม mandate Phase 0 ยืนยันว่า `auto --restricted --safe-mode` โดยไม่มี sandbox settings ยังอ่าน secret, เขียน external path และใช้ network ได้
+
+Herdr interactive probes ยืนยันว่า sandbox hard-deny secret/external/network ได้ แต่ทั้ง `auto+sandbox` และ attempt ที่เพิ่ม `--allowedTools Read Edit Write Bash` ยังเปิด dialog ตอนสร้าง in-worktree report จึงเป็น no-go สำหรับ unattended writing จน explicit allow/`dontAsk`/permission-handler profile ผ่านจริง
 
 Probe ต้องยืนยัน:
 
@@ -456,11 +460,13 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
   - explicit fail-closed sandbox settings ผ่าน routine/secret/external/network probes
 - [x] probe OpenCode isolated policy + `--auto`
   - direct isolated config ใช้ได้ แต่ Bash redirection ข้าม external-directory deny; delegated profile เป็น no-go
-- [ ] ตรวจว่า Herdr lifecycle integrations ของ target harness เป็น `current`
-  - Pi/Claude/Codex current; OpenCode not installed
+- [x] ตรวจว่า Herdr lifecycle integrations ของ target harness เป็น `current`
+  - Pi/Claude/Codex current; OpenCode not installed และไม่ใช่ delegated initial target
 - [ ] ทดสอบ human-only action, hard deny, provider error, timeout และ missing artifact
   - fake secret, external write และ network hard-deny probes ผ่านใน provisional Pi/Codex/Claude profiles
 - [ ] ทดสอบว่าผู้ใช้ไม่ต้องกด routine permissions ในหนึ่ง implement-review chain
+  - Codex implement ผ่านและ Coordinator commit หลัง collect
+  - Claude review/boundary ผ่านใน pane แต่ Write report prompt ทั้ง auto และ auto+allowedTools; chain ยัง fail
 - [ ] `pi-extensible-workflows` gate:
   - [ ] ขอ license clarification หรือยืนยัน license artifact ที่มีผลผูกพัน
     - npm/source metadata ระบุ MIT แต่ source และ tarball ไม่มี license text
@@ -727,9 +733,11 @@ Success metric หลัก:
 
 ดำเนิน Phase 0 ส่วนที่เหลือตามลำดับ:
 
-1. รัน provisional Pi/Codex/Claude profiles ผ่าน Herdr lifecycle จริง
-2. รัน implement → review → correction chain โดยไม่มี routine approval
-3. ทดสอบ provider error, timeout, missing artifact และ human-only escalation
-4. สรุป go/no-go แล้วจึงเริ่ม Phase 1 pure mandate/policy model
+1. ออกแบบและ probe Codex adapter ที่ยืนยัน effective model/config และรอ lifecycle readiness จริง
+2. probe Claude `dontAsk` หรือ exact settings `permissions.allow` สำหรับ in-worktree writes ภายใต้ sandbox โดยไม่มี dialog
+3. รัน Pi writing profile ผ่าน Herdr lifecycle จริง
+4. รัน implement → review → correction chain ซ้ำให้ได้ศูนย์ routine approval
+5. ทดสอบ provider error, timeout, missing artifact และ human-only escalation
+6. สรุป go/no-go แล้วจึงเริ่ม Phase 1 pure mandate/policy model
 
 ห้ามแก้ production behavior ก่อนสรุปผล probe และอัปเดต decisions/profile verification ในแผนนี้
