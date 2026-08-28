@@ -180,6 +180,18 @@ export function harnessRunSettings(
 	const args: string[] = [];
 	const unsupported: string[] = [];
 
+	// A phrase like "inherit default" is a description, not an identifier. Pi
+	// hangs on an unmatched `--model` rather than failing fast, so the spawn
+	// would only surface as a startup timeout a minute later.
+	for (const [label, value] of [["model", model], ["effort", effort]] as const) {
+		if (value !== undefined && /\s/.test(value.trim() === "" ? " " : value)) {
+			throw new Error(
+				`${label} "${value}" ไม่ใช่ identifier — ใส่ค่าที่ harness รับจริงเช่น gpt-5.6-terra ` +
+				"หรือเว้นว่างไว้เพื่อสืบทอดค่า default",
+			);
+		}
+	}
+
 	if (model) {
 		if (kind === "pi" || kind === "claude" || kind === "codex") args.push("--model", model);
 		else unsupported.push(`model (${kind})`);
@@ -461,8 +473,8 @@ export default function orchestration(pi: ExtensionAPI): void {
 			requestedHarness: Type.String({ minLength: 1, description: "Herdr agent kind to run, e.g. pi, codex, claude" }),
 			rationale: Type.String({ minLength: 1, description: "Concrete benefit expected from delegating this, not just that the task is large" }),
 			name: Type.Optional(Type.String({ description: "Preferred worker name; normalized to Herdr's [a-z][a-z0-9_-]{0,31} rule" })),
-			model: Type.Optional(Type.String({ description: "Model to run this Worker with; omit to inherit the harness default" })),
-			effort: Type.Optional(Type.String({ description: "Reasoning effort or thinking level; the accepted values are harness-specific" })),
+			model: Type.Optional(Type.String({ description: "Exact model id the harness accepts, e.g. gpt-5.6-terra. Omit the field entirely to inherit the harness default; never pass a phrase such as \"default\"" })),
+			effort: Type.Optional(Type.String({ description: "Exact effort or thinking level the harness accepts, e.g. high. Omit the field entirely to inherit the default" })),
 			expectedArtifacts: Type.Optional(Type.Array(Type.String(), {
 				description: "Exact paths, branches or commits this Worker is expected to produce",
 			})),

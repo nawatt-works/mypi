@@ -468,3 +468,13 @@ test("closes a Worker that started without the worker-mode marker", async () => 
 		"a Worker that cannot be verified must not be left running",
 	);
 });
+
+test("rejects a described model instead of hanging the harness on it", () => {
+	// pi does not fail fast on an unmatched --model: it hangs, and the spawn only
+	// surfaces as a startup timeout a minute later.
+	assert.throws(() => harnessRunSettings("pi", "inherit default"), /ไม่ใช่ identifier/);
+	assert.throws(() => harnessRunSettings("pi", undefined, "harness default"), /ไม่ใช่ identifier/);
+	assert.throws(() => harnessRunSettings("pi", " "), /ไม่ใช่ identifier/);
+	assert.deepEqual(harnessRunSettings("pi", "gpt-5.6-terra").args, ["--model", "gpt-5.6-terra"]);
+	assert.deepEqual(harnessRunSettings("pi").args, [], "omitting the field is how a default is inherited");
+});

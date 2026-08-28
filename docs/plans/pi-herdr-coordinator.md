@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-08-25 09:19<br>
-> **Updated:** 2026-08-28 09:58<br>
+> **Updated:** 2026-08-28 10:47<br>
 > **Purpose:** พัฒนา Coordinator layer ที่ให้ Pi สร้างและควบคุม Workers ผ่าน Herdr โดยเริ่มจาก probe เพื่อวัดว่า runtime primitive เชื่อถือได้จริงแค่ไหนก่อนเขียน extension
 
 ## Context
@@ -239,6 +239,10 @@ registry ใช้ `herdr agent list` เป็น source of truth ของ pro
 
 ยืนยันกับ Worker จริง: correction ที่ส่งตอน `agent_status` เป็น `working` ถึงปลายทางและได้ `CORRECTION-RECEIVED` โดยไม่มี steering dialog คั่น ซึ่งเป็นเคสเดิมที่เคยล้มเหลวเงียบ
 
+ทดสอบซ้ำผ่านเส้นทางจริงทั้งเส้น คือเปิด Pi Coordinator ใน Herdr แล้วให้มันสร้าง Pi Worker เอง ผลคือ dialog อนุมัติแสดง `worker mode: session name mypi-worker:notes-writer-2`, spawn ผ่านการยืนยัน marker, registry บันทึก `requested: pi / observed: pi (confirmed, lifecycle)` และ Coordinator อ่าน `NOTES.md` เองก่อนรายงาน โดย assurance ระดับ `coordinator` ขึ้นว่าเพียงพอแล้วหลัง collect ผ่าน
+
+**bug ที่พบระหว่างทดสอบ: `model` และ `effort` รับค่าที่เป็นคำอธิบายได้** — Coordinator ส่ง `model: "inherit default"` ซึ่งกลายเป็น `pi --model "inherit default"` และ **Pi ไม่ error แต่ค้าง** ทำให้ `agent start` หมดเวลาหลังหนึ่งนาที เสียทั้งเวลาและ approval ของผู้ใช้ไปรอบหนึ่ง ทดสอบตรงยืนยันแล้วว่า `pi --model "inherit default" -p "say ok"` ค้างจริงไม่คืนค่า แก้โดยให้ทั้งสองฟิลด์รับเฉพาะ identifier ที่ไม่มีช่องว่าง และเขียน description ให้ชัดว่าการสืบทอดค่า default คือการไม่ส่งฟิลด์นั้น ไม่ใช่การส่งคำว่า default
+
 ### Phase 3 — Parallel workers
 
 - [ ] บังคับ declared ownership และตรวจ disjoint write scope จาก git status ของแต่ละ worktree
@@ -279,6 +283,7 @@ probe รันสองรอบเมื่อ 2026-08-25 09:22–09:30 ด้
 
 ## Change log
 
+- 2026-08-28 10:47 — ทดสอบ worker mode ผ่าน Pi Coordinator จริงจนจบงาน และแก้ `model`/`effort` ให้ปฏิเสธค่าที่เป็นคำอธิบายซึ่งทำให้ Pi ค้างตอนเปิด
 - 2026-08-28 09:58 — ย้ายสัญญาณ worker mode จาก env ที่พิมพ์เข้า shell ไปเป็นชื่อ session ที่ตั้งด้วย `--name` และให้ spawn ยืนยันผลหลังสตาร์ต
 - 2026-08-28 09:12 — บันทึกรายงานว่า worker mode ไม่ติดตอนใช้งานจริง พร้อมสมมติฐานและทางเลือกจาก Pi resource flags โดยยังไม่แก้
 - 2026-08-27 13:42 — รันงานจริงจนจบวงแล้วแก้กฎ independence ให้วัดเทียบผู้ผลิตงานแทนจำนวนผู้ตรวจ พร้อมปิด verification ของ Phase 2
