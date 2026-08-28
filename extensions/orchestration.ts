@@ -15,7 +15,7 @@ import {
 	type AssuranceLevel,
 	type AssuranceState,
 } from "./orchestration-registry.ts";
-import { WORKER_ENV } from "./worker-mode.ts";
+import { WORKER_SESSION_PREFIX, workerSessionName } from "./worker-mode.ts";
 
 const PREVIEW_TOOL = "mypi_preview_worker";
 const SPAWN_TOOL = "mypi_spawn_worker";
@@ -86,6 +86,16 @@ function describeWorker(worker: WorkerRecord): string {
 		`    pane: ${worker.paneId ?? "-"}  cwd: ${worker.cwd ?? "-"}${worker.worktree ? `  worktree: ${worker.worktree.path}` : ""}`,
 		artifacts,
 	].join("\n");
+}
+
+/**
+ * Pi puts its session name in the terminal title, so a Coordinator can confirm
+ * from outside that a Worker really started in worker mode.
+ */
+async function agentSessionName(pi: ExtensionAPI, name: string): Promise<string | undefined> {
+	const result = await runHerdr(pi, ["agent", "get", name]);
+	const agent = (result.result as { agent?: { terminal_title?: string } } | undefined)?.agent;
+	return agent?.terminal_title;
 }
 
 async function agentStatus(pi: ExtensionAPI, name: string): Promise<{ status?: string; seq?: number }> {
@@ -489,7 +499,7 @@ export default function orchestration(pi: ExtensionAPI): void {
 				...(run.unsupported.length ? [`- ⚠ ไม่รองรับสำหรับ harness นี้: ${run.unsupported.join(", ")}`] : []),
 				`- cwd: ${ctx.cwd}`,
 				`- pane: split จาก ${caller.paneId ?? "pane ปัจจุบัน"} โดยไม่ย้าย focus ของผู้ใช้`,
-				`- worker mode: ${input.requestedHarness === "pi" ? `${WORKER_ENV}=1` : "ไม่ใช้ (ไม่ใช่ Pi)"}`,
+				`- worker mode: ${input.requestedHarness === "pi" ? `session name ${workerSessionName(name)}` : "ไม่ใช้ (ไม่ใช่ Pi)"}`,
 				`- rationale: ${input.rationale}`,
 				`- expected artifacts: ${input.expectedArtifacts?.join(", ") || "ยังไม่ระบุ"}`,
 				"",
@@ -582,7 +592,7 @@ export default function orchestration(pi: ExtensionAPI): void {
 						`เหตุผล: ${input.rationale}`,
 						`model: ${input.model ?? `harness default${piInherited ? ` (${piInherited})` : ""}`}`,
 						`effort: ${input.effort ?? "harness default"}`,
-						workerMode ? `worker mode: ${WORKER_ENV}=1` : "worker mode: ไม่ใช้ (ไม่ใช่ Pi)",
+						workerMode ? `worker mode: session name ${workerSessionName(name)}` : "worker mode: ไม่ใช้ (ไม่ใช่ Pi)",
 						input.worktree
 							? `worktree: branch ${input.worktree.branch}${input.worktree.base ? ` จาก ${input.worktree.base}` : ""} (สร้าง workspace ใหม่ และจะไม่ถูกลบอัตโนมัติ)`
 							: "worktree: ใช้ checkout เดิม",
@@ -649,14 +659,14 @@ export default function orchestration(pi: ExtensionAPI): void {
 				worktree,
 			});
 
-			if (workerMode) {
-				// Pi refuses to share a CLI flag between extensions, so worker mode
-				// travels through the pane's shell environment instead.
-				await runHerdr(pi, ["pane", "send-text", paneId, `export ${WORKER_ENV}=1`]);
-				await runHerdr(pi, ["pane", "send-keys", paneId, "enter"]);
-			}
-
-			const startArgs = [...run.args, ...(input.harnessArgs ?? [])];
+			// Worker mode rides on `--name`, which Pi applies atomically at startup.
+			// Typing an export into the pane's shell instead lost the setting
+			// whenever the shell had not reached its prompt yet.
+			const startArgs = [
+				...(workerMode ? ["--name", workerSessionName(name)] : []),
+				...run.args,
+				...(input.harnessArgs ?? []),
+			];
 			let started = await runHerdr(pi, [
 				"agent", "start", name, "--kind", input.requestedHarness, "--pane", paneId,
 				"--timeout", String(SPAWN_TIMEOUT_MS),
@@ -682,6 +692,21 @@ export default function orchestration(pi: ExtensionAPI): void {
 					`เริ่ม ${input.requestedHarness} ไม่สำเร็จ: ${started.error?.message ?? started.output}`,
 					worktree ? `worktree ${worktree.path} ยังอยู่ ให้ใช้ /mypi-orchestrate-cleanup เมื่อต้องการลบ` : "",
 				].filter(Boolean).join("\n"));
+			}
+
+			if (workerMode) {
+				// Everything else in this system verifies its result; worker mode
+				// must not be the one setting that is trusted on faith.
+				const applied = await agentSessionName(pi, name);
+				if (!applied?.includes(WORKER_SESSION_PREFIX)) {
+					registry.update(name, { status: "gone" });
+					if (!worktree) await runHerdr(pi, ["pane", "close", paneId]);
+					throw new Error([
+						`Worker "${name}" เริ่มแล้วแต่ยืนยัน worker mode ไม่ได้ จึงปิดทิ้ง`,
+						`ตรวจพบชื่อ session: ${applied ?? "อ่านไม่ได้"}`,
+						worktree ? `worktree ${worktree.path} ยังอยู่ ใช้ /mypi-orchestrate-cleanup เมื่อต้องการลบ` : "",
+					].filter(Boolean).join("\n"));
+				}
 			}
 
 			registry.update(name, { status: "live" });

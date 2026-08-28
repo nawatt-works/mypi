@@ -59,7 +59,7 @@ export default function steeringChoice(pi: ExtensionAPI) {
 		// prompt`, which submits text and Enter together; if this dialog opens
 		// instead, the message is never delivered and the CLI still reports
 		// success, so a worker must not install it.
-		if (installed || !ctx.hasUI || isWorkerMode()) return;
+		if (installed || !ctx.hasUI || isWorkerMode(pi)) return;
 		installed = true;
 
 		const previousFactory = ctx.ui.getEditorComponent();

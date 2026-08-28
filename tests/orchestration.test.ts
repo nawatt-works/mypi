@@ -418,3 +418,53 @@ test("refuses to spawn with a setting the harness cannot apply", async () => {
 	assert.ok(!fake.calls.some((call) => call.args[0] === "pane"),
 		"a setting that cannot be applied must stop before anything is created");
 });
+
+test("marks a Pi worker through its session name, never by typing into its shell", async () => {
+	const fake = fakePi({
+		herdrResponses: {
+			"agent start": HELP_TEXT,
+			"pane split": { result: { pane: { pane_id: "w7:pB" } } },
+			"agent get": { result: { agent: { terminal_title: "π - mypi-worker:dev - repo" } } },
+		},
+	});
+	orchestration(fake.pi);
+
+	await withHerdrEnv(() => fake.tools.get("mypi_spawn_worker").execute("1", {
+		task: "implement", requestedHarness: "pi", rationale: "r", name: "dev",
+	}, undefined, undefined, { cwd: "/repo", hasUI: true, ui: { confirm: async () => true } }))
+		.catch(() => { /* agent start is faked; only the arguments matter here */ });
+
+	assert.ok(
+		!fake.calls.some((call) => call.args[1] === "send-text" || call.args[1] === "send-keys"),
+		"typing into a pane's shell can be lost before the prompt is ready",
+	);
+	// `agent start --help` is also recorded; the real launch carries --kind.
+	const start = fake.calls.find((call) => call.args[1] === "start" && call.args.includes("--kind"));
+	assert.ok(start, "the agent must be started");
+	const separator = start.args.indexOf("--");
+	assert.ok(separator > -1, "harness arguments must follow --");
+	assert.deepEqual(start.args.slice(separator + 1, separator + 3), ["--name", "mypi-worker:dev"]);
+});
+
+test("closes a Worker that started without the worker-mode marker", async () => {
+	const fake = fakePi({
+		herdrResponses: {
+			"agent start": HELP_TEXT,
+			"pane split": { result: { pane: { pane_id: "w7:pB" } } },
+			// The title lacks the marker: the setting did not take.
+			"agent get": { result: { agent: { terminal_title: "π - repo" } } },
+		},
+	});
+	orchestration(fake.pi);
+
+	await assert.rejects(
+		withHerdrEnv(() => fake.tools.get("mypi_spawn_worker").execute("1", {
+			task: "implement", requestedHarness: "pi", rationale: "r", name: "dev",
+		}, undefined, undefined, { cwd: "/repo", hasUI: true, ui: { confirm: async () => true } })),
+		/ยืนยัน worker mode ไม่ได้/,
+	);
+	assert.ok(
+		fake.calls.some((call) => call.args[0] === "pane" && call.args[1] === "close"),
+		"a Worker that cannot be verified must not be left running",
+	);
+});

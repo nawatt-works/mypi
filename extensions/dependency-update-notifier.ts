@@ -188,7 +188,7 @@ function notifyUpdates(ctx: ExtensionContext, updates: DependencyUpdate[]): void
 
 export default function dependencyUpdateNotifier(pi: ExtensionAPI) {
 	pi.on("session_start", (_event, ctx) => {
-		if (!ctx.hasUI || isWorkerMode()) return;
+		if (!ctx.hasUI || isWorkerMode(pi)) return;
 
 		// Deliberately do not return this promise: startup must not wait for npm.
 		void checkForUpdates(pi, false)

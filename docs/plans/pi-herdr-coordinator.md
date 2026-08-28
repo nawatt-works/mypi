@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-08-25 09:19<br>
-> **Updated:** 2026-08-28 09:12<br>
+> **Updated:** 2026-08-28 09:58<br>
 > **Purpose:** พัฒนา Coordinator layer ที่ให้ Pi สร้างและควบคุม Workers ผ่าน Herdr โดยเริ่มจาก probe เพื่อวัดว่า runtime primitive เชื่อถือได้จริงแค่ไหนก่อนเขียน extension
 
 ## Context
@@ -199,7 +199,7 @@ registry ใช้ `herdr agent list` เป็น source of truth ของ pro
 
 **friction ที่ยังเหลือ** — เมื่อ Worker ติด dialog ของ harness ตัวเอง Coordinator จะถามผู้ใช้ให้ไปกด แล้วถามซ้ำอีกครั้งว่ากดหรือยัง ทั้งที่ตรวจเองได้ด้วย `mypi_wait_worker --until idle` เกิดขึ้นสามครั้งในรอบเดียว
 
-### ค้างตรวจ: worker mode ไม่ติดตอนใช้งานจริง
+### worker mode ไม่ติดตอนใช้งานจริง และการแก้
 
 ผู้ใช้รายงานเมื่อ 2026-08-28 ว่าใช้ Coordinator ใน workspace `team-work` แล้ว Worker ที่เป็น Pi (`delivery-challenger`, pane `wS:p6`) ถูก spawn โดยไม่มี `MYPI_WORKER=1` ยังไม่ได้ยืนยันสาเหตุและยังไม่แก้
 
@@ -230,6 +230,14 @@ registry ใช้ `herdr agent list` เป็น source of truth ของ pro
 - **ยืนยันหลังสตาร์ตไม่ว่าจะใช้วิธีใด** เช่นอ่าน env ของ process จริงหรือให้ Worker รายงานกลับ แล้วถือว่า spawn ล้มเหลวเมื่อ worker mode ไม่ติด
 
 เอกสารยังระบุ `PI_MODEL`, `PI_PROVIDER`, `PI_REASONING_LEVEL` เป็น env ที่ Pi อ่าน ซึ่งเป็นอีกทางสำหรับ model/effort นอกเหนือจาก flag ที่ใช้อยู่ และ `PI_CODING_AGENT_DIR` แยก profile ของ Worker ได้ทั้งก้อน
+
+**วิธีที่เลือกใช้: ย้ายสัญญาณไปไว้ในชื่อ session** — ทดสอบแล้วว่า `pi --name "mypi-worker:<name>"` ทำให้ `pi.getSessionName()` คืนค่านั้นให้ทุก extension อ่านได้ ต่างจาก `getFlag` ที่ scope อยู่กับ extension ที่ register และต่างจาก module state ที่แยกกันเพราะ loader ปิด module cache ข้อดีที่ชี้ขาดคือมันเป็น flag ที่เดินทางไปกับ `agent start ... -- <args>` แบบ atomic จึงไม่มี race แบบการพิมพ์ข้อความเข้า shell
+
+ผลพลอยได้คือ Herdr แสดงชื่อ session ใน `terminal_title` (`π - mypi-worker:wm-check - probe-repo`) ทำให้ Coordinator **ยืนยันจากภายนอกได้** ว่า Worker เริ่มในโหมดนี้จริง spawn จึงตรวจหลังสตาร์ตทุกครั้ง และถ้ายืนยันไม่ได้จะปิด pane ทิ้งแล้วรายงานว่าล้มเหลว แทนที่จะปล่อย Worker ที่ไม่มี guard ทำงานต่อ
+
+`MYPI_WORKER=1` ยังใช้ได้อยู่ในฐานะทางลัดสำหรับรัน session เป็น worker ด้วยมือ
+
+ยืนยันกับ Worker จริง: correction ที่ส่งตอน `agent_status` เป็น `working` ถึงปลายทางและได้ `CORRECTION-RECEIVED` โดยไม่มี steering dialog คั่น ซึ่งเป็นเคสเดิมที่เคยล้มเหลวเงียบ
 
 ### Phase 3 — Parallel workers
 
@@ -271,6 +279,7 @@ probe รันสองรอบเมื่อ 2026-08-25 09:22–09:30 ด้
 
 ## Change log
 
+- 2026-08-28 09:58 — ย้ายสัญญาณ worker mode จาก env ที่พิมพ์เข้า shell ไปเป็นชื่อ session ที่ตั้งด้วย `--name` และให้ spawn ยืนยันผลหลังสตาร์ต
 - 2026-08-28 09:12 — บันทึกรายงานว่า worker mode ไม่ติดตอนใช้งานจริง พร้อมสมมติฐานและทางเลือกจาก Pi resource flags โดยยังไม่แก้
 - 2026-08-27 13:42 — รันงานจริงจนจบวงแล้วแก้กฎ independence ให้วัดเทียบผู้ผลิตงานแทนจำนวนผู้ตรวจ พร้อมปิด verification ของ Phase 2
 - 2026-08-27 10:41 — เพิ่ม guidance injection ที่ประกาศอำนาจสามชั้น, `/mypi-orchestrate`, และกฎ audit contract ใน skill หลังพบว่าบทบาทถูกล็อกอยู่หลัง skill trigger

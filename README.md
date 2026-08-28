@@ -30,7 +30,7 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - ใช้ `/mypi-herdr-status` เพื่อตรวจทันที และ `/mypi-herdr-setup` เพื่อติดตั้งหรืออัปเดตผ่าน official installer หลังยืนยัน
   - bridge `rpiv:ask-user:blocked` และ permission dialogs ของ `my-pi` ไปยัง `herdr:blocked` เพื่อให้ Herdr แสดงสถานะและเล่นเสียง request
 - `worker-mode.ts`
-  - แยก session ที่ Coordinator สร้างออกจาก session ปกติของผู้ใช้ โดยดูจาก environment `MYPI_WORKER=1`
+  - แยก session ที่ Coordinator สร้างออกจาก session ปกติของผู้ใช้ โดยดูจากชื่อ session ที่ขึ้นต้นด้วย `mypi-worker:` ซึ่งตั้งผ่าน `--name` ตอนเปิด และตั้งเองด้วย `MYPI_WORKER=1` ได้
   - ปิด steering choice, Plannotator review และ startup dependency check ใน worker เพราะไม่มีผู้ใช้เฝ้า pane
   - guardrails ยังถามอนุมัติเหมือนเดิม และสถานะถูก bridge ไป Herdr ให้ Coordinator เห็นและส่งต่อผู้ใช้
   - ใช้ `/mypi-worker-status` เพื่อดูว่า session ปัจจุบันเป็น worker หรือไม่

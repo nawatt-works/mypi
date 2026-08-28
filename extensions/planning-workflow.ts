@@ -240,7 +240,7 @@ export default function planningWorkflow(pi: ExtensionAPI): void {
 		setToolEnabled(FINISH_TOOL, activePlan !== undefined);
 		// Plannotator opens a browser for a human reviewer. A worker has none, so
 		// review stays with the Coordinator and the user.
-		setToolEnabled(REVIEW_TOOL, !isWorkerMode() && activePlan?.storage !== "session");
+		setToolEnabled(REVIEW_TOOL, !isWorkerMode(pi) && activePlan?.storage !== "session");
 	}
 
 	function persistPlan(action: "activate" | "update", plan: ActiveWorkPlan): void;

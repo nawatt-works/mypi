@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import workerMode, { WORKER_ENV, isWorkerMode } from "../extensions/worker-mode.ts";
+import workerMode, {
+	WORKER_ENV,
+	WORKER_SESSION_PREFIX,
+	isWorkerMode,
+	workerSessionName,
+} from "../extensions/worker-mode.ts";
 import steeringChoice from "../extensions/steering-choice.ts";
 import dependencyUpdateNotifier from "../extensions/dependency-update-notifier.ts";
 
@@ -12,7 +17,7 @@ type Fake = {
 	activeTools: string[];
 };
 
-function fakePi(options: { activeTools?: string[] } = {}): Fake {
+function fakePi(options: { activeTools?: string[]; sessionName?: string } = {}): Fake {
 	const handlers = new Map<string, (...args: any[]) => any>();
 	const commands = new Map<string, any>();
 	const flags = new Map<string, unknown>();
@@ -28,6 +33,7 @@ function fakePi(options: { activeTools?: string[] } = {}): Fake {
 			commands.set(name, opts);
 		},
 		getFlag: (name: string) => flags.get(name),
+		getSessionName: () => options.sessionName,
 		getActiveTools: () => state.activeTools,
 		setActiveTools: (names: string[]) => {
 			state.activeTools = names;
@@ -44,22 +50,20 @@ function fakePi(options: { activeTools?: string[] } = {}): Fake {
 	} as Fake;
 }
 
-function withWorkerEnv<T>(run: () => T): T {
-	const previous = process.env[WORKER_ENV];
-	process.env[WORKER_ENV] = "1";
-	try {
-		return run();
-	} finally {
-		if (previous === undefined) delete process.env[WORKER_ENV];
-		else process.env[WORKER_ENV] = previous;
-	}
-}
-test("worker mode is off unless the coordinator exported the signal", () => {
-	assert.equal(isWorkerMode({}), false);
-	assert.equal(isWorkerMode({ [WORKER_ENV]: "0" }), false);
-	assert.equal(isWorkerMode({ [WORKER_ENV]: "" }), false);
-	assert.equal(isWorkerMode({ [WORKER_ENV]: "1" }), true);
-	assert.equal(isWorkerMode({ [WORKER_ENV]: " 1 " }), true);
+const workerFake = (activeTools?: string[]) =>
+	fakePi({ activeTools, sessionName: workerSessionName("probe") });
+test("worker mode rides on the session name, which a flag sets atomically", () => {
+	const named = (name?: string) => ({ getSessionName: () => name });
+	assert.equal(workerSessionName("reviewer"), `${WORKER_SESSION_PREFIX}reviewer`);
+
+	assert.equal(isWorkerMode(named(undefined), {}), false);
+	assert.equal(isWorkerMode(named("my-pi"), {}), false);
+	assert.equal(isWorkerMode(named(workerSessionName("reviewer")), {}), true);
+
+	// The environment stays as a hand-run escape hatch.
+	assert.equal(isWorkerMode(named(undefined), { [WORKER_ENV]: "1" }), true);
+	assert.equal(isWorkerMode(named(undefined), { [WORKER_ENV]: "0" }), false);
+	assert.equal(isWorkerMode({} as any, {}), false, "a host without session names must not crash");
 });
 
 test("reports worker state through a command", async () => {
@@ -76,11 +80,9 @@ test("reports worker state through a command", async () => {
 test("drops tools that block on a human when running as a worker", () => {
 	const tools = ["read", "plannotator_submit_plan", "write"];
 
-	const worker = fakePi({ activeTools: [...tools] });
-	withWorkerEnv(() => {
-		workerMode(worker.pi);
-		worker.handlers.get("session_start")?.({}, {});
-	});
+	const worker = workerFake([...tools]);
+	workerMode(worker.pi);
+	worker.handlers.get("session_start")?.({}, {});
 	assert.deepEqual(worker.activeTools, ["read", "write"]);
 
 	const normal = fakePi({ activeTools: [...tools] });
@@ -105,11 +107,9 @@ test("a worker never takes over Enter, so herdr agent prompt is delivered verbat
 		},
 	};
 
-	const worker = fakePi();
-	withWorkerEnv(() => {
-		steeringChoice(worker.pi);
-		worker.handlers.get("session_start")?.({}, ctx);
-	});
+	const worker = workerFake();
+	steeringChoice(worker.pi);
+	worker.handlers.get("session_start")?.({}, ctx);
 	assert.equal(editorFactoryInstalled, false, "worker sessions must not install the steering dialog");
 
 	const normal = fakePi();
@@ -119,14 +119,12 @@ test("a worker never takes over Enter, so herdr agent prompt is delivered verbat
 });
 
 test("a worker skips the startup dependency check but keeps the explicit command", () => {
-	const worker = fakePi();
+	const worker = workerFake();
 	let notified = false;
-	withWorkerEnv(() => {
-		dependencyUpdateNotifier(worker.pi);
-		worker.handlers.get("session_start")?.({}, {
-			hasUI: true,
-			ui: { notify: () => { notified = true; } },
-		});
+	dependencyUpdateNotifier(worker.pi);
+	worker.handlers.get("session_start")?.({}, {
+		hasUI: true,
+		ui: { notify: () => { notified = true; } },
 	});
 	assert.equal(notified, false);
 	assert.ok(worker.commands.has("mypi-updates"));
