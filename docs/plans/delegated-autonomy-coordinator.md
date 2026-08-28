@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — research/design; ยังไม่เริ่ม implementation<br>
+> **Status:** active — Phase 0 runtime probes<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-28 15:32<br>
+> **Updated:** 2026-08-28 19:10<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -20,6 +20,8 @@
 > ผู้ใช้ตกลง goal, scope, constraints และ escalation boundaries กับ Coordinator แล้ว Coordinator ต้องควบคุม execution ต่อเองจนเสร็จ ภายในอำนาจที่ได้รับ
 
 แผนนี้แทนที่ authority และ approval decisions ใน [Pi Coordinator บน Herdr](pi-herdr-coordinator.md) แต่ยัง reuse runtime primitives ที่พิสูจน์แล้ว เช่น Herdr client, worker identity, worktrees, durable session registry, wait, handoff และ artifact verification
+
+ผล disposable probes และคำสั่งที่ทำซ้ำได้บันทึกใน [Phase 0 Probes — Delegated Autonomy Harness Profiles](../notes/delegated-autonomy-phase0-probes.md)
 
 ## Goal and scope
 
@@ -321,23 +323,40 @@ Audit entries อยู่ใน Pi session ไม่สร้าง catch-all w
 
 ### Codex Worker
 
-Candidate launch baseline:
+Phase 0 ปฏิเสธ shorthand baseline ต่อไปนี้ เพราะยังอ่าน `.env` และ auto-review อนุมัติ external `/tmp` write ได้:
 
 ```text
 codex --approve-for-me --sandbox workspace-write
 ```
 
-หรือ explicit config ที่เทียบเท่า:
+Candidate ใหม่ใช้ custom permission profile แทน legacy sandbox settings:
 
 ```toml
 approval_policy = "on-request"
 approvals_reviewer = "auto_review"
-sandbox_mode = "workspace-write"
+default_permissions = "mypi_workspace"
+
+[permissions.mypi_workspace]
+extends = ":workspace"
+
+[permissions.mypi_workspace.filesystem]
+":tmpdir" = "write"
+":slash_tmp" = "deny"
+
+[permissions.mypi_workspace.filesystem.":workspace_roots"]
+"." = "write"
+"**/.env" = "deny"
+"**/.env.*" = "deny"
+
+[permissions.mypi_workspace.network]
+enabled = false
 ```
+
+Phase 0 ยืนยันว่า profile นี้ทำ routine workspace write ได้และ deny fake secret, `/tmp` external write และ shell network ได้โดยไม่มี human prompt แต่ protected `.git` ทำให้ local commit ไม่ผ่าน; ค่าเริ่มต้นจึงให้ Coordinator commit หลัง collect
 
 Probe ต้องยืนยัน:
 
-- routine edit/test/commit ใน worktree ไม่ถามผู้ใช้
+- routine edit/test ใน worktree ไม่ถามผู้ใช้; commit เป็น separate capability และค่าเริ่มต้นให้ Coordinator ทำหลัง collect
 - network และ external write ไม่ผ่านเอง
 - `.git`, `.codex`, secrets และ hook trust ไม่ถูก bypass
 - auto-review denial ส่งกลับให้ agent หาทางปลอดภัยกว่า
@@ -349,10 +368,11 @@ Probe ต้องยืนยัน:
 Candidate launch baseline:
 
 ```text
-claude --permission-mode auto
+claude --permission-mode auto --restricted --safe-mode --strict-mcp-config \
+  --settings <temporary-fail-closed-sandbox-settings>
 ```
 
-พร้อม temporary settings/profile ที่มี explicit deny/ask boundaries ตาม mandate
+Temporary settings ต้องมี explicit Read denies, `sandbox.enabled`, `allowUnsandboxedCommands: false`, `failIfUnavailable: true`, filesystem denies และ network deny/allowlist ตาม mandate Phase 0 ยืนยันว่า `auto --restricted --safe-mode` โดยไม่มี sandbox settings ยังอ่าน secret, เขียน external path และใช้ network ได้
 
 Probe ต้องยืนยัน:
 
@@ -424,21 +444,36 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
 
 ไม่เปลี่ยน production behavior
 
-- [ ] สร้าง fixture repository ใน OS/harness temporary location
+- [x] สร้าง fixture repository ใน OS/harness temporary location
 - [ ] probe Pi read-only และ worktree-write worker profiles โดยไม่มี dialog
-- [ ] probe Codex `--approve-for-me` + workspace sandbox
-- [ ] probe Claude `auto` และ fallback behavior
-- [ ] probe OpenCode isolated policy + `--auto`
+  - [x] non-interactive resource profiles + guardrail + sandboxed Bash
+  - [ ] Herdr interactive lifecycle profile
+- [x] probe Codex auto-review + custom permission profile
+  - shorthand `--approve-for-me --sandbox workspace-write` ถูก reject
+  - custom profile ผ่าน routine/secret/external/network probes; local commit ถูก deny
+- [x] probe Claude `auto` และ fallback behavior
+  - `auto` อย่างเดียวถูก reject
+  - explicit fail-closed sandbox settings ผ่าน routine/secret/external/network probes
+- [x] probe OpenCode isolated policy + `--auto`
+  - direct isolated config ใช้ได้ แต่ Bash redirection ข้าม external-directory deny; delegated profile เป็น no-go
 - [ ] ตรวจว่า Herdr lifecycle integrations ของ target harness เป็น `current`
+  - Pi/Claude/Codex current; OpenCode not installed
 - [ ] ทดสอบ human-only action, hard deny, provider error, timeout และ missing artifact
+  - fake secret, external write และ network hard-deny probes ผ่านใน provisional Pi/Codex/Claude profiles
 - [ ] ทดสอบว่าผู้ใช้ไม่ต้องกด routine permissions ในหนึ่ง implement-review chain
 - [ ] `pi-extensible-workflows` gate:
   - [ ] ขอ license clarification หรือยืนยัน license artifact ที่มีผลผูกพัน
-  - [ ] pin `5.8.0` ใน isolated `PI_CODING_AGENT_DIR`
+    - npm/source metadata ระบุ MIT แต่ source และ tarball ไม่มี license text
+  - [x] pin `5.8.0` ใน isolated `PI_CODING_AGENT_DIR`
   - [ ] รัน `piewf doctor`
+    - 5.8.0 CLI broken เพราะ tarball ขาด `dist/subagents`; 5.9.0 CLI เปิดได้แต่ doctor fail ที่ bundled reviewer tools `find/grep/ls`
   - [ ] probe standalone subagent, `reviewLoop`, worktree, budget, resume และ Herdr fully-inspectable mode
-  - [ ] บันทึก API churn/migration cost
+    - standalone, worktree, budget exhaustion และ persistent-session resume ผ่าน
+    - `reviewLoop` และ Herdr mode ยังไม่ผ่าน gate
+  - [x] บันทึก API churn/migration cost
+    - 5.9.0 publish ระหว่าง probe, แก้ packaging แต่เพิ่ม Trajectory gist sharing capability
 - [ ] สรุป go/no-go แยกสำหรับแต่ละ harness และ piewf backend
+  - piewf: no-go สำหรับ immediate dependency; architecture fit ยังเป็นบวกหลังแก้ blockers
 
 Exit criteria:
 
@@ -689,12 +724,12 @@ Success metric หลัก:
 
 ## Exact next action
 
-เริ่ม Phase 0 ด้วย throwaway fixture และ probe ตามลำดับ:
+ดำเนิน Phase 0 ส่วนที่เหลือตามลำดับ:
 
-1. Pi delegated worker profile
-2. Codex `--approve-for-me`
-3. Claude `auto`
-4. OpenCode isolated auto policy
-5. `pi-extensible-workflows` license + isolated acceptance
+1. ให้ Worker จบ independent `pi-extensible-workflows` report หลังผู้ใช้ deny external temp redirect แล้วตรวจเทียบกับ Coordinator evidence
+2. รัน provisional Pi/Codex/Claude profiles ผ่าน Herdr lifecycle จริง
+3. รัน implement → review → correction chain โดยไม่มี routine approval
+4. ทดสอบ provider error, timeout, missing artifact และ human-only escalation
+5. สรุป go/no-go แล้วจึงเริ่ม Phase 1 pure mandate/policy model
 
 ห้ามแก้ production behavior ก่อนสรุปผล probe และอัปเดต decisions/profile verification ในแผนนี้
