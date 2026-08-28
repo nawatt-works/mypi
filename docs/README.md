@@ -32,7 +32,7 @@
 
 ## Change log
 
-- 2026-08-28 22:02 — ประเมิน `tmustier` และ `codexstar69/pi-agent-teams`: เลือก tmustier เป็น isolated base candidate, ใช้ codexstar hardening เป็น comparator และยัง no-go production จน child profile fail closed
+- 2026-08-28 22:02 — ประเมินและรัน `tmustier/pi-agent-teams` บน Pi 0.84.3: RPC/worktree flow ผ่าน แต่ fake secret/env, external write และ network ผ่านทั้งหมด จึง no-go as-is; ใช้ codexstar hardening เป็น comparator
 - 2026-08-28 19:26 — รัน Codex→Claude chain ผ่าน Herdr: Codex boundary ผ่านแต่ model/lifecycle drift; Claude sandbox deny ผ่านแต่ in-worktree Write ยังเปิด human dialog จึงยังไม่ unattended
 - 2026-08-28 19:13 — รับ independent piewf evaluation และ reproduce combined exact-spec drift; source tests 19/19 ผ่านแต่ install/license/runtime blockers ยังคง no-go
 - 2026-08-28 19:10 — เพิ่ม piewf gate evidence: 5.8.0 CLI packaging broken, 5.9.0 doctor ไม่เข้ากับ bundled reviewer tools; core subagent/worktree/budget/resume ผ่านแต่ immediate adoption เป็น no-go

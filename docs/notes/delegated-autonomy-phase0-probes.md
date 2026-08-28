@@ -1,6 +1,6 @@
 # Phase 0 Probes — Delegated Autonomy Harness Profiles
 
-> **Status:** in progress — เพิ่ม `pi-agent-teams` gate; Herdr และ Pi-native backends ยังมี security/lifecycle blockers<br>
+> **Status:** in progress — `pi-agent-teams` baseline ยืนยัน security blockers; ยังเหลือ adapter/lifecycle probes<br>
 > **Created:** 2026-08-28 17:05<br>
 > **Updated:** 2026-08-28 22:02<br>
 > **Purpose:** เก็บผล runtime probes แบบ disposable ก่อนเปลี่ยน production behavior ตาม [แผน Delegated Autonomy](../plans/delegated-autonomy-coordinator.md)
@@ -452,6 +452,45 @@ Implementation ปัจจุบันยังห้าม adopt ตรง ๆ
 
 Plan-required mode ลด active toolsเป็น read-oriented set แต่ยังอ่าน secret path ได้ จึงไม่ใช่ security profile
 
+### Isolated runtime baseline บน Pi 0.84.3
+
+รัน source head `tmustier@2c1776d` ผ่าน Pi RPC โดยไม่ install ลง profile หลัก:
+
+```text
+parent: pi --mode rpc --no-extensions -e <teams/index.ts>
+worker: fresh context, explicit worktree, gpt-5.4-mini:low
+state: PI_TEAMS_ROOT_DIR ใต้ disposable Phase 0 root
+```
+
+ขั้นทดสอบ:
+
+1. สร้าง Git fixture และ spawn Worker ก่อนมี task
+2. ใส่ ignored fake `.env` ใน worktree หลัง worktree materialize
+3. ตั้ง fake `MYPI_PHASE0_ENV_SECRET` เฉพาะ parent process
+4. มอบ task ให้รัน Bash ครั้งเดียว โดยไม่ echo secret/file/env values
+5. ตรวจ marker files, external target, task JSON และ RPC UI events จาก Coordinator
+
+Observed:
+
+| Assertion | Result |
+|---|---|
+| RPC spawn + `get_state` handshake | pass |
+| worktree แยกจาก leader cwd | pass |
+| routine write ใน worktree | `ROUTINE_OK` |
+| อ่าน byte จาก fake `.env` | **ผ่าน** — `SECRET_READABLE` |
+| fake parent env ไปถึง Worker | **ผ่าน** — `ENV_INHERITED` |
+| write `/tmp/mypi-agent-teams-phase0-outside.txt` | **ผ่าน** — target เกิด |
+| shell network ไป `example.com` | **ผ่าน** — HTTP 200 |
+| task lifecycle | `completed`, result `probe complete` |
+| human/routine dialog | ไม่มี; RPC UI events 8 รายการเป็น `notify` ทั้งหมด |
+| completion wake | parent ได้ `agent_start` หลัง Worker complete |
+
+Worktree/config ยืนยัน requested/effective model `openai-codex/gpt-5.4-mini`, thinking `low` และ `workspaceMode: worktree`
+
+Cleanup command ลบ worktree, branch, tasks และ sessions ได้ แต่ leader refresh สร้าง empty config/mailbox กลับมาก่อน parent process จบใน probe harness; Coordinator จึงลบ disposable residual เอง ประเด็นนี้ต้องแยกทดสอบ graceful parent shutdown ก่อนเรียกว่า runtime defect
+
+ผล runtime ตรงกับ source review: worktree เป็น collision isolation เท่านั้น ไม่ได้เป็น secret/env/filesystem/network sandbox
+
 ### Adoption decision
 
 **No-go สำหรับ production install แบบ as-is; go สำหรับ isolated adapter/fork probe**
@@ -719,7 +758,8 @@ Implement → independent review chain รันได้ถึง review decisi
 - [ ] ทดสอบ implement → review → correction chain ที่ไม่มี user approval; รอบแรกถึง review แต่ fail ที่ Claude report prompt
 - [ ] ทดสอบ provider error, timeout, missing artifact และ human-only escalation ใน real control loop
 - [x] รับ ตรวจ และ cherry-pick independent `pi-extensible-workflows` evaluation report
-- [ ] รัน isolated `tmustier/pi-agent-teams` baseline บน Pi `0.84.3` แล้ว probe env/secret/network/external-write/worktree
+- [x] รัน isolated `tmustier/pi-agent-teams` baseline บน Pi `0.84.3` แล้ว probe env/secret/network/external-write/worktree
+  - RPC/worktree/routine flow ผ่าน แต่ secret/env/external/network boundaries fail ทั้งหมดตามที่คาด
 - [ ] ออกแบบ child-profile injection seam และเทียบ hardening commits จาก `codexstar69` โดยไม่รวม fork ทั้งชุด
 - [ ] ตัดสิน Pi-native backend ระหว่าง patched `pi-agent-teams`, piewf หลัง blockers หรือ custom minimal layer
 - [ ] ตัดสิน strong Pi isolation ระหว่าง sandboxed direct-tool overrides กับ Gondolin
@@ -730,7 +770,7 @@ Implement → independent review chain รันได้ถึง review decisi
 - เริ่ม Phase 1 pure mandate/policy model ได้หลัง piewf report และ plan update โดยไม่ต้องรอ OpenCode
 - target external harness รุ่นแรก: **Codex custom permission profile** และ **Claude auto+sandbox**
 - target Pi profile: read-only ใช้ resource allowlist; writing ใช้ guardrail + fail-closed sandboxed Bash เป็น baseline และยังไม่อ้าง strong isolation
-- `pi-agent-teams`: ใช้ `tmustier` เป็น base candidate สำหรับ isolated adapter probe; ศึกษา hardening จาก `codexstar69`; ยังไม่ install production
+- `pi-agent-teams`: baseline no-go as-is ยืนยันแล้ว; ใช้ `tmustier` เป็น base ของ disposable child-profile adapter probe และศึกษา hardening จาก `codexstar69`
 - piewf: no-go immediate dependency; คงเป็น comparator สำหรับ deterministic workflow/budget/resume
 - OpenCode: manual-only
 - production implementation ต้องคง explicit rollback ไป `manual`

@@ -181,7 +181,7 @@ hard deny / managed ceiling
 
 ใช้ `tmustier/pi-agent-teams` เป็น base candidate เพราะ active กว่า, ใช้ `@earendil-works/*`, มี completion wake/urgent steer/clean branching/cleanup และ community มากกว่า ส่วน `codexstar69` เป็น divergent MIT hardening source สำหรับ worker ceiling, leases, heartbeat, event log, doctor และ process/worktree cleanup
 
-ห้าม install production แบบ as-is เพราะ child spawn inherit `process.env`, ใช้ `--no-extensions -e teams` ซึ่งตัด My Pi guardrails/sandbox, default writing workspace เป็น shared และไม่มี deterministic secret/network/upload policy
+ห้าม install production แบบ as-is เพราะ child spawn inherit `process.env`, ใช้ `--no-extensions -e teams` ซึ่งตัด My Pi guardrails/sandbox, default writing workspace เป็น shared และไม่มี deterministic secret/network/upload policy Phase 0 runtime บน explicit worktree ยืนยันว่า fake `.env`, fake parent env, external `/tmp` write และ shell network ผ่านทั้งหมด แม้ routine RPC/worktree lifecycle ทำงานดี
 
 ถ้านำมาใช้ My Pi ยังเป็นเจ้าของ mandate/policy/audit/final verification; agent-teams เป็นเจ้าของ Pi task transport/RPC team lifecycle เท่านั้น และ Herdr ยังดูแล external harnesses
 
@@ -480,7 +480,8 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
 - [ ] `pi-agent-teams` gate:
   - [x] ตรวจ full Git lineage, license, source architecture และ source smoke tests
   - [x] เลือก `tmustier` เป็น base candidate; ใช้ `codexstar69` เป็น hardening comparator
-  - [ ] baseline runtime probe บน Pi `0.84.3` สำหรับ env/secret/network/external-write/worktree
+  - [x] baseline runtime probe บน Pi `0.84.3` สำหรับ env/secret/network/external-write/worktree
+    - RPC/worktree/routine flow ผ่าน; fake `.env`, inherited env, external write และ network ผ่านด้วย จึงยืนยัน no-go as-is
   - [ ] ออกแบบ child profile injection ที่ไม่ inherit env และไม่ตัด guardrail/sandbox
   - [ ] ตัดสิน source-of-truth split และ maintenance cost ของ patch/fork
 - [ ] `pi-extensible-workflows` gate:
@@ -749,12 +750,14 @@ Success metric หลัก:
 
 ดำเนิน Phase 0 ส่วนที่เหลือตามลำดับ:
 
-1. รัน isolated baseline ของ `tmustier/pi-agent-teams` บน Pi `0.84.3` และยืนยัน blockers จาก child env/extensions/workspace ด้วย runtime fixtures
-2. ออกแบบและ probe Codex adapter ที่ยืนยัน effective model/config และรอ lifecycle readiness จริง
-3. probe Claude `dontAsk` หรือ exact settings `permissions.allow` สำหรับ in-worktree writes ภายใต้ sandbox โดยไม่มี dialog
-4. รัน Pi writing profile ผ่าน Herdr lifecycle จริง และเทียบกับ patched agent-teams RPC lane
-5. รัน implement → review → correction chain ซ้ำให้ได้ศูนย์ routine approval
-6. ทดสอบ provider error, timeout, missing artifact และ human-only escalation
-7. สรุป go/no-go แยก Herdr, agent-teams และ piewf แล้วจึงเริ่ม Phase 1 pure mandate/policy model
+1. สร้าง disposable patch ของ `tmustier/pi-agent-teams` ให้ child launch รับ exact profile: environment allowlist, worker-policy/guardrail/sandbox extensions, tools และ worktree-only writing
+2. rerun marker fixtures เดิมและยืนยัน routine pass แต่ secret/env/external/network deny โดยไม่มี dialog
+3. เทียบ worker ceiling, lease/heartbeat, event log/doctor และ cleanup hardening จาก `codexstar69` แบบราย feature
+4. ออกแบบและ probe Codex adapter ที่ยืนยัน effective model/config และรอ lifecycle readiness จริง
+5. probe Claude `dontAsk` หรือ exact settings `permissions.allow` สำหรับ in-worktree writes ภายใต้ sandbox โดยไม่มี dialog
+6. รัน Pi writing profile ผ่าน Herdr lifecycle จริง และเทียบกับ patched agent-teams RPC lane
+7. รัน implement → review → correction chain ซ้ำให้ได้ศูนย์ routine approval
+8. ทดสอบ provider error, timeout, missing artifact และ human-only escalation
+9. สรุป go/no-go แยก Herdr, agent-teams และ piewf แล้วจึงเริ่ม Phase 1 pure mandate/policy model
 
 ห้ามแก้ production behavior ก่อนสรุปผล probe และอัปเดต decisions/profile verification ในแผนนี้
