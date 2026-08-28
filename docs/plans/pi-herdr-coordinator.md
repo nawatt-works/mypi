@@ -1,9 +1,11 @@
 # Pi Coordinator บน Herdr
 
-> **Status:** active<br>
+> **Status:** superseded<br>
 > **Created:** 2026-08-25 09:19<br>
-> **Updated:** 2026-08-28 10:47<br>
+> **Updated:** 2026-08-28 15:32<br>
 > **Purpose:** พัฒนา Coordinator layer ที่ให้ Pi สร้างและควบคุม Workers ผ่าน Herdr โดยเริ่มจาก probe เพื่อวัดว่า runtime primitive เชื่อถือได้จริงแค่ไหนก่อนเขียน extension
+
+> แผนนี้คงไว้เป็น implementation และ probe history กลไก runtime ที่พิสูจน์แล้วยังนำไปใช้ต่อ แต่ authority contract ที่ให้ผู้ใช้อนุมัติทุก Worker/ทุก blocked action และ Phase 3 เดิมถูกแทนที่ด้วย [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](delegated-autonomy-coordinator.md)
 
 ## Context
 

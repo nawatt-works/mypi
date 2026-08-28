@@ -341,9 +341,4 @@ Preview ควรบันทึก:
 
 ## Next step
 
-ค้นคว้า source/config/runtime ของทั้งสี่ harness เพิ่มเติม แล้วสร้าง implementation plan ใหม่ที่:
-
-- ทำเครื่องหมาย authority decisions เดิมที่ถูกแทนที่อย่างชัดเจน
-- แยก policy engine, sandbox adapter, Coordinator control loop และ audit state
-- มี migration path จาก manual gates ปัจจุบัน
-- กำหนด verification matrix ครอบคลุม autonomy, boundary enforcement, escalation และ unattended completion
+ดำเนินการต่อผ่าน [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](../plans/delegated-autonomy-coordinator.md) ซึ่งแยก policy engine, harness profiles, sandbox boundaries, Coordinator control loop, migration และ verification matrix ไว้แล้ว โดยเริ่มจาก disposable probes ก่อนเปลี่ยน production behavior

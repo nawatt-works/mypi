@@ -1,9 +1,11 @@
 # Runtime-negotiated Orchestration ผ่าน Pi และ Herdr
 
-> **Status:** อนุมัติให้พัฒนา<br>
+> **Status:** partially superseded<br>
 > **Created:** 2026-08-23 22:27<br>
-> **Updated:** 2026-08-25 09:19<br>
+> **Updated:** 2026-08-28 15:32<br>
 > **Purpose:** บันทึกข้อกำหนดและขอบเขตของ Pi Coordinator ที่ใช้ Herdr ควบคุม AI harness workers โดยกำหนดทีม ขั้นตอน และ artifact handoff ระหว่างสนทนา
+
+> Runtime primitives, artifact verification, identity และ ownership discipline ในบันทึกนี้ยังใช้ต่อ แต่ authority/approval contract ที่ให้ผู้ใช้เลือกและอนุมัติ Worker ทุกตัวถูกแทนที่ด้วย bounded mandate ใน [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](../plans/delegated-autonomy-coordinator.md)
 
 ## สรุปแนวคิด
 
