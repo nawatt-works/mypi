@@ -1,8 +1,8 @@
 # Phase 0 Probes — Delegated Autonomy Harness Profiles
 
-> **Status:** in progress — disposable `pi-agent-teams` child profile ผ่าน core boundary fixtures; ยังไม่ verified production<br>
+> **Status:** in progress — agent-teams Docker-strong/lifecycle probes ผ่าน; เหลือ production profile contract และ source-of-truth decision<br>
 > **Created:** 2026-08-28 17:05<br>
-> **Updated:** 2026-08-28 22:13<br>
+> **Updated:** 2026-08-28 22:56<br>
 > **Purpose:** เก็บผล runtime probes แบบ disposable ก่อนเปลี่ยน production behavior ตาม [แผน Delegated Autonomy](../plans/delegated-autonomy-coordinator.md)
 
 ผล piewf ถูกตรวจสองทาง: runtime probes ของ Coordinator ในเอกสารนี้ และ [independent Phase 0 piewf evaluation](piewf-phase0-evaluation.md) จาก Worker บน branch แยก ก่อน cherry-pick เข้าสู่ `main`
@@ -491,7 +491,9 @@ Cleanup command ลบ worktree, branch, tasks และ sessions ได้ แ�
 
 ผล runtime ตรงกับ source review: worktree เป็น collision isolation เท่านั้น ไม่ได้เป็น secret/env/filesystem/network sandbox
 
-### Disposable child-profile patch v1
+### Disposable child-profile patch iterations
+
+#### v1 — core child-profile seam
 
 สร้าง patch บน detached source `tmustier@2c1776d` ใต้ Phase 0 temp เท่านั้น ไม่แก้ production package:
 
@@ -533,34 +535,190 @@ Runtime ขอ `workspaceMode: shared` โดยตั้ง profile ceiling เ
 
 ผลนี้พิสูจน์ว่า child-profile injection seam แก้ baseline failures หลักได้โดยไม่ต้องแก้ team/task/RPC core
 
-Limitations ก่อน `verified: true`:
+#### v2 — direct tools และ sandbox failure
 
-1. ยังไม่ได้ runtime probe direct Read/Write/Edit, uploads และ external non-secret reads
-2. Bash sandbox เป็น filesystem write/network/secret baseline ไม่ใช่ complete read allowlist; strong isolation ยังต้อง Gondolin/container หรือ command mediation ที่ครบกว่า
-3. `HOME` ยังจำเป็นต่อ provider auth; policy ต้องป้องกัน credential/config reads โดยไม่ทำให้ provider trafficพัง
-4. fail-closed sandbox init, multi-worker concurrency และ process reset ต้องมี fault probes
-5. temporary extension/config paths ยังไม่ใช่ versioned trusted production profile
-6. cleanup command ยังเหลือ empty leader config ชั่วคราวใน abrupt RPC harness
+Direct-tool probe ของ v1 พบ gap จริงสองจุด:
+
+- direct Read `/etc/hosts` ผ่าน เพราะ analyzer เดิม block เฉพาะ sensitive reads
+- direct Write `.env` ผ่านและเปลี่ยน fake fixture
+
+ขณะที่ direct Read `.env`, external Write และ external Edit ถูก deny อยู่แล้ว
+
+Policy v2 เพิ่ม:
+
+- direct `read/grep` ต้องอยู่ใน worktree
+- direct `write/edit` ห้าม sensitive path แม้อยู่ใน worktree
+
+Rerun exact five calls ยืนยัน:
+
+- Read `.env`: deny
+- Read `/etc/hosts`: deny
+- Write `.env`: deny; hash ไม่เปลี่ยน
+- external Write/Edit: deny; targets ไม่เกิด/ไม่เปลี่ยน
+- tool calls exact 5, ไม่มี retry และ fake value ไม่ปรากฏ
+- upload surface ไม่ active เพราะ exact tool profile ไม่มี upload-capable tool
+
+Sandbox init failure probe พบ race เพิ่มเติม: Pi RPC เดิมของ upstream sleep 120 ms แล้ว mark idle โดยไม่มี `get_state`; child teams extensionลงทะเบียน Worker online ก่อน sandbox failure และ leader ยัง upsert online ต่อ
+
+v2/v3 แก้โดย:
+
+1. โหลด boundary extensions ก่อน teams worker extension
+2. sandbox init failure exit worker ด้วย code 78
+3. `TeammateRpc.start()` ใช้ bounded `get_state` ready handshake
+4. leaderทำ RPC round-trip รอบสองก่อนบันทึก online
+5. startup failure cleanup worktree/branch และไม่ register Worker
+6. `stop()` ใช้ bounded abort ก่อน terminate
+
+Final failure probe: missing trusted sandbox config → spawn error, Worker ไม่ถูก register, worktree/branch ไม่เหลือ
+
+#### v3 — worker ceiling และ concurrency
+
+เลือก adapt `max-workers-policy.ts` จาก `codexstar69` โดยให้ Coordinator inject limit จาก mandate แทน default environment ที่ปล่อย unlimited
+
+Probe เปิด ceiling 2:
+
+- alpha + beta spawn และทำงานพร้อมกัน
+- Worker ตัวที่สามถูก deny `2/2` ก่อนเกิด worktree
+- alpha routine write ผ่าน
+- beta network ถูก deny (`HTTP_000`)
+- หลัง stop alpha แบบ force แล้ว gamma spawn/ทำ routine workได้
+- tasks ทั้งสาม completed, extension errors 0 และ UI มีเฉพาะ notify
+
+พบ bug ใน hardening เดิม: ceiling นับทุก key ใน RPC map แม้ status `stopped/error` จึงไม่คืน slotหลัง Worker จบ ปรับให้ skip inactive RPC entries แล้ว unit/runtime replacement ผ่าน
+
+Graceful shutdown เดิมใช้ fallback kill แม้ Worker ส่ง approval เพราะ `ctx.shutdown()` ไม่ terminate RPC process จึงเพิ่ม explicit offline status + bounded process exit หลัง approval
+
+#### v4 — Docker strong Bash boundary + graceful replacement
+
+Gondolin example เหมาะกับการ route built-ins เข้า micro-VM แต่เครื่อง probe ไม่มี QEMU และการติดตั้ง system package เกิน disposable mandate ขณะที่ Docker daemon `29.7.2` พร้อมใช้งานอยู่แล้ว
+
+สร้าง disposable Docker Bash override โดยใช้ local image `redis:7-alpine` แบบ `--pull never`:
+
+```text
+--network none --read-only --cap-drop ALL
+--security-opt no-new-privileges --pids-limit 128
+--memory 512m --cpus 1 --tmpfs /tmp
+mount เฉพาะ Worker worktree → /workspace
+ไม่ mount HOME, host /tmp หรือ Docker socket
+```
+
+Provider/model process ยังอยู่บน host และใช้ auth ตามปกติ แต่ทุก Bash command อยู่ใน ephemeral container
+
+Strong-boundary results:
+
+- routine write-through ใน worktree: pass
+- fake parent env: absent
+- fake `.env`: deterministic deny ก่อน execution
+- host `/tmp` external write target: ไม่เกิด
+- `wget https://example.com`: `NETWORK_DENIED`
+- unique non-secret host `/tmp` read fixture: `HOST_READ_ISOLATED`
+- exact Bash 6 calls, task completed, no dialog/extension error
+
+Multi-worker Docker probe เปิด ceiling 2:
+
+- alpha/beta ทำงานพร้อมกัน, ตัวที่สามถูก deny
+- beta network denied
+- alpha graceful shutdown ส่ง approval, explicit RPC process exit ทำให้ slot ว่างโดยไม่ fallback warning
+- gamma replacement spawn และทำ routine writeผ่าน
+
+Docker imageนี้เป็น boundary fixture เท่านั้น ไม่ใช่ development image production; profileจริงต้อง pin immutable project/toolchain image digest และกำหนด resource/network mounts ตาม mandate
+
+#### v5 — leader cleanup suppression
+
+Cleanup residual เกิดจาก leader refresh/inbox loops สร้าง config/mailbox กลับหลัง `/team cleanup` จึง adapt suppression concept จาก `codexstar69` แต่ปรับให้ดู active RPC status แทน `Map.size` และ skip filesystem pollingเมื่อ team dir ถูกลบ
+
+Final cleanup probe ใช้ parent RPC โดยไม่เรียก model:
+
+- team config เกิดก่อน cleanup
+- `/team cleanup --force` สำเร็จ
+- หลังรอ loops 3 วินาที teams root ยังอยู่ตาม ownership แต่ไม่มี team directory/config/mailbox entry ถูก recreate
+
+Final disposable hashesหลังรวม cleanup suppression:
+
+```text
+source patch v5:        956c1d5149265daf65a955e8804453140898a412f34bfa250ffdedc0ca1c789a
+Docker-strong bundle v5: 0365625fa157cecd65f24e246df52aa6886a144a7a3b8fd07d62ebd11ab3e48b
+```
+
+Historical v4 hashesหลังรวม explicit RPC shutdown:
+
+```text
+source patch v4:       38528c5d0cd5f3c58c324924bb4809e9ba30b5402f8596c31af93e8693272952
+sandbox-runtime bundle: 1a8c89957dd58d11acaae06503f4b54bb748d95e8b142c999b41750f2a8dad75
+Docker-strong bundle:   6d44feaa816b7e82c77a77c4c3761bc1d5f2ce357854dfc9326171a9f49d0806
+```
+
+Upstream source smoke ยังคงผ่าน `329/329`
+
+### `codexstar69` hardening selection
+
+| Feature | Decision | Reason |
+|---|---|---|
+| RPC ready handshake + bounded termination | **adapt now** | ปิด startup race ที่ runtime probe พบจริง |
+| worker ceiling | **adapt with fixes** | ต้อง map จาก mandate; skip stopped/error entries และแยก concurrent ceiling จาก launch budget |
+| heartbeat + task leases | defer gated | มีประโยชน์ต่อ crash recovery แต่ stale threshold ผิดอาจทำ task ซ้ำ; ต้อง pair lease token + Coordinator evidence |
+| event log + doctor | adapt later | ใช้เป็น transport diagnostics ได้ แต่ไม่แทน My Pi authority/audit log |
+| task retry/cooldown | do not auto-enable | retry/correction budget ต้องเป็นของ Coordinator; backend เก็บ metadata ได้แต่ห้ามตัดสิน retry เอง |
+| task priority | defer | useful หลัง ownership/dependency semantics เสถียร ไม่ใช่ security gate |
+| adaptive polling/debounce | defer | performance optimization หลัง lifecycle correctness |
+| mailbox pruning | adapt later | เหมาะกับ durable teams แต่ต้องไม่ลบ unresolved evidence/messages |
+| cleanup/worktree diagnostics | compare, not cherry-pick whole | `tmustier` มี cleanup/GC และ stale-lock fixes ใหม่กว่า; นำ doctor/path assertions เป็นรายส่วน |
+| Windows process control | upstream candidate | มีประโยชน์ข้าม OS แต่ไม่ใช่ initial macOS acceptance |
+
+ห้าม cherry-pick hardening commit ใหญ่ทั้งชุด เพราะ fork diverge จาก upstream 35 commitsและ runtime probe พบ worker-ceiling defect ที่ source testsเดิมไม่จับ
+
+Remaining limitations ก่อน `verified: true`:
+
+1. Docker fixture imageไม่มี development toolchain; production profile ต้องมี immutable image digest, provenance/SBOM และ compatibility contract
+2. direct toolsยังทำงานบน hostภายใต้ deterministic policy ส่วน Bash อยู่ container; ต้องตัดสินว่าจะ route direct toolsเข้า containerด้วยหรือรับ policy mediation เป็น boundary
+3. temporary extension/config paths ยังไม่ใช่ versioned trusted production profile
+4. upload-capable dedicated toolsถูกตัดออกแทนการทดสอบ reviewed upload profile
+5. Docker daemon เป็น trusted boundary dependency ไม่ใช่ sandbox ของ Herdr; ห้าม mount socket/host HOME และต้อง fail closed เมื่อ daemon/image unavailable
+6. source-of-truth, upstream/fork maintenance และ immutable image lifecycleยังไม่ตัดสิน
 
 ### Adoption decision
 
-**No-go สำหรับ production install แบบ as-is; go สำหรับ isolated adapter/fork probe**
+**No-go สำหรับ production install แบบ as-is; provisional go สำหรับ Pi RPC backend design ผ่าน My Pi adapter**
 
-Target split หากผ่านการแก้:
+Source-of-truth contract:
 
-- My Pi: mandate, ceilings, policy, audit, final artifact verification และ external harness routing
-- patched `pi-agent-teams`: Pi RPC team runtime, task/mailbox, auto-claim, completion wake และ team UI
-- Herdr: Codex/Claude/external harness lanes และ human-visible panes
+| State | Owner |
+|---|---|
+| mandate, ceilings, HUMAN boundaries | My Pi session registry |
+| requested/effective Worker profile, backend choice | My Pi audit/registry |
+| task transport, assignment, dependency, mailbox | agent-teams filesystem store |
+| Pi RPC process/session/worktree mapping | agent-teams; My Pi เก็บ pointer/reference |
+| task `completed` candidate result | agent-teams เท่านั้น; ไม่เท่ากับ accepted |
+| artifact/diff/test verification, correction/retry budget, assurance | My Pi |
+| external harness process/pane state | Herdr |
 
-Required adapter changes ก่อน verified:
+Worker หนึ่งตัวมี execution backend เดียว ห้าม agent-teams, piewf และ Herdr คุม process เดียวกัน Resume ใช้ My Pi pointer ไป team/task IDs แล้ว reconcile โดยห้ามยกระดับ authority จาก transport state
 
-1. child launch profile API ที่ inject exact extensions/tools/resources และ policy ID แบบ atomic
-2. environment allowlist แทน inherit ทั้ง `process.env`
-3. worktree-only default สำหรับ writing workers
-4. hard max workers/launches จาก mandate; lower layer narrow-only
-5. completion event route ไป Coordinator collect/verify ไม่ auto-accept self-report
-6. fail-closed secret/network/upload/external-write probes บน Pi `0.84.3`
-7. source-of-truth contract: team store own task transport; My Pi registry own authority/audit/acceptance
+Docker-strong profile contract:
+
+1. writing Worker บังคับ worktree
+2. direct Read/Write/Edit ใช้ scoped operations ที่ canonicalize path ก่อน filesystem call; ไม่พึ่ง post-hoc dialog
+3. Bash ใช้ container ที่ mount เฉพาะ worktree, no host HOME/socket, network none และ resource limits
+4. image ต้อง pin immutable digest พร้อม provenance/SBOM และ role/toolchain compatibility
+5. runtime ห้าม pull imageเอง; daemon/digest preflight fail → spawn failก่อน register
+6. provider/model trafficอยู่ host process; credentialsไม่ส่งเข้า tool container
+7. uploads และ remote mutation toolsไม่ activeใน initial profile
+8. profile metadata/audit บันทึก exact tools/extensions/image digest/mount/network policy แบบ redacted
+
+Maintenance/upstream strategy:
+
+- ไม่ copy/fork ทั้ง repo เข้า `my-pi` ตอนนี้
+- เสนอ upstream seams ขนาดเล็ก: child profile builder, env allowlist, ready handshake, explicit RPC shutdown และ cleanup suppression
+- เก็บ My Pi policy/profile adapter แยกจาก agent-teams task core
+- pin exact upstream commit จน npm source/versionตรงกัน
+- ถ้า upstreamไม่รับ จึงพิจารณา minimal maintained fork/package แยก โดย preserve MIT provenance ของ `tmustier` และ `codexstar69` รายไฟล์/feature
+
+Remaining before production verified:
+
+1. สร้าง/เลือก immutable development image ที่รัน project test toolchainจริง ไม่ใช่ Redis fixture
+2. เปลี่ยน temporary policy เป็น versioned scoped direct-tool implementation
+3. เพิ่ม provider/image/daemon failure และ reviewed artifact collection acceptance
+4. ตัดสิน package location/versioning หลัง upstream response หรือ maintenance decision
 
 ## `pi-extensible-workflows` probes
 
@@ -813,8 +971,15 @@ Implement → independent review chain รันได้ถึง review decisi
   - RPC/worktree/routine flow ผ่าน แต่ secret/env/external/network boundaries fail ทั้งหมดตามที่คาด
 - [x] สร้าง disposable child-profile injection seam: env allowlist + exact resources + worktree ceiling + deterministic policy/sandbox
   - routine pass; fake env/secret/external/network fixtures deny โดยไม่มี dialog
-- [ ] probe direct tools, uploads, external non-secret reads, sandbox init failure และ multi-worker reset
-- [ ] เทียบ hardening commits จาก `codexstar69` โดยไม่รวม fork ทั้งชุด
+- [x] probe direct tools, sandbox init failure, worker ceiling และ multi-worker replacement
+  - direct external reads/secret writes gaps ถูกแก้; fail-init ไม่ register Worker; ceiling 2 บังคับจริง
+  - upload tools ถูกตัดออกจาก exact profile
+- [x] เทียบ hardening commits จาก `codexstar69` และเลือก ready handshake/worker ceiling แบบมี fixes
+- [x] ปิด Bash host read/write/network gap ด้วย disposable Docker-strong profile
+  - mount เฉพาะ worktree, network none, host `/tmp` fixture มองไม่เห็น; Gondolin blocked เพราะไม่มี QEMU
+- [x] แก้ graceful Worker shutdown ให้ process exit และ release ceiling slotก่อน fallback
+- [x] ปิด graceful/abrupt lifecycle gaps: Worker exit release slot และ cleanup suppressionไม่ recreate team entry
+- [ ] กำหนด immutable development image/profile packaging, direct-tool routing และ source-of-truth/upstream strategy
 - [ ] ตัดสิน Pi-native backend ระหว่าง patched `pi-agent-teams`, piewf หลัง blockers หรือ custom minimal layer
 - [ ] ตัดสิน strong Pi isolation ระหว่าง sandboxed direct-tool overrides กับ Gondolin
 - [ ] แปลง disposable config shapes เป็น versioned adapter tests ก่อนแก้ production spawn behavior

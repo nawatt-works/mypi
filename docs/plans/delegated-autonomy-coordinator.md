@@ -2,7 +2,7 @@
 
 > **Status:** active — Phase 0 runtime probes<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-28 22:13<br>
+> **Updated:** 2026-08-28 22:56<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -183,7 +183,7 @@ hard deny / managed ceiling
 
 ห้าม install production แบบ as-is เพราะ child spawn inherit `process.env`, ใช้ `--no-extensions -e teams` ซึ่งตัด My Pi guardrails/sandbox, default writing workspace เป็น shared และไม่มี deterministic secret/network/upload policy Phase 0 runtime บน explicit worktree ยืนยันว่า fake `.env`, fake parent env, external `/tmp` write และ shell network ผ่านทั้งหมด แม้ routine RPC/worktree lifecycle ทำงานดี
 
-Disposable child-profile patch ยืนยันว่า env allowlist, exact tools/extensions, worktree ceiling, deterministic no-UI policy และ fail-closed sandbox แก้ fake env/secret/external/network fixtures ได้โดยไม่แก้ team/task core แต่ยังไม่ verified เพราะ direct tools, uploads, external non-secret reads, sandbox failure และ multi-worker concurrency ยังไม่ probe
+Disposable child-profile patch ยืนยันว่า env allowlist, exact tools/extensions, worktree ceiling, deterministic no-UI policy และ fail-closed boundary แก้ fake env/secret/external/network fixtures ได้โดยไม่แก้ team/task core Direct/fail-init/ceiling 2/multi-worker probes ผ่าน และ Docker-strong profile mount เฉพาะ worktreeพร้อม network none ปิด host read/write gap Graceful RPC shutdown release slotได้หลัง explicit process exit แต่ยังไม่ verified production เพราะ image/profile packaging, direct-tool routing และ abrupt leader cleanupยังไม่จบ
 
 ถ้านำมาใช้ My Pi ยังเป็นเจ้าของ mandate/policy/audit/final verification; agent-teams เป็นเจ้าของ Pi task transport/RPC team lifecycle เท่านั้น และ Herdr ยังดูแล external harnesses
 
@@ -486,8 +486,22 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
     - RPC/worktree/routine flow ผ่าน; fake `.env`, inherited env, external write และ network ผ่านด้วย จึงยืนยัน no-go as-is
   - [x] disposable child profile injection ไม่ inherit env, โหลด exact tools/extensions, force worktree และใช้ deterministic policy/sandbox
     - routine pass; fake env absent; secret/external/network deny; zero dialogs; upstream smoke 329/329
-  - [ ] probe direct tools/uploads/external reads, fail-closed init, multi-worker reset และ graceful cleanup
-  - [ ] ตัดสิน source-of-truth split และ maintenance cost ของ patch/fork
+  - [x] probe direct tools, fail-closed init, worker ceiling และ multi-worker replacement
+    - Read/Write/Edit boundary ผ่านหลัง policy v2; missing sandbox config ไม่ register Worker; ceiling 2 deny ตัวที่สาม
+    - upload-capable tools ถูกตัดออกจาก exact profile
+  - [x] เทียบ `codexstar69` hardening แบบราย feature
+    - adapt ready handshake/bounded stop และ worker ceiling พร้อมแก้ stopped/error counting
+    - defer lease/retry/priority/polling; event log/doctor/mailbox pruning พิจารณาภายหลัง
+  - [x] ปิด Bash host read/write/network gap ด้วย Docker-strong disposable profile
+    - worktree-only mount, network none, no HOME/socket mounts; host `/tmp` fixture invisible
+    - Gondolin ยังไม่ได้ probe เพราะเครื่องไม่มี QEMU และห้าม install system dependencyใน mandateนี้
+  - [x] แก้ graceful Worker shutdown ให้ explicit RPC process exit และคืน ceiling slot
+  - [x] แก้ lifecycle gaps: explicit Worker RPC exit release slot และ cleanup suppressionไม่ recreate team entry
+  - [x] กำหนด Docker-strong/direct-tool/source-of-truth/upstream contract
+    - My Pi own authority/audit/acceptance; agent-teams own Pi task transport/RPC; one backend per Worker
+    - direct toolsใช้ scoped operations; Bash mount worktree-only container; no runtime image pull
+    - upstream minimal seamsก่อนพิจารณา maintained fork
+  - [ ] สร้าง/เลือก immutable development image digest และ versioned production profile package
 - [ ] `pi-extensible-workflows` gate:
   - [ ] ขอ license clarification หรือยืนยัน license artifact ที่มีผลผูกพัน
     - npm/source metadata ระบุ MIT แต่ source และ tarball ไม่มี license text
@@ -754,14 +768,12 @@ Success metric หลัก:
 
 ดำเนิน Phase 0 ส่วนที่เหลือตามลำดับ:
 
-1. เทียบ worker ceiling, lease/heartbeat, event log/doctor, task retry และ cleanup hardening จาก `codexstar69` แบบราย feature พร้อมเลือกเฉพาะ contract ที่ควร upstream/adapt
-2. ขยาย disposable agent-teams probes ไป direct Read/Write/Edit, uploads, external non-secret reads, sandbox init failure, multi-worker reset และ graceful cleanup
-3. กำหนด source-of-truth split และ maintenance/upstream strategy ของ agent-teams patch
-4. ออกแบบและ probe Codex adapter ที่ยืนยัน effective model/config และรอ lifecycle readiness จริง
-5. probe Claude `dontAsk` หรือ exact settings `permissions.allow` สำหรับ in-worktree writes ภายใต้ sandbox โดยไม่มี dialog
-6. รัน Pi writing profile ผ่าน Herdr lifecycle จริง และเทียบกับ patched agent-teams RPC lane
-7. รัน implement → review → correction chain ซ้ำให้ได้ศูนย์ routine approval
-8. ทดสอบ provider error, timeout, missing artifact และ human-only escalation
-9. สรุป go/no-go แยก Herdr, agent-teams และ piewf แล้วจึงเริ่ม Phase 1 pure mandate/policy model
+1. ออกแบบและ probe Codex adapter ที่ยืนยัน effective model/config และรอ lifecycle readiness จริง
+2. probe Claude `dontAsk` หรือ exact settings `permissions.allow` สำหรับ in-worktree writes ภายใต้ sandbox โดยไม่มี dialog
+3. สร้าง/เลือก immutable development image digest และ versioned agent-teams production profile package
+4. รัน Pi writing profile ผ่าน Herdr lifecycle จริง และเทียบกับ patched agent-teams RPC lane
+5. รัน implement → review → correction chain ซ้ำให้ได้ศูนย์ routine approval
+6. ทดสอบ provider error, timeout, missing artifact และ human-only escalation
+7. สรุป go/no-go แยก Herdr, agent-teams และ piewf แล้วจึงเริ่ม Phase 1 pure mandate/policy model
 
 ห้ามแก้ production behavior ก่อนสรุปผล probe และอัปเดต decisions/profile verification ในแผนนี้
