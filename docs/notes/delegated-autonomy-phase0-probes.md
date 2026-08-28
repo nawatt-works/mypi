@@ -1,8 +1,8 @@
 # Phase 0 Probes — Delegated Autonomy Harness Profiles
 
-> **Status:** in progress — local probes complete; Herdr Codex passes boundary but lifecycle/model drift remain, Claude interactive writeยัง prompts<br>
+> **Status:** in progress — เพิ่ม `pi-agent-teams` gate; Herdr และ Pi-native backends ยังมี security/lifecycle blockers<br>
 > **Created:** 2026-08-28 17:05<br>
-> **Updated:** 2026-08-28 19:26<br>
+> **Updated:** 2026-08-28 22:02<br>
 > **Purpose:** เก็บผล runtime probes แบบ disposable ก่อนเปลี่ยน production behavior ตาม [แผน Delegated Autonomy](../plans/delegated-autonomy-coordinator.md)
 
 ผล piewf ถูกตรวจสองทาง: runtime probes ของ Coordinator ในเอกสารนี้ และ [independent Phase 0 piewf evaluation](piewf-phase0-evaluation.md) จาก Worker บน branch แยก ก่อน cherry-pick เข้าสู่ `main`
@@ -378,6 +378,100 @@ OpenCode คง manual-only จนกว่าจะมีอย่างใด�
 1. per-worker deterministic env/config injection ใน Herdr adapter พร้อม lifecycle integration และ
 2. OS/container/VM boundary รอบ Bash หรือทั้ง harness
 
+## `pi-agent-teams` evaluation
+
+Repositories:
+
+- [`tmustier/pi-agent-teams`](https://github.com/tmustier/pi-agent-teams) — upstream หลักที่ยัง active
+- [`codexstar69/pi-agent-teams`](https://github.com/codexstar69/pi-agent-teams) — divergent hardening fork จาก upstream `v0.4.0`; GitHub ไม่ได้ mark เป็น fork แต่ Git history มี merge-base เดียวกัน
+
+Lineage ที่ตรวจจาก full Git history:
+
+```text
+merge-base: 6fd9ffb (tmustier v0.4.0)
+codexstar-only commits: 19
+tmustier-only commits: 35
+```
+
+ทั้งสองมี `LICENSE` แบบ MIT ชัดเจน จึงไม่มี license blocker แบบ piewf
+
+### Release และ compatibility
+
+| Repo | Source head | Repo version | npm latest | Pi namespace | Source smoke |
+|---|---|---:|---:|---|---:|
+| `tmustier` | `2c1776d` | `0.5.6` | `0.5.5` | `@earendil-works/*` | `329/329` |
+| `codexstar69` | `58f0a39` | `0.4.1` | `0.4.1` | deprecated `@mariozechner/*` | `318/318` |
+
+ข้อควรระวัง:
+
+- `tmustier` source มี stale-lock fix `0.5.6` แต่ npm ยัง publish แค่ `0.5.5`; production pin ต้องเลือก Git commit หรือรอ publish ให้ตรงกัน
+- `codexstar69` หยุดที่ Pi `0.57.1` namespace เดิม ขณะที่ `my-pi` ใช้ Pi `0.84.3`
+- source smoke tests ผ่านเมื่อรันด้วย direct `tsx`; npm install ใน temp ใช้เวลาจน timeout ก่อนสร้าง `.bin` ครบ จึงยังไม่อ้างว่า package install/check gate ผ่าน
+
+### สิ่งที่เหมาะกับ delegated Coordinator
+
+ทั้งสองมี primitives ที่ตรงกับ Pi-native lane มากกว่า custom Herdr layer บางส่วน:
+
+- LLM-callable `teams` tool สร้าง teammate/delegate/task/message/lifecycle ได้โดยไม่ต้องใช้ slash command
+- Pi RPC children พร้อม structured agent/tool events และ startup `get_state` handshake
+- shared file-per-task state, dependencies, mailbox และ auto-claim
+- fresh/branched context, worktrees, model/thinking override
+- plan-required worker, quality hooks และ leader-side review/coordination UI
+
+`tmustier` เด่นกว่าในเส้นทาง upstream:
+
+- leader wake เมื่อ task/batch complete
+- urgent steer, worker status/stall visibility, `/team done`, auto cleanup/GC
+- clean-turn session branching ที่ไม่ branch จาก assistant tool-use turnค้าง
+- current Pi package namespace และ community/activity มากกว่า
+
+`codexstar69` มี hardening ที่น่าสนใจแต่ยังไม่อยู่ upstream branch นี้:
+
+- `PI_TEAMS_MAX_WORKERS`
+- task priority/retry/cooldown/lease recovery
+- worker heartbeat, event log, doctor, mailbox pruning
+- adaptive polling/debounce
+- RPC ready handshake tests, process-control และ worktree cleanup diagnostics
+- Windows/PowerShell support
+
+ดังนั้น base candidate คือ **`tmustier`**, ส่วน `codexstar69` ใช้เป็น source ของ hardening ideas/patch review ไม่ใช่เลือกแทน upstream ทั้งชุด
+
+### Blockers ต่อ bounded mandate
+
+Implementation ปัจจุบันยังห้าม adopt ตรง ๆ:
+
+1. child spawn ใช้ `env: { ...process.env, ...workerEnv }` ทำให้ Worker inherit environment ทั้งหมด รวม secret-bearing variables
+2. child args บังคับ `--no-extensions -e <teams-entry>` จึงตัด My Pi guardrail, sandbox และ lifecycle extensions ออก
+3. child รับเฉพาะ active built-in tool names; ไม่มี immutable worker-policy/profile reference
+4. writing teammate default เป็น `workspaceMode: shared` ไม่ใช่ worktree-only
+5. `tmustier` ไม่มี hard worker ceiling; `codexstar69` มีแต่ default คือ disabled/unlimited
+6. ไม่มี deterministic secret/upload/network/external-write policy หรือ `ALLOW|REVIEW|DENY|HUMAN`
+7. task completion/result เป็น coordination state ไม่ใช่ artifact/diff/test verification
+8. runtime รองรับ Pi เท่านั้น ไม่แทน Herdr external harness adapter
+9. filesystem team store อาจกลายเป็น source of truth แข่งกับ My Pi registry ถ้าไม่แบ่ง run ownership
+
+Plan-required mode ลด active toolsเป็น read-oriented set แต่ยังอ่าน secret path ได้ จึงไม่ใช่ security profile
+
+### Adoption decision
+
+**No-go สำหรับ production install แบบ as-is; go สำหรับ isolated adapter/fork probe**
+
+Target split หากผ่านการแก้:
+
+- My Pi: mandate, ceilings, policy, audit, final artifact verification และ external harness routing
+- patched `pi-agent-teams`: Pi RPC team runtime, task/mailbox, auto-claim, completion wake และ team UI
+- Herdr: Codex/Claude/external harness lanes และ human-visible panes
+
+Required adapter changes ก่อน verified:
+
+1. child launch profile API ที่ inject exact extensions/tools/resources และ policy ID แบบ atomic
+2. environment allowlist แทน inherit ทั้ง `process.env`
+3. worktree-only default สำหรับ writing workers
+4. hard max workers/launches จาก mandate; lower layer narrow-only
+5. completion event route ไป Coordinator collect/verify ไม่ auto-accept self-report
+6. fail-closed secret/network/upload/external-write probes บน Pi `0.84.3`
+7. source-of-truth contract: team store own task transport; My Pi registry own authority/audit/acceptance
+
 ## `pi-extensible-workflows` probes
 
 ### License and release evidence
@@ -625,6 +719,9 @@ Implement → independent review chain รันได้ถึง review decisi
 - [ ] ทดสอบ implement → review → correction chain ที่ไม่มี user approval; รอบแรกถึง review แต่ fail ที่ Claude report prompt
 - [ ] ทดสอบ provider error, timeout, missing artifact และ human-only escalation ใน real control loop
 - [x] รับ ตรวจ และ cherry-pick independent `pi-extensible-workflows` evaluation report
+- [ ] รัน isolated `tmustier/pi-agent-teams` baseline บน Pi `0.84.3` แล้ว probe env/secret/network/external-write/worktree
+- [ ] ออกแบบ child-profile injection seam และเทียบ hardening commits จาก `codexstar69` โดยไม่รวม fork ทั้งชุด
+- [ ] ตัดสิน Pi-native backend ระหว่าง patched `pi-agent-teams`, piewf หลัง blockers หรือ custom minimal layer
 - [ ] ตัดสิน strong Pi isolation ระหว่าง sandboxed direct-tool overrides กับ Gondolin
 - [ ] แปลง disposable config shapes เป็น versioned adapter tests ก่อนแก้ production spawn behavior
 
@@ -633,5 +730,7 @@ Implement → independent review chain รันได้ถึง review decisi
 - เริ่ม Phase 1 pure mandate/policy model ได้หลัง piewf report และ plan update โดยไม่ต้องรอ OpenCode
 - target external harness รุ่นแรก: **Codex custom permission profile** และ **Claude auto+sandbox**
 - target Pi profile: read-only ใช้ resource allowlist; writing ใช้ guardrail + fail-closed sandboxed Bash เป็น baseline และยังไม่อ้าง strong isolation
+- `pi-agent-teams`: ใช้ `tmustier` เป็น base candidate สำหรับ isolated adapter probe; ศึกษา hardening จาก `codexstar69`; ยังไม่ install production
+- piewf: no-go immediate dependency; คงเป็น comparator สำหรับ deterministic workflow/budget/resume
 - OpenCode: manual-only
 - production implementation ต้องคง explicit rollback ไป `manual`

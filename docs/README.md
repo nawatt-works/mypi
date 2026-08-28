@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-07-27 08:55<br>
-> **Updated:** 2026-08-28 19:26<br>
+> **Updated:** 2026-08-28 22:02<br>
 > **Purpose:** แสดงภาพรวมของ design notes และ implementation history ที่ repository `my-pi` เป็นเจ้าของ
 
 `docs/` เป็น project documentation ของ repository นี้ ไม่ใช่ workspace-wide artifact store และไม่ใช่ default path สำหรับ plan, note หรือ output จาก AI tool/skill/harness อื่น
@@ -11,7 +11,7 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
-| 2026-08-28 19:26 | 2026-08-28 15:32 | active — Phase 0 | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | เพิ่ม bounded mandate, policy outcomes, harness profiles และ autonomous control loop; Herdr probes พบ Codex lifecycle/model drift และ Claude Write prompts |
+| 2026-08-28 22:02 | 2026-08-28 15:32 | active — Phase 0 | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | เพิ่ม bounded mandate, policy outcomes และ backend gates; กำลังเทียบ Herdr, `pi-agent-teams` และ piewf |
 | 2026-08-28 15:32 | 2026-08-25 09:19 | superseded | [Pi Coordinator บน Herdr](plans/pi-herdr-coordinator.md) | เก็บ implementation/probe history; authority contract และ Phase 3 เดิมถูกแทนด้วย delegated-autonomy plan |
 | 2026-08-23 11:19 | 2026-08-22 12:40 | superseded | [แยก Workflow Plan, Continuity Ledger และ Plannotator Review](plans/flexible-planning-continuity.md) | implementation รุ่น managed fallback; ต่อมาถูกแทนด้วย pointer-only และ dual session/workspace tracking |
 | 2026-08-09 19:25 | 2026-08-09 11:10 | complete | [ย้ายและขยาย Azure DevOps extension](plans/azure-devops-extension-crud.md) | เพิ่ม opt-in Work Item CRUD; ปัจจุบัน maintain ที่ `local/extensions/azure-devops/` และให้แต่ละ project โหลดเอง |
@@ -22,7 +22,7 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
-| 2026-08-28 19:26 | 2026-08-28 17:05 | in progress | [Phase 0 Probes — Delegated Autonomy Harness Profiles](notes/delegated-autonomy-phase0-probes.md) | บันทึก runtime/Herdr evidence ของ Pi, Codex, Claude, OpenCode และ piewf พร้อม blockers ก่อนแก้ production behavior |
+| 2026-08-28 22:02 | 2026-08-28 17:05 | in progress | [Phase 0 Probes — Delegated Autonomy Harness Profiles](notes/delegated-autonomy-phase0-probes.md) | บันทึก runtime/Herdr evidence และประเมิน `pi-agent-teams`/piewf พร้อม blockers ก่อนแก้ production behavior |
 | 2026-08-28 19:13 | 2026-08-28 19:07 | complete evaluation | [Independent piewf Phase 0 Evaluation](notes/piewf-phase0-evaluation.md) | ตรวจ source/tests/license/install ของ piewf แยกใน Worker worktree และรับเข้า main หลัง Coordinator verification |
 | 2026-08-28 15:20 | 2026-08-28 15:20 | ทิศทางที่ยืนยันให้ศึกษาต่อ | [Delegated Autonomy สำหรับ Coordinator และ Guardrails](notes/delegated-autonomy-guardrails-research.md) | เปรียบเทียบ OpenCode, Claude Code และ Codex CLI พร้อมวิเคราะห์การเปลี่ยนจาก approval ทุกขั้นเป็น bounded mandate และ Coordinator review |
 | 2026-08-28 15:32 | 2026-08-23 22:27 | partially superseded | [Runtime-negotiated Orchestration ผ่าน Pi และ Herdr](notes/runtime-negotiated-herdr-orchestration.md) | Runtime/identity/evidence history ยังใช้ต่อ แต่ authority contract เดิมถูกแทนด้วย bounded mandate |
@@ -32,6 +32,7 @@
 
 ## Change log
 
+- 2026-08-28 22:02 — ประเมิน `tmustier` และ `codexstar69/pi-agent-teams`: เลือก tmustier เป็น isolated base candidate, ใช้ codexstar hardening เป็น comparator และยัง no-go production จน child profile fail closed
 - 2026-08-28 19:26 — รัน Codex→Claude chain ผ่าน Herdr: Codex boundary ผ่านแต่ model/lifecycle drift; Claude sandbox deny ผ่านแต่ in-worktree Write ยังเปิด human dialog จึงยังไม่ unattended
 - 2026-08-28 19:13 — รับ independent piewf evaluation และ reproduce combined exact-spec drift; source tests 19/19 ผ่านแต่ install/license/runtime blockers ยังคง no-go
 - 2026-08-28 19:10 — เพิ่ม piewf gate evidence: 5.8.0 CLI packaging broken, 5.9.0 doctor ไม่เข้ากับ bundled reviewer tools; core subagent/worktree/budget/resume ผ่านแต่ immediate adoption เป็น no-go

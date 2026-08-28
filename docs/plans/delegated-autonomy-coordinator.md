@@ -2,7 +2,7 @@
 
 > **Status:** active — Phase 0 runtime probes<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-28 19:26<br>
+> **Updated:** 2026-08-28 22:02<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -59,6 +59,7 @@
 | Claude Code | `2.1.248` | `auto` ใช้ classifier; subagents/teams ทำ orchestration และ permission inheritance |
 | Codex CLI | `0.150.1` | แยก sandbox กับ approval; `--approve-for-me` route escalation ไป automatic reviewer |
 | `pi-extensible-workflows` | npm `5.8.0`, source `ecadda0` | มี workflows, durable subagents, roles, selectors, budgets, worktrees, replay/resume และ Herdr transport; แต่ release เปลี่ยนเร็วและ repository ยังไม่มี LICENSE file แม้ package metadata/README ระบุ MIT |
+| `tmustier/pi-agent-teams` / `codexstar69` | upstream `2c1776d` / fork `58f0a39` | Pi RPC team runtime, task/mailbox, auto-claim, completion wake, worktrees และ UI; MIT ชัดเจน แต่ child profile ปัจจุบัน inherit env, ตัด guardrails และไม่มี hard policy |
 
 ### Engine decision
 
@@ -66,8 +67,9 @@
 
 1. **ระยะต้น:** ปรับ custom Herdr Coordinator ปัจจุบันให้มี mandate, policy และ delegated mode เพราะรองรับ heterogeneous harnesses อยู่แล้วและให้ผลต่อ UX ได้เร็ว
 2. **ไม่ขยาย custom layer เป็น workflow engine เต็มรูปแบบ:** budget accounting, deterministic script, journal replay, background durable runs และ reusable workflows ต้องประเมิน `pi-extensible-workflows` ก่อนเขียนซ้ำ
-3. **Phase หลัง:** ทดสอบ `pi-extensible-workflows` ใน profile แยก ถ้า license, compatibility และ acceptance ผ่าน ให้ใช้เป็น Pi-native execution backend และคง custom Herdr adapter เฉพาะ external harnesses
-4. **ห้ามคัดลอก source จาก `pi-extensible-workflows`** จนกว่า license grant จะชัดเจน ใช้ได้เพียง public API/design evidence ในช่วง evaluation
+3. **Phase หลัง:** เทียบ `pi-extensible-workflows` กับ patched `pi-agent-teams` ใน profile แยก: piewf เด่น deterministic workflow/budget/resume; agent-teams เด่น long-lived Pi RPC team/task/mailbox/UI
+4. ถ้า backend ใดผ่าน security, compatibility และ acceptance ให้ใช้เฉพาะ Pi-native lane และคง custom Herdr adapter สำหรับ external harnesses; ห้ามมีสอง runtime คุม Worker เดียวกัน
+5. **ห้ามคัดลอก source จาก `pi-extensible-workflows`** จนกว่า license grant จะชัดเจน ใช้ได้เพียง public API/design evidence ในช่วง evaluation; `pi-agent-teams` ทั้งสอง repo มี MIT LICENSE จึง probe/fork ได้แต่ยังต้องบันทึก provenance
 
 ## Decisions
 
@@ -175,6 +177,14 @@ hard deny / managed ceiling
 
 รอบ implementation ของแผนนี้ห้ามเปลี่ยน behavior ของสองระบบนี้ เว้นแต่จำเป็นต่อ compile/test และต้องบันทึกเป็น blocker ก่อน
 
+### D10 — `pi-agent-teams` เป็น Pi-native backend candidate แยกจาก Herdr
+
+ใช้ `tmustier/pi-agent-teams` เป็น base candidate เพราะ active กว่า, ใช้ `@earendil-works/*`, มี completion wake/urgent steer/clean branching/cleanup และ community มากกว่า ส่วน `codexstar69` เป็น divergent MIT hardening source สำหรับ worker ceiling, leases, heartbeat, event log, doctor และ process/worktree cleanup
+
+ห้าม install production แบบ as-is เพราะ child spawn inherit `process.env`, ใช้ `--no-extensions -e teams` ซึ่งตัด My Pi guardrails/sandbox, default writing workspace เป็น shared และไม่มี deterministic secret/network/upload policy
+
+ถ้านำมาใช้ My Pi ยังเป็นเจ้าของ mandate/policy/audit/final verification; agent-teams เป็นเจ้าของ Pi task transport/RPC team lifecycle เท่านั้น และ Herdr ยังดูแล external harnesses
+
 ## Target architecture
 
 ```text
@@ -195,10 +205,10 @@ hard deny / managed ceiling
 ┌─────────────────────────────────────────────────────────────┐
 │ Execution backend                                           │
 │                                                             │
-│  Herdr backend (initial)          Pi workflow backend (gate)│
-│  ├─ Pi worker profile             ├─ piewf subagents        │
-│  ├─ Codex auto-review profile     ├─ workflows/reviewLoop   │
-│  ├─ Claude auto profile           └─ budgets/replay/resume  │
+│  Herdr backend (initial)          Pi-native backends (gate) │
+│  ├─ Pi worker profile             ├─ agent-teams RPC/tasks  │
+│  ├─ Codex auto-review profile     └─ piewf workflow/budgets │
+│  ├─ Claude auto profile                                     │
 │  └─ OpenCode auto+deny profile                              │
 └─────────────────────────────┬───────────────────────────────┘
                               ▼
@@ -467,6 +477,12 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
 - [ ] ทดสอบว่าผู้ใช้ไม่ต้องกด routine permissions ในหนึ่ง implement-review chain
   - Codex implement ผ่านและ Coordinator commit หลัง collect
   - Claude review/boundary ผ่านใน pane แต่ Write report prompt ทั้ง auto และ auto+allowedTools; chain ยัง fail
+- [ ] `pi-agent-teams` gate:
+  - [x] ตรวจ full Git lineage, license, source architecture และ source smoke tests
+  - [x] เลือก `tmustier` เป็น base candidate; ใช้ `codexstar69` เป็น hardening comparator
+  - [ ] baseline runtime probe บน Pi `0.84.3` สำหรับ env/secret/network/external-write/worktree
+  - [ ] ออกแบบ child profile injection ที่ไม่ inherit env และไม่ตัด guardrail/sandbox
+  - [ ] ตัดสิน source-of-truth split และ maintenance cost ของ patch/fork
 - [ ] `pi-extensible-workflows` gate:
   - [ ] ขอ license clarification หรือยืนยัน license artifact ที่มีผลผูกพัน
     - npm/source metadata ระบุ MIT แต่ source และ tarball ไม่มี license text
@@ -733,11 +749,12 @@ Success metric หลัก:
 
 ดำเนิน Phase 0 ส่วนที่เหลือตามลำดับ:
 
-1. ออกแบบและ probe Codex adapter ที่ยืนยัน effective model/config และรอ lifecycle readiness จริง
-2. probe Claude `dontAsk` หรือ exact settings `permissions.allow` สำหรับ in-worktree writes ภายใต้ sandbox โดยไม่มี dialog
-3. รัน Pi writing profile ผ่าน Herdr lifecycle จริง
-4. รัน implement → review → correction chain ซ้ำให้ได้ศูนย์ routine approval
-5. ทดสอบ provider error, timeout, missing artifact และ human-only escalation
-6. สรุป go/no-go แล้วจึงเริ่ม Phase 1 pure mandate/policy model
+1. รัน isolated baseline ของ `tmustier/pi-agent-teams` บน Pi `0.84.3` และยืนยัน blockers จาก child env/extensions/workspace ด้วย runtime fixtures
+2. ออกแบบและ probe Codex adapter ที่ยืนยัน effective model/config และรอ lifecycle readiness จริง
+3. probe Claude `dontAsk` หรือ exact settings `permissions.allow` สำหรับ in-worktree writes ภายใต้ sandbox โดยไม่มี dialog
+4. รัน Pi writing profile ผ่าน Herdr lifecycle จริง และเทียบกับ patched agent-teams RPC lane
+5. รัน implement → review → correction chain ซ้ำให้ได้ศูนย์ routine approval
+6. ทดสอบ provider error, timeout, missing artifact และ human-only escalation
+7. สรุป go/no-go แยก Herdr, agent-teams และ piewf แล้วจึงเริ่ม Phase 1 pure mandate/policy model
 
 ห้ามแก้ production behavior ก่อนสรุปผล probe และอัปเดต decisions/profile verification ในแผนนี้
