@@ -2,8 +2,10 @@
 
 > **Status:** in progress — local harness/piewf probes complete; independent piewf report และ Herdr end-to-end remain<br>
 > **Created:** 2026-08-28 17:05<br>
-> **Updated:** 2026-08-28 19:10<br>
+> **Updated:** 2026-08-28 19:13<br>
 > **Purpose:** เก็บผล runtime probes แบบ disposable ก่อนเปลี่ยน production behavior ตาม [แผน Delegated Autonomy](../plans/delegated-autonomy-coordinator.md)
+
+ผล piewf ถูกตรวจสองทาง: runtime probes ของ Coordinator ในเอกสารนี้ และ [independent Phase 0 piewf evaluation](piewf-phase0-evaluation.md) จาก Worker บน branch แยก ก่อน cherry-pick เข้าสู่ `main`
 
 ## Scope และวิธีทดสอบ
 
@@ -399,9 +401,27 @@ PI_CODING_AGENT_DIR="$TEMP_AGENT" \
   pi install npm:pi-extensible-workflows@5.8.0
 ```
 
-`pi list` ยืนยัน exact source `npm:pi-extensible-workflows@5.8.0` และ Pi 0.84.3 โหลด core extensions ได้
+`pi list` ยืนยัน exact source `npm:pi-extensible-workflows@5.8.0` และ Pi 0.84.3 โหลด core extensions ได้เมื่อ install core เพียง package เดียว
 
-CLI ติดตั้งแยก:
+แต่เมื่อ install companions ตาม recipe เต็มใน temp profile เดียว:
+
+```bash
+pi install npm:pi-extensible-workflows@5.8.0
+pi install npm:@piewf/cli@5.8.0
+pi install npm:@piewf/herdr@5.8.0
+```
+
+settings ยังคงแสดง specs `@5.8.0` แต่ Pi installer เขียน shared `npm/package.json` เป็น caret ranges `^5.8.0`; observed materialized versions จึงกลายเป็น:
+
+```text
+pi-extensible-workflows 5.9.0
+@piewf/cli              5.9.0
+@piewf/herdr            5.8.0
+```
+
+ดังนั้น `pi install ...@5.8.0` ยังไม่ใช่ exact multi-package pin ใน installer path ปัจจุบัน และสร้าง core/companion version skew ได้
+
+CLI ติดตั้งแยกเพื่อยืนยัน exact 5.8.0:
 
 ```bash
 npm install --prefix "$TEMP_CLI" --ignore-scripts \
@@ -482,6 +502,17 @@ ROLE_TOOL_INACTIVE: ls
 
 5.9.0 ยังเพิ่ม Trajectory `share` ที่ upload static report เป็น secret GitHub gist ผ่าน `gh`; ถ้านำมาใช้กับ delegated backend ต้อง disable Trajectory/share surface โดย default หรือ classify เป็น `HUMAN` external upload
 
+### Independent verification
+
+Worker report แยกยืนยัน source/test evidence ของ 5.8.0 และ Coordinator รัน targeted tests ซ้ำโดยตรง:
+
+- standalone subagents/worktree: `5/5` ผ่าน
+- bundled `reviewLoop`: `5/5` ผ่านใน source tests
+- budget/resume/worktree runtime: `5/5` ผ่าน
+- `@piewf/herdr` fully-inspectable source tests: `4/4` ผ่าน
+
+source tests ยืนยัน implementation capability แต่ไม่ลบ runtime/install blockers ที่พบจาก npm artifacts
+
 ### piewf adoption decision ณ Phase 0
 
 **No-go สำหรับ immediate dependency**, แต่ architecture fit ยังคงเป็นบวก
@@ -523,7 +554,7 @@ Blockers ก่อน reconsider:
 - [ ] ทดสอบ Codex/Claude profiles ผ่าน Herdr panes ไม่ใช่เฉพาะ non-interactive CLI
 - [ ] ทดสอบ implement → review → correction chain ที่ไม่มี user approval
 - [ ] ทดสอบ provider error, timeout, missing artifact และ human-only escalation ใน real control loop
-- [ ] รับและตรวจ `pi-extensible-workflows` evaluation report
+- [x] รับ ตรวจ และ cherry-pick independent `pi-extensible-workflows` evaluation report
 - [ ] ตัดสิน strong Pi isolation ระหว่าง sandboxed direct-tool overrides กับ Gondolin
 - [ ] แปลง disposable config shapes เป็น versioned adapter tests ก่อนแก้ production spawn behavior
 

@@ -2,7 +2,7 @@
 
 > **Status:** active — Phase 0 runtime probes<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-28 19:10<br>
+> **Updated:** 2026-08-28 19:13<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -464,7 +464,8 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
 - [ ] `pi-extensible-workflows` gate:
   - [ ] ขอ license clarification หรือยืนยัน license artifact ที่มีผลผูกพัน
     - npm/source metadata ระบุ MIT แต่ source และ tarball ไม่มี license text
-  - [x] pin `5.8.0` ใน isolated `PI_CODING_AGENT_DIR`
+  - [x] probe pin `5.8.0` ใน isolated `PI_CODING_AGENT_DIR`
+    - core-only install exact แต่ combined core/CLI/Herdr specs drift เป็น 5.9.0/5.9.0/5.8.0 เพราะ Pi installer เขียน caret ranges
   - [ ] รัน `piewf doctor`
     - 5.8.0 CLI broken เพราะ tarball ขาด `dist/subagents`; 5.9.0 CLI เปิดได้แต่ doctor fail ที่ bundled reviewer tools `find/grep/ls`
   - [ ] probe standalone subagent, `reviewLoop`, worktree, budget, resume และ Herdr fully-inspectable mode
@@ -726,10 +727,9 @@ Success metric หลัก:
 
 ดำเนิน Phase 0 ส่วนที่เหลือตามลำดับ:
 
-1. ให้ Worker จบ independent `pi-extensible-workflows` report หลังผู้ใช้ deny external temp redirect แล้วตรวจเทียบกับ Coordinator evidence
-2. รัน provisional Pi/Codex/Claude profiles ผ่าน Herdr lifecycle จริง
-3. รัน implement → review → correction chain โดยไม่มี routine approval
-4. ทดสอบ provider error, timeout, missing artifact และ human-only escalation
-5. สรุป go/no-go แล้วจึงเริ่ม Phase 1 pure mandate/policy model
+1. รัน provisional Pi/Codex/Claude profiles ผ่าน Herdr lifecycle จริง
+2. รัน implement → review → correction chain โดยไม่มี routine approval
+3. ทดสอบ provider error, timeout, missing artifact และ human-only escalation
+4. สรุป go/no-go แล้วจึงเริ่ม Phase 1 pure mandate/policy model
 
 ห้ามแก้ production behavior ก่อนสรุปผล probe และอัปเดต decisions/profile verification ในแผนนี้

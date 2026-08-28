@@ -4,6 +4,8 @@
 ผู้ประเมิน: Pi worker (`phase0/piewf-evaluation`)  
 ขอบเขต: read-heavy; เขียนเฉพาะไฟล์นี้
 
+> **Coordinator review:** รับรายงานนี้เป็น independent source/test/install evidence แล้ว และ reproduce combined-install version drift สำเร็จ ผล live runtime probes ที่ Worker ตั้งใจไม่รันเพราะ credential/cost boundary อยู่ใน [Phase 0 Probes — Delegated Autonomy Harness Profiles](delegated-autonomy-phase0-probes.md); เมื่อข้อสรุปต่างกันให้ใช้ runtime report และ active plan เป็น current decision
+
 ## Executive decision
 
 **ผลตัดสินตอนนี้: NO-GO สำหรับการรับ `pi-extensible-workflows` เข้าเป็น backend ของ delegated-autonomy coordinator ใน Phase 6 ตอนนี้**
