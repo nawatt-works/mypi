@@ -1,8 +1,8 @@
 # Independent security review — agent-teams atomic overlay/profile
 
-วันที่รีวิว: 2026-08-29  
-รีวิวต่อ commit: `ead8778` เทียบ `caf8aae`  
-producer repo ที่ตรวจ: `/Users/developer/my-project/my-pi`  
+วันที่รีวิว: 2026-08-29
+รีวิวต่อ commit: `ead8778` เทียบ `caf8aae`
+producer repo ที่ตรวจ: `/Users/developer/my-project/my-pi`
 artifact ที่ส่งมอบ: รายงานนี้เท่านั้น
 
 ## Verdict

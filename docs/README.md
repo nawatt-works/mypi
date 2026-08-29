@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-07-27 08:55<br>
-> **Updated:** 2026-08-29 22:40<br>
+> **Updated:** 2026-08-29 23:00<br>
 > **Purpose:** แสดงภาพรวมของ design notes และ implementation history ที่ repository `my-pi` เป็นเจ้าของ
 
 `docs/` เป็น project documentation ของ repository นี้ ไม่ใช่ workspace-wide artifact store และไม่ใช่ default path สำหรับ plan, note หรือ output จาก AI tool/skill/harness อื่น
@@ -11,7 +11,7 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
-| 2026-08-29 22:40 | 2026-08-28 15:32 | active — Phase 0 | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | correction v2 bind trusted boundary/contract/session readiness; exact nextคือ re-review + acceptance chain |
+| 2026-08-29 23:00 | 2026-08-28 15:32 | active — Phase 0 | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | correction v3เพิ่ม executable runtime/apply probe; exact nextคือ final re-review + acceptance chain |
 | 2026-08-28 15:32 | 2026-08-25 09:19 | superseded | [Pi Coordinator บน Herdr](plans/pi-herdr-coordinator.md) | เก็บ implementation/probe history; authority contract และ Phase 3 เดิมถูกแทนด้วย delegated-autonomy plan |
 | 2026-08-23 11:19 | 2026-08-22 12:40 | superseded | [แยก Workflow Plan, Continuity Ledger และ Plannotator Review](plans/flexible-planning-continuity.md) | implementation รุ่น managed fallback; ต่อมาถูกแทนด้วย pointer-only และ dual session/workspace tracking |
 | 2026-08-09 19:25 | 2026-08-09 11:10 | complete | [ย้ายและขยาย Azure DevOps extension](plans/azure-devops-extension-crud.md) | เพิ่ม opt-in Work Item CRUD; ปัจจุบัน maintain ที่ `local/extensions/azure-devops/` และให้แต่ละ project โหลดเอง |
@@ -22,7 +22,7 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
-| 2026-08-29 22:40 | 2026-08-28 17:05 | in progress | [Phase 0 Probes — Delegated Autonomy Harness Profiles](notes/delegated-autonomy-phase0-probes.md) | agent-teams correction v2, structured session-bound readiness, single/direct/multi/fault evidenceและ verifier true |
+| 2026-08-29 23:00 | 2026-08-28 17:05 | in progress | [Phase 0 Probes — Delegated Autonomy Harness Profiles](notes/delegated-autonomy-phase0-probes.md) | agent-teams correction v3, committed runtime/apply negative probe, single/direct/multi/fault evidenceและ verifier true |
 | 2026-08-29 21:43 | 2026-08-29 21:43 | complete review | [Independent agent-teams Atomic Review](notes/agent-teams-atomic-independent-review.md) | verdict PASS-WITH-FOLLOWUPS ต่อ `ead8778`; provenanceและ missing-env findingsถูกแก้ใน `43967a8` และรอ re-review |
 | 2026-08-28 19:13 | 2026-08-28 19:07 | complete evaluation | [Independent piewf Phase 0 Evaluation](notes/piewf-phase0-evaluation.md) | ตรวจ source/tests/license/install ของ piewf แยกใน Worker worktree และรับเข้า main หลัง Coordinator verification |
 | 2026-08-29 21:23 | 2026-08-28 15:20 | ทิศทางที่ยืนยันให้ศึกษาต่อ | [Delegated Autonomy สำหรับ Coordinator และ Guardrails](notes/delegated-autonomy-guardrails-research.md) | Hermes requirementsถูก wireใน disabled agent-teams candidate boundaryแล้ว |
@@ -33,6 +33,7 @@
 
 ## Change log
 
+- 2026-08-29 23:00 — re-review v2ให้ `FAIL` เพราะ evidence gap; เพิ่ม committed opt-in runtime probeที่ผ่าน clean apply-check + missing/wrong/replaced/forged/race startup cases `6/6` และล้าง whitespace drift
 - 2026-08-29 22:40 — หลัง correction re-review `FAIL` เพิ่ม exact trusted boundary hash, derived leader/Worker contract และ nonce/session-bound structured readiness; forged/replayed markerกับ HUMAN remote mutation probesผ่าน
 - 2026-08-29 22:10 — ปิด independent-review findingsของ agent-teamsด้วย pinned Git/entry/whole-source-tree provenance, required managed env และ exact boundary readiness marker; provider/image/daemon/missing-marker/missing-artifact fault chainผ่าน, productionยัง disabled
 - 2026-08-29 21:23 — package/wire minimal agent-teams overlay + atomic profile + scoped direct tools + immutable Worker boundary; final single/direct/ceiling-2 runtimeและ verifierผ่าน, full suite `115/115`, productionยัง disabled

@@ -56,7 +56,11 @@ git -C <pi-agent-teams-checkout> apply --check \
 
 git -C <pi-agent-teams-checkout> apply \
   "$PWD/profiles/pi-agent-teams/node-worker-v1/agent-teams-overlay.patch"
+
+npm run test:agent-teams-runtime -- <pi-agent-teams-checkout>
 ```
+
+Opt-in runtime probeสร้าง clean worktreeเพื่อ `git apply --check` แล้ว execute missing managed env, valid-wrong digest, replaced boundary, forged/replayed marker, missing marker และ post-marker startup-race negative cases โดยไม่เรียก provider/model
 
 `extensions/agent-teams-profile.ts` ตรวจ Git `HEAD`, exact entry digest และ deterministic digestของ source tree `extensions/teams/` ทั้งชุดก่อนสร้าง leader environmentแบบ allowlistและ injectพร้อมกัน:
 
@@ -105,7 +109,8 @@ Runtime ต้องเรียก imageด้วย immutable digestและ 
 - Bash secret/external-write fixturesถูก blockก่อน execution; `rm -rf /workspace`ได้ structured `DENY/workspace-root-destruction`
 - scoped direct tools: routine writeผ่าน; `.env` read/write, `/etc/hosts`, external write/edit และ symlink escapeถูก deny
 - observed verifierผ่าน `verified: true`, mismatches `[]`; structured readinessและ nonce/session/boundary identityตรง requested
-- fault probes: missing required env, valid-but-wrong contract digest และ replaced boundaryถูก blockก่อน extension load; forged/replayed markerถูก reject; provider/model unavailableไม่ register Worker; missing marker timeout; missing SBOM fail; Docker daemon/image unavailableออก code `78`
+- committed opt-in runtime probeผ่าน apply-check + negative startup cases `6/6`: missing env, valid-wrong contract, replaced boundary, forged/replayed marker, missing marker และ post-marker process exit
+- additional fault probes: provider/model unavailableไม่ register Worker; missing SBOM fail; Docker daemon/image unavailableออก code `78`
 - clean pinned checkoutผ่าน provenance verifier; source driftที่ pathเดิม fail closed; `git push`ได้ `HUMAN/remote-mutation` blockerโดยไม่มี dialog
 
 ## Boundaries และข้อจำกัด

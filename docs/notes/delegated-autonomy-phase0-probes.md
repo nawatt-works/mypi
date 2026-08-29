@@ -819,7 +819,8 @@ Final overlay ceiling-2 multi-worker runtime:
 
 Negative/fault chainหลัง independent review:
 
-- missing required managed env, valid-but-wrong 64-hex contract digest และ replaced boundary extension → `10/10` failก่อน extension load
+- committed opt-in [`tests/agent-teams-runtime-probe.mjs`](../../tests/agent-teams-runtime-probe.mjs) รันผ่าน `npm run test:agent-teams-runtime -- <patched-checkout>`: clean upstream `git apply --check`, profile build และ executable negative startup cases `6/6`
+- missing required managed env, valid-but-wrong 64-hex contract digest และ replaced boundary extension → failก่อน extension load
 - clean overlay-applied checkoutผ่าน entry/tree/Git provenance;แก้ `leader.ts` ที่ pathเดิมแล้ว builder fail closed
 - forged/replayed structured markerที่ nonceไม่ตรงถูก reject; missing marker → bounded timeoutประมาณ 5.3 วินาทีและไม่ ready
 - provider/modelไม่มีจริง → child RPCออกและไม่ register Worker
@@ -856,7 +857,7 @@ Remaining limitations ก่อน production activation:
 4. upload-capable dedicated toolsถูกตัดออกแทนการทดสอบ reviewed upload profile
 5. Docker daemon และ exact local imageเป็น trusted fail-closed dependencies; ห้าม mount socket/host HOME และห้าม runtime pull
 6. worktree mountไม่ซ่อน secret fileที่เกิดภายใน worktree ต้อง pair clean worktree + pre-exec data policy
-7. provider/image/daemon/missing-marker/missing-artifact/human-only fault injectionผ่านแล้ว; re-reviewแรกของ correctionพบ marker/path bindingยังไม่พอและ correction v2ปิดด้วย trusted content hash + derived contract + nonce/session-bound structured readiness แต่ยังต้อง re-reviewซ้ำ
+7. provider/image/daemon/missing-marker/missing-artifact/human-only fault injectionผ่านแล้ว; re-review correction v2ยืนยัน wiringดีขึ้นแต่ให้ `FAIL` เพราะ negative evidenceยังไม่เป็น committed executableและไม่ได้ reproduce apply-check Correction v3เพิ่ม opt-in runtime probeพร้อม clean apply-check/negative casesและล้าง whitespace driftแล้ว แต่ยังต้อง final re-review
 
 ### Adoption decision
 

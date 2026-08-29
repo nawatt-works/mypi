@@ -78,7 +78,8 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
 
 - [`profiles/pi-agent-teams/node-worker-v1/`](profiles/pi-agent-teams/node-worker-v1/)
   - pinned Node `24.15.0` Dockerfile, runtime contract, SPDX SBOM, minimal upstream overlay และ exact Worker boundaryสำหรับ patched agent-teams
-  - atomic builder/runtime/fault probesผ่านแล้ว แต่ยังเป็น Phase 0 candidate รอ corrected independent review/acceptance chainและไม่ถูกโหลดใน production spawn
+  - atomic builder/runtime/fault probesผ่านแล้ว; ใช้ `npm run test:agent-teams-runtime -- <patched-checkout>` เพื่อ reproduce clean apply-checkและ negative startup cases
+  - ยังเป็น Phase 0 candidate รอ final independent review/acceptance chainและไม่ถูกโหลดใน production spawn
 
 ### Third-party packages
 
