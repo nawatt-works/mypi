@@ -60,7 +60,7 @@ git -C <pi-agent-teams-checkout> apply --unidiff-zero \
 npm run test:agent-teams-runtime -- <pi-agent-teams-checkout>
 ```
 
-Opt-in runtime probeสร้าง clean worktreeเพื่อ `git apply --check` แล้ว execute missing managed env, valid-wrong digest, replaced boundary, forged/replayed marker, missing marker และ post-marker startup-race negative cases โดยไม่เรียก provider/model
+Opt-in runtime probeสร้าง clean worktreeเพื่อ `git apply --check` แล้ว execute missing managed env, valid-wrong digest, replaced boundary, forged/replayed marker, missing marker และ post-marker startup-race negative cases โดยไม่เรียก provider/model Probeส่ง `--session-dir` ไป temporary rootทุก childเพื่อไม่พึ่งหรือเขียน global Pi session store
 
 `extensions/agent-teams-profile.ts` ตรวจ Git `HEAD`, exact entry digest และ deterministic digestของ source tree `extensions/teams/` ทั้งชุดก่อนสร้าง leader environmentแบบ allowlistและ injectพร้อมกัน:
 

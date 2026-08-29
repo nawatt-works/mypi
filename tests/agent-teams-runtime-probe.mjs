@@ -41,7 +41,10 @@ try {
 		environment: process.env,
 	});
 	result.profileBuild = true;
-	const baseLeaderArgs = ["--mode", "rpc", "--no-extensions", "-e", entryPath];
+	const sessionRoot = join(temporaryRoot, "pi-sessions");
+	mkdirSync(sessionRoot, { recursive: true });
+	const isolatedPiArgs = ["--session-dir", sessionRoot, "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files"];
+	const baseLeaderArgs = ["--mode", "rpc", ...isolatedPiArgs, "--no-extensions", "-e", entryPath];
 	const leaderCases = [
 		{
 			name: "missing-managed-environment",
@@ -100,7 +103,7 @@ try {
 	const forged = new TeammateRpc("forged-marker");
 	let forgedError = "";
 	try {
-		await forged.start({ ...commonStart, args: ["--no-extensions", "--tools", "read", "-e", forgedExtension], expectedReadiness });
+		await forged.start({ ...commonStart, args: [...isolatedPiArgs, "--no-extensions", "--tools", "read", "-e", forgedExtension], expectedReadiness });
 	} catch (error) {
 		forgedError = String(error);
 	} finally {
@@ -111,7 +114,7 @@ try {
 	const missing = new TeammateRpc("missing-marker");
 	let missingError = "";
 	try {
-		await missing.start({ ...commonStart, args: ["--no-extensions", "--tools", "read"], expectedReadiness });
+		await missing.start({ ...commonStart, args: [...isolatedPiArgs, "--no-extensions", "--tools", "read"], expectedReadiness });
 	} catch (error) {
 		missingError = String(error);
 	} finally {
@@ -125,7 +128,7 @@ try {
 	const race = new TeammateRpc("startup-race");
 	let raceError = "";
 	try {
-		await race.start({ ...commonStart, args: ["--no-extensions", "--tools", "read", "-e", raceExtension], expectedReadiness: raceExpected });
+		await race.start({ ...commonStart, args: [...isolatedPiArgs, "--no-extensions", "--tools", "read", "-e", raceExtension], expectedReadiness: raceExpected });
 		await new Promise((resolvePromise) => setTimeout(resolvePromise, 750));
 		await race.setSessionName("must-fail-after-exit");
 	} catch (error) {

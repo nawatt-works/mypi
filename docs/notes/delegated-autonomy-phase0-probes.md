@@ -819,7 +819,7 @@ Final overlay ceiling-2 multi-worker runtime:
 
 Negative/fault chainหลัง independent review:
 
-- committed opt-in [`tests/agent-teams-runtime-probe.mjs`](../../tests/agent-teams-runtime-probe.mjs) รันผ่าน `npm run test:agent-teams-runtime -- <patched-checkout>`: clean upstream `git apply --check`, profile build และ executable negative startup cases `6/6`
+- committed opt-in [`tests/agent-teams-runtime-probe.mjs`](../../tests/agent-teams-runtime-probe.mjs) รันผ่าน `npm run test:agent-teams-runtime -- <patched-checkout>`: clean upstream `git apply --check`, profile build และ executable negative startup cases `6/6`; childทุกตัวใช้ temporary `--session-dir` จึง reproducibleใน reviewer sandboxโดยไม่เขียน global Pi store
 - overlay artifact regenerateเป็น `--unified=0` เพื่อตัด whitespace-bearing upstream context; semantic patched source tree digestคงเดิมและ apply-checkผ่าน
 - missing required managed env, valid-but-wrong 64-hex contract digest และ replaced boundary extension → failก่อน extension load
 - clean overlay-applied checkoutผ่าน entry/tree/Git provenance;แก้ `leader.ts` ที่ pathเดิมแล้ว builder fail closed
@@ -858,7 +858,7 @@ Remaining limitations ก่อน production activation:
 4. upload-capable dedicated toolsถูกตัดออกแทนการทดสอบ reviewed upload profile
 5. Docker daemon และ exact local imageเป็น trusted fail-closed dependencies; ห้าม mount socket/host HOME และห้าม runtime pull
 6. worktree mountไม่ซ่อน secret fileที่เกิดภายใน worktree ต้อง pair clean worktree + pre-exec data policy
-7. provider/image/daemon/missing-marker/missing-artifact/human-only fault injectionผ่านแล้ว; re-review correction v2ยืนยัน wiringดีขึ้นแต่ให้ `FAIL` เพราะ negative evidenceยังไม่เป็น committed executable Correction v3เพิ่ม opt-in probeแต่ reviewerรันจาก stale checkoutและพบ whitespace-bearing patch context Correction v4ใช้ zero-context overlay + explicit `--unidiff-zero`; producer probeผ่าน apply-check/negative `6/6` แต่ยังต้อง final re-review
+7. provider/image/daemon/missing-marker/missing-artifact/human-only fault injectionผ่านแล้ว; re-review correction v2ยืนยัน wiringดีขึ้นแต่ให้ `FAIL` เพราะ negative evidenceยังไม่เป็น committed executable Correction v3เพิ่ม opt-in probeแต่ reviewerรันจาก stale checkoutและพบ whitespace-bearing patch context Correction v4ใช้ zero-context overlay + explicit `--unidiff-zero`; re-reviewพบ probe childยังพยายามเขียน global Pi session storeใต้ reviewer sandbox Correction v5 inject temporary `--session-dir`ให้ childทุกตัวและ producer probeผ่าน apply-check/negative `6/6` แต่ยังต้อง final re-review
 
 ### Adoption decision
 
