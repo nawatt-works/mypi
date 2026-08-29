@@ -57,7 +57,7 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - scoped Read/Write/Edit operationsสำหรับ Worker; canonicalize existing ancestor/targetและ deny external, sensitive, `.git` และ symlink escape
   - เป็น host-operation guardที่มี TOCTOU limitation ไม่ใช่ OS sandbox
 - `agent-teams-profile.ts`
-  - สร้าง/verify atomic profileสำหรับ exact patched `tmustier/pi-agent-teams` commit, Worker ceiling, tools/extensions, env allowlist และ immutable image evidence
+  - สร้าง/verify atomic profileสำหรับ exact patched `tmustier/pi-agent-teams` Git/entry/source-tree state, Worker ceiling, tools/extensions, required env, boundary readiness marker และ immutable image evidence
   - profile candidateยัง disabled by defaultและไม่ติดตั้ง agent-teamsเข้า Pi profileหลัก
 - `local/extensions/azure-devops/`
   - maintain source ไว้ใน repository นี้ แต่ไม่โหลดจาก global package
@@ -78,7 +78,7 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
 
 - [`profiles/pi-agent-teams/node-worker-v1/`](profiles/pi-agent-teams/node-worker-v1/)
   - pinned Node `24.15.0` Dockerfile, runtime contract, SPDX SBOM, minimal upstream overlay และ exact Worker boundaryสำหรับ patched agent-teams
-  - atomic builder/runtime probesผ่านแล้ว แต่ยังเป็น Phase 0 candidateและไม่ถูกโหลดใน production spawn
+  - atomic builder/runtime/fault probesผ่านแล้ว แต่ยังเป็น Phase 0 candidate รอ corrected independent review/acceptance chainและไม่ถูกโหลดใน production spawn
 
 ### Third-party packages
 

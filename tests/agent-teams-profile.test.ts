@@ -5,8 +5,10 @@ import { join } from "node:path";
 import test, { type TestContext } from "node:test";
 import {
 	buildAgentTeamsProfile,
+	sha256DirectoryTree,
 	verifyAgentTeamsProfile,
 	type AgentTeamsObservedProfile,
+	type AgentTeamsProfile,
 } from "../extensions/agent-teams-profile.ts";
 import {
 	loadWorkerProfile,
@@ -35,9 +37,9 @@ async function fixture(t: TestContext): Promise<{
 }> {
 	const root = await mkdtemp(join(tmpdir(), "mypi-agent-teams-profile-"));
 	t.after(() => rm(root, { recursive: true, force: true }));
-	const entry = join(root, "patched-teams", "index.ts");
-	const teamsRoot = join(root, "teams");
-	await mkdir(join(root, "patched-teams"), { recursive: true });
+	const entry = join(root, "extensions", "teams", "index.ts");
+	const teamsRoot = join(root, "runtime-teams");
+	await mkdir(join(root, "extensions", "teams"), { recursive: true });
 	await writeFile(entry, "export default function fixture() {}\n");
 	return { entry, teamsRoot };
 }
@@ -47,38 +49,14 @@ test("verifies every Worker boundary artifact against the committed profile mani
 	assert.doesNotThrow(() => verifyWorkerProfileArtifacts(profile));
 });
 
-test("builds an atomic pinned agent-teams leader/child profile without ambient secrets", async (t) => {
-	const { entry, teamsRoot } = await fixture(t);
-	const profile = buildAgentTeamsProfile({
-		upstreamCommit: COMMIT,
-		patchedTeamsEntryPath: entry,
-		teamsRootDir: teamsRoot,
-		maxWorkers: 2,
-		environment: ENV,
-	});
-	assert.equal(profile.kind, "pi-agent-teams");
-	assert.equal(profile.profileId, "pi-agent-teams-docker-strong-v1");
-	assert.equal(profile.forceWorktree, true);
-	assert.equal(profile.maxWorkers, 2);
-	assert.deepEqual(profile.childTools, ["read", "bash", "edit", "write", "team_message"]);
-	assert.equal(profile.childExtensions.length, 2);
-	assert.match(profile.workerBoundaryPath, /profiles\/pi-agent-teams\/node-worker-v1\/worker-boundary\.ts$/);
-	assert.equal(profile.leaderEnvironment.PI_TEAMS_FORCE_WORKTREE, "1");
-	assert.equal(profile.leaderEnvironment.PI_TEAMS_MAX_WORKERS, "2");
-	assert.equal(profile.leaderEnvironment.PI_TEAMS_CHILD_TOOLS, "read,bash,edit,write");
-	assert.equal(profile.leaderEnvironment.PI_TEAMS_DEFAULT_AUTO_CLAIM, "0");
-	assert.equal(profile.leaderEnvironment.ANTHROPIC_API_KEY, undefined);
-	assert.equal(profile.leaderEnvironment.MYPI_PHASE0_PARENT_MARKER, undefined);
-	assert.ok(profile.childEnvironmentKeys.includes("MYPI_WORKER"));
-	assert.ok(!profile.childEnvironmentKeys.some((key) => /KEY|TOKEN|SECRET|AUTH/i.test(key)));
-	assert.equal(profile.profileDigest.length, 64);
-	for (const digest of [
-		profile.profileArtifactSha256,
-		profile.overlayPatchSha256,
-		profile.workerBoundarySha256,
-		profile.commandPolicySha256,
-		profile.scopedWorkerToolsSha256,
-	]) assert.equal(digest.length, 64);
+test("hashes the complete patched source tree deterministically and detects drift", async (t) => {
+	const { entry } = await fixture(t);
+	const sourceRoot = join(entry, "..");
+	const first = sha256DirectoryTree(sourceRoot);
+	const second = sha256DirectoryTree(sourceRoot);
+	assert.equal(first, second);
+	await writeFile(join(sourceRoot, "leader.ts"), "export const drift = true;\n");
+	assert.notEqual(sha256DirectoryTree(sourceRoot), first);
 });
 
 test("rejects source drift, missing paths, and worker ceilings outside the managed range", async (t) => {
@@ -104,17 +82,46 @@ test("rejects source drift, missing paths, and worker ceilings outside the manag
 		maxWorkers: 4,
 		environment: ENV,
 	}), /integer from 1 to 3/);
-});
-
-test("verifies observed source, profile, lifecycle, resources, environment, and boundaries", async (t) => {
-	const { entry, teamsRoot } = await fixture(t);
-	const requested = buildAgentTeamsProfile({
+	assert.throws(() => buildAgentTeamsProfile({
 		upstreamCommit: COMMIT,
 		patchedTeamsEntryPath: entry,
 		teamsRootDir: teamsRoot,
 		maxWorkers: 2,
 		environment: ENV,
-	});
+	}), /patched agent-teams (?:entry|source tree) digest mismatch/);
+});
+
+function requestedFixture(entry: string, teamsRoot: string): AgentTeamsProfile {
+	const digest = "a".repeat(64);
+	return {
+		kind: "pi-agent-teams",
+		profileId: "pi-agent-teams-docker-strong-v1",
+		upstreamCommit: COMMIT,
+		patchedTeamsEntryPath: entry,
+		workerBoundaryPath: "/profile/worker-boundary.ts",
+		teamsRootDir: teamsRoot,
+		maxWorkers: 2,
+		forceWorktree: true,
+		childTools: ["read", "bash", "edit", "write", "team_message"],
+		childExtensions: ["/profile/worker-boundary.ts", entry],
+		childEnvironmentKeys: ["HOME", "MYPI_AGENT_TEAMS_ENTRY_PATH", "MYPI_AGENT_TEAMS_PROFILE_DIGEST", "MYPI_WORKER", "PATH"],
+		leaderEnvironment: Object.freeze({ HOME: "/home/probe", PATH: "/bin" }),
+		imageDigest: `sha256:${digest}`,
+		profileArtifactSha256: digest,
+		overlayPatchSha256: digest,
+		workerBoundarySha256: digest,
+		commandPolicySha256: digest,
+		scopedWorkerToolsSha256: digest,
+		patchedTeamsEntrySha256: digest,
+		patchedTeamsSourceSha256: digest,
+		boundaryContractDigest: digest,
+		profileDigest: digest,
+	};
+}
+
+test("verifies observed source, profile, lifecycle, resources, environment, and boundaries", async (t) => {
+	const { entry, teamsRoot } = await fixture(t);
+	const requested = requestedFixture(entry, teamsRoot);
 	const observed: AgentTeamsObservedProfile = {
 		upstreamCommit: requested.upstreamCommit,
 		profileDigest: requested.profileDigest,
@@ -122,6 +129,9 @@ test("verifies observed source, profile, lifecycle, resources, environment, and 
 		workerBoundarySha256: requested.workerBoundarySha256,
 		commandPolicySha256: requested.commandPolicySha256,
 		scopedWorkerToolsSha256: requested.scopedWorkerToolsSha256,
+		patchedTeamsEntrySha256: requested.patchedTeamsEntrySha256,
+		patchedTeamsSourceSha256: requested.patchedTeamsSourceSha256,
+		boundaryContractDigest: requested.boundaryContractDigest,
 		imageDigest: requested.imageDigest,
 		imageReady: true,
 		dockerReady: true,

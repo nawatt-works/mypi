@@ -183,7 +183,7 @@ hard deny / managed ceiling
 
 ห้าม install production แบบ as-is เพราะ child spawn inherit `process.env`, ใช้ `--no-extensions -e teams` ซึ่งตัด My Pi guardrails/sandbox, default writing workspace เป็น shared และไม่มี deterministic secret/network/upload policy Phase 0 runtime บน explicit worktree ยืนยันว่า fake `.env`, fake parent env, external `/tmp` write และ shell network ผ่านทั้งหมด แม้ routine RPC/worktree lifecycle ทำงานดี
 
-Disposable child-profile patch ยืนยัน env allowlist, exact tools/extensions, worktree ceiling, deterministic no-UI policy และ fail-closed boundary ต่อมาถูก packageเป็น minimal overlayบน exact upstream commit, atomic profile builder/verifier, scoped direct operations และ single Worker boundaryที่รวม immutable Docker Bash + command/data policy Final overlay apply-check, single/direct/ceiling-2 replacement runtime และ observed verifierผ่าน แต่ยัง disabled by defaultและไม่ production-readyจน fault/acceptance chainกับ independent reviewครบ
+Disposable child-profile patch ยืนยัน env allowlist, exact tools/extensions, worktree ceiling, deterministic no-UI policy และ fail-closed boundary ต่อมาถูก packageเป็น minimal overlayบน exact upstream commit, atomic profile builder/verifier, scoped direct operations และ single Worker boundaryที่รวม immutable Docker Bash + command/data policy Final overlay apply-check, single/direct/ceiling-2 replacement runtime และ observed verifierผ่าน Independent reviewของ `ead8778` พบ provenanceกับ missing-env fail-open gaps; correctionเพิ่ม Git/entry/whole-source-tree verification, required managed env และ exact post-start boundary digest marker พร้อม provider/image/daemon/missing-marker/missing-artifact fault probes Candidateยัง disabled by defaultและรอ independent re-review/acceptance chain
 
 ถ้านำมาใช้ My Pi ยังเป็นเจ้าของ mandate/policy/audit/final verification; agent-teams เป็นเจ้าของ Pi task transport/RPC team lifecycle เท่านั้น และ Herdr ยังดูแล external harnesses
 
@@ -524,6 +524,8 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
   - [x] package/wire minimal agent-teams overlay + atomic profile + scoped direct tools
     - exact commit/overlay/image/artifact hashes, frozen child profile, observed env keys, forced worktree และ ceilingถูก verify
     - single/direct/multi replacement runtimeผ่าน; verifier true; full suite `115/115`
+    - independent review `PASS-WITH-FOLLOWUPS`; correction pin Git/entry/whole-source-treeและทำ missing/partial profile env + readiness marker fail closed
+    - provider/image/daemon/missing-marker/missing-artifact fault probesผ่าน; corrected profileรอ independent re-review
     - candidateยัง disabled by defaultและ scoped host operationsยังมี TOCTOU limitation
 - [ ] `pi-extensible-workflows` gate:
   - [ ] ขอ license clarification หรือยืนยัน license artifact ที่มีผลผูกพัน
@@ -795,8 +797,8 @@ Success metric หลัก:
 
 ดำเนิน Phase 0 ส่วนที่เหลือตามลำดับ:
 
-1. ให้ independent reviewerตรวจ minimal overlay, atomic profile, scoped direct tools, fail-closed semantics และ runtime evidence
-2. ทดสอบ provider/image/daemon error, timeout, missing artifact และ human-only escalation
+1. ให้ independent reviewerตรวจ correctionของ provenance, required managed env และ post-start boundary marker
+2. ทดสอบ human-only escalationผ่าน atomic runtime และ collect artifact/diff/test acceptanceจริง
 3. รัน Pi writing profile ผ่าน lifecycleจริง แล้วรัน implement → review → correction chainผ่าน Pi-native laneให้ศูนย์ routine approval
 4. สรุป go/no-go แยก Herdr manual-only, patched agent-teams และ piewf แล้วจึงเริ่ม Phase 1 pure mandate/policy model
 

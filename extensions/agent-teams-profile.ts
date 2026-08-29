@@ -1,6 +1,7 @@
+import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, realpathSync } from "node:fs";
-import { isAbsolute, delimiter, dirname, join, resolve } from "node:path";
+import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
+import { isAbsolute, delimiter, dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -15,6 +16,8 @@ const CHILD_PARENT_ENVIRONMENT_ALLOWLIST = new Set([
 	"COLORTERM", "NO_COLOR", "FORCE_COLOR", "CI",
 ]);
 const CHILD_OVERRIDE_ENVIRONMENT_KEYS = [
+	"MYPI_AGENT_TEAMS_ENTRY_PATH",
+	"MYPI_AGENT_TEAMS_PROFILE_DIGEST",
 	"MYPI_WORKER",
 	"PI_TEAMS_AGENT_NAME",
 	"PI_TEAMS_AUTO_CLAIM",
@@ -60,6 +63,9 @@ export type AgentTeamsProfile = {
 	workerBoundarySha256: string;
 	commandPolicySha256: string;
 	scopedWorkerToolsSha256: string;
+	patchedTeamsEntrySha256: string;
+	patchedTeamsSourceSha256: string;
+	boundaryContractDigest: string;
 	profileDigest: string;
 };
 
@@ -70,6 +76,9 @@ export type AgentTeamsObservedProfile = {
 	workerBoundarySha256: string;
 	commandPolicySha256: string;
 	scopedWorkerToolsSha256: string;
+	patchedTeamsEntrySha256: string;
+	patchedTeamsSourceSha256: string;
+	boundaryContractDigest: string;
 	imageDigest: string;
 	imageReady: boolean;
 	dockerReady: boolean;
@@ -109,11 +118,54 @@ type ProfileArtifact = {
 	integration: {
 		upstreamCommit: string;
 		overlayPatchSha256: string;
+		patchedTeamsEntrySha256: string;
+		patchedTeamsSourceSha256: string;
 	};
 };
 
 function sha256(value: string | Buffer): string {
 	return createHash("sha256").update(value).digest("hex");
+}
+
+export function sha256DirectoryTree(root: string): string {
+	const canonicalRoot = realpathSync(root);
+	const files: string[] = [];
+	const visit = (directory: string): void => {
+		for (const entry of readdirSync(directory, { withFileTypes: true })) {
+			const path = join(directory, entry.name);
+			if (entry.isSymbolicLink() || lstatSync(path).isSymbolicLink()) throw new Error(`symlink is not allowed in pinned source: ${path}`);
+			if (entry.isDirectory()) visit(path);
+			else if (entry.isFile()) files.push(path);
+			else throw new Error(`unsupported pinned source entry: ${path}`);
+		}
+	};
+	visit(canonicalRoot);
+	const digest = createHash("sha256");
+	for (const path of files.sort()) {
+		const name = relative(canonicalRoot, path).replaceAll("\\", "/");
+		const content = readFileSync(path);
+		digest.update(`${Buffer.byteLength(name)}:`).update(name).update(`:${content.length}:`).update(content);
+	}
+	return digest.digest("hex");
+}
+
+function verifyPatchedTeamsSource(entryPath: string, artifact: ProfileArtifact): void {
+	const teamsDirectory = dirname(entryPath);
+	if (entryPath !== join(teamsDirectory, "index.ts")) throw new Error("patched agent-teams entry must be extensions/teams/index.ts");
+	const checkoutRoot = resolve(teamsDirectory, "..", "..");
+	if (realpathSync(join(checkoutRoot, "extensions", "teams")) !== realpathSync(teamsDirectory)) {
+		throw new Error("patched agent-teams entry is outside the expected checkout layout");
+	}
+	if (sha256(readFileSync(entryPath)) !== artifact.integration.patchedTeamsEntrySha256) {
+		throw new Error("patched agent-teams entry digest mismatch");
+	}
+	if (sha256DirectoryTree(teamsDirectory) !== artifact.integration.patchedTeamsSourceSha256) {
+		throw new Error("patched agent-teams source tree digest mismatch");
+	}
+	const git = spawnSync("git", ["-C", checkoutRoot, "rev-parse", "HEAD"], { encoding: "utf8", timeout: 10_000 });
+	if (git.status !== 0 || git.stdout.trim() !== artifact.integration.upstreamCommit) {
+		throw new Error("patched agent-teams checkout does not match the pinned upstream commit");
+	}
 }
 
 function requireAbsolutePath(label: string, value: string): string {
@@ -158,14 +210,33 @@ export function buildAgentTeamsProfile(input: {
 	const patchedTeamsEntryPath = realpathSync(requestedTeamsEntryPath);
 	if (!existsSync(WORKER_BOUNDARY_PATH)) throw new Error(`Worker boundary is missing: ${WORKER_BOUNDARY_PATH}`);
 	const { artifact, raw } = loadProfileArtifact();
+	verifyPatchedTeamsSource(patchedTeamsEntryPath, artifact);
 	const injectedChildExtensions = [WORKER_BOUNDARY_PATH];
 	const childExtensions = [...injectedChildExtensions, patchedTeamsEntryPath];
+	const boundaryContractDigest = sha256(JSON.stringify({
+		profileId: artifact.profileId,
+		upstreamCommit: artifact.integration.upstreamCommit,
+		overlayPatchSha256: artifact.integration.overlayPatchSha256,
+		patchedTeamsEntrySha256: artifact.integration.patchedTeamsEntrySha256,
+		patchedTeamsSourceSha256: artifact.integration.patchedTeamsSourceSha256,
+		workerBoundarySha256: artifact.toolchain.workerBoundarySha256,
+		commandPolicySha256: artifact.toolchain.commandPolicySha256,
+		scopedWorkerToolsSha256: artifact.toolchain.scopedWorkerToolsSha256,
+		imageDigest: artifact.toolchain.observedLocalImageDigest,
+		childTools: EXACT_CHILD_BUILTIN_TOOLS,
+		childExtensions: injectedChildExtensions,
+		maxWorkers: input.maxWorkers,
+		forceWorktree: true,
+	}));
 	const leaderEnvironment = orderedLeaderEnvironment(input.environment, {
 		PI_TEAMS_CHILD_EXTENSIONS: injectedChildExtensions.join(delimiter),
 		PI_TEAMS_CHILD_TOOLS: EXACT_CHILD_BUILTIN_TOOLS.join(","),
 		PI_TEAMS_DEFAULT_AUTO_CLAIM: "0",
 		PI_TEAMS_FORCE_WORKTREE: "1",
+		PI_TEAMS_MANAGED_PROFILE_DIGEST: boundaryContractDigest,
+		PI_TEAMS_MANAGED_PROFILE_ID: artifact.profileId,
 		PI_TEAMS_MAX_WORKERS: String(input.maxWorkers),
+		PI_TEAMS_PATCHED_ENTRY_PATH: patchedTeamsEntryPath,
 		PI_TEAMS_ROOT_DIR: teamsRootDir,
 	});
 	const childEnvironmentKeys = [...new Set([
@@ -191,6 +262,9 @@ export function buildAgentTeamsProfile(input: {
 		workerBoundarySha256: artifact.toolchain.workerBoundarySha256,
 		commandPolicySha256: artifact.toolchain.commandPolicySha256,
 		scopedWorkerToolsSha256: artifact.toolchain.scopedWorkerToolsSha256,
+		patchedTeamsEntrySha256: artifact.integration.patchedTeamsEntrySha256,
+		patchedTeamsSourceSha256: artifact.integration.patchedTeamsSourceSha256,
+		boundaryContractDigest,
 	};
 	return { ...base, profileDigest: sha256(JSON.stringify(base)) };
 }
@@ -207,6 +281,9 @@ export function verifyAgentTeamsProfile(input: {
 	if (observed.workerBoundarySha256 !== requested.workerBoundarySha256) mismatches.push("worker-boundary-digest");
 	if (observed.commandPolicySha256 !== requested.commandPolicySha256) mismatches.push("command-policy-digest");
 	if (observed.scopedWorkerToolsSha256 !== requested.scopedWorkerToolsSha256) mismatches.push("scoped-tools-digest");
+	if (observed.patchedTeamsEntrySha256 !== requested.patchedTeamsEntrySha256) mismatches.push("patched-entry-digest");
+	if (observed.patchedTeamsSourceSha256 !== requested.patchedTeamsSourceSha256) mismatches.push("patched-source-digest");
+	if (observed.boundaryContractDigest !== requested.boundaryContractDigest) mismatches.push("boundary-contract-digest");
 	if (observed.imageDigest !== requested.imageDigest) mismatches.push("image-digest");
 	if (!observed.imageReady) mismatches.push("image-readiness");
 	if (!observed.dockerReady) mismatches.push("docker-readiness");

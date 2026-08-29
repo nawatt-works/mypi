@@ -50,7 +50,7 @@ index 2e6beda..0cd1522 100644
  		},
  
 diff --git a/extensions/teams/leader.ts b/extensions/teams/leader.ts
-index a3bc5c1..cff4402 100644
+index a3bc5c1..35b6197 100644
 --- a/extensions/teams/leader.ts
 +++ b/extensions/teams/leader.ts
 @@ -18,6 +18,7 @@ import { openInteractiveWidget } from "./teams-panel.js";
@@ -61,27 +61,64 @@ index a3bc5c1..cff4402 100644
  import { getTeamsStyleFromEnv, type TeamsStyle, formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
  import { DelegationTracker, pollLeaderInbox as pollLeaderInboxImpl } from "./leader-inbox.js";
  import {
-@@ -148,6 +149,19 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -138,6 +139,47 @@ async function teamDirHasAnyTasks(teamDir: string): Promise<boolean> {
+ 	return false;
+ }
+ 
++type ManagedChildProfile = Readonly<{
++	forceWorktree: true;
++	tools: ["read", "bash", "edit", "write"];
++	extensions: [string];
++	maxWorkers: string;
++	profileDigest: string;
++	patchedTeamsEntryPath: string;
++}>;
++
++function requireManagedChildProfile(): ManagedChildProfile {
++	if (process.env.PI_TEAMS_MANAGED_PROFILE_ID !== "pi-agent-teams-docker-strong-v1") {
++		throw new Error("Managed agent-teams profile id is missing or invalid");
++	}
++	const profileDigest = process.env.PI_TEAMS_MANAGED_PROFILE_DIGEST;
++	if (!profileDigest || !/^[a-f0-9]{64}$/.test(profileDigest)) throw new Error("Managed agent-teams profile digest is missing or malformed");
++	if (process.env.PI_TEAMS_FORCE_WORKTREE !== "1") throw new Error("Managed agent-teams profile must force worktree mode");
++	const tools = (process.env.PI_TEAMS_CHILD_TOOLS ?? "").split(",").map((tool) => tool.trim()).filter(Boolean);
++	if (JSON.stringify(tools) !== JSON.stringify(["read", "bash", "edit", "write"])) {
++		throw new Error("Managed agent-teams child tool set is missing or invalid");
++	}
++	const extensions = (process.env.PI_TEAMS_CHILD_EXTENSIONS ?? "").split(path.delimiter).map((entry) => entry.trim()).filter(Boolean);
++	if (extensions.length !== 1 || !path.isAbsolute(extensions[0]) || !fs.existsSync(extensions[0])) {
++		throw new Error("Managed agent-teams boundary extension is missing or invalid");
++	}
++	const maxWorkers = process.env.PI_TEAMS_MAX_WORKERS;
++	if (!maxWorkers || !/^[1-3]$/.test(maxWorkers)) throw new Error("Managed agent-teams Worker ceiling is missing or invalid");
++	const requestedEntry = process.env.PI_TEAMS_PATCHED_ENTRY_PATH;
++	const actualEntry = getTeamsExtensionEntryPath();
++	if (!requestedEntry || !actualEntry || fs.realpathSync(requestedEntry) !== fs.realpathSync(actualEntry)) {
++		throw new Error("Managed patched agent-teams entry path is missing or invalid");
++	}
++	return Object.freeze({
++		forceWorktree: true,
++		tools: ["read", "bash", "edit", "write"],
++		extensions: [fs.realpathSync(extensions[0])],
++		maxWorkers,
++		profileDigest,
++		patchedTeamsEntryPath: fs.realpathSync(actualEntry),
++	});
++}
++
+ // Message parsers are shared with the worker implementation.
+ export function runLeader(pi: ExtensionAPI): void {
+ 	const teammates = new Map<string, TeammateRpc>();
+@@ -148,6 +190,8 @@ export function runLeader(pi: ExtensionAPI): void {
  	let currentTeamId: string | null = null;
  	let tasks: TeamTask[] = [];
  	let teamConfig: TeamConfig | null = null;
 +	const suppressedConfigBootstrapTeams = new Set<string>();
-+	const childProfile = Object.freeze({
-+		forceWorktree: process.env.PI_TEAMS_FORCE_WORKTREE === "1",
-+		tools: process.env.PI_TEAMS_CHILD_TOOLS
-+			?.split(",")
-+			.map((tool) => tool.trim())
-+			.filter(Boolean),
-+		extensions: (process.env.PI_TEAMS_CHILD_EXTENSIONS ?? "")
-+			.split(path.delimiter)
-+			.map((entry) => entry.trim())
-+			.filter(Boolean),
-+		maxWorkers: process.env.PI_TEAMS_MAX_WORKERS,
-+	});
++	const childProfile = requireManagedChildProfile();
  	const pendingPlanApprovals = new Map<string, { requestId: string; name: string; taskId?: string }>();
  	const delegationTracker = new DelegationTracker();
  	// Task list namespace. By default we keep it aligned with the current session id.
-@@ -470,18 +484,32 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -470,18 +514,32 @@ export function runLeader(pi: ExtensionAPI): void {
  		if (!currentCtx || !currentTeamId) return;
  		const teamDir = getTeamDir(currentTeamId);
  		const effectiveTaskListId = taskListId ?? currentTeamId;
@@ -123,7 +160,7 @@ index a3bc5c1..cff4402 100644
  
  		// Auto-done hint (fire once per "all done" state transition)
  		if (isTeamDone(tasks, teammates)) {
-@@ -517,6 +545,7 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -517,6 +575,7 @@ export function runLeader(pi: ExtensionAPI): void {
  		const warnings: string[] = [];
  		const mode: ContextMode = opts.mode ?? "fresh";
  		let workspaceMode: WorkspaceMode = opts.workspaceMode ?? "shared";
@@ -131,7 +168,7 @@ index a3bc5c1..cff4402 100644
  
  		const name = sanitizeName(opts.name);
  		if (!name) return { ok: false, error: "Missing comrade name" };
-@@ -525,6 +554,17 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -525,6 +584,17 @@ export function runLeader(pi: ExtensionAPI): void {
  			return { ok: false, error: `${formatMemberDisplayName(style, name)} already exists (${strings.teamNoun})` };
  		}
  
@@ -149,7 +186,7 @@ index a3bc5c1..cff4402 100644
  		// Spawn-time model / thinking overrides (optional).
  		const thinkingLevel = opts.thinking ?? pi.getThinkingLevel();
  
-@@ -537,8 +577,6 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -537,8 +607,6 @@ export function runLeader(pi: ExtensionAPI): void {
  		const { provider: childProvider, modelId: childModelId, warnings: modelWarnings } = modelResolution.value;
  		warnings.push(...modelWarnings);
  
@@ -158,13 +195,13 @@ index a3bc5c1..cff4402 100644
  		const teamSessionsDir = getTeamSessionsDir(teamDir);
  		const session = await createSessionForTeammate(ctx, mode, teamSessionsDir);
  		const { sessionFile, note } = session;
-@@ -591,11 +629,19 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -591,11 +659,19 @@ export function runLeader(pi: ExtensionAPI): void {
  		});
  
  		const builtInToolSet = new Set(["read", "bash", "edit", "write", "grep", "find", "ls"]);
 -		const tools = (pi.getActiveTools() ?? []).filter((t) => builtInToolSet.has(t));
 -		const argsForChild: string[] = [];
-+		const tools = (childProfile.tools ?? (pi.getActiveTools() ?? [])).filter((tool) => builtInToolSet.has(tool));
++		const tools = childProfile.tools.filter((tool) => builtInToolSet.has(tool));
 +		if (tools.length === 0) return { ok: false, error: "Verified child profile resolved to no active tools" };
 +
 +		const argsForChild: string[] = [
@@ -182,14 +219,15 @@ index a3bc5c1..cff4402 100644
  
  		// Model + thinking for the child process.
  		if (childModelId) {
-@@ -605,9 +651,11 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -604,10 +680,11 @@ export function runLeader(pi: ExtensionAPI): void {
+ 		}
  		argsForChild.push("--thinking", thinkingLevel);
  
- 		const teamsEntry = getTeamsExtensionEntryPath();
+-		const teamsEntry = getTeamsExtensionEntryPath();
 -		if (teamsEntry) {
 -			argsForChild.push("--no-extensions", "-e", teamsEntry);
 -		}
-+		if (!teamsEntry) return { ok: false, error: "Teams extension entry is unavailable for the child profile" };
++		const teamsEntry = childProfile.patchedTeamsEntryPath;
 +		const extraExtensions = childProfile.extensions;
 +		argsForChild.push("--no-extensions");
 +		// Boundary extensions initialize before the teams worker registers itself online.
@@ -197,7 +235,7 @@ index a3bc5c1..cff4402 100644
  
  		const strings = getTeamsStrings(style);
  		const systemAppend = `You are ${strings.memberTitle.toLowerCase()} '${name}'. You collaborate with the ${strings.leaderTitle.toLowerCase()}. Prefer working from the shared task list.\n`;
-@@ -623,6 +671,7 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -623,10 +700,14 @@ export function runLeader(pi: ExtensionAPI): void {
  			warnings.push(...res.warnings);
  		}
  
@@ -205,7 +243,14 @@ index a3bc5c1..cff4402 100644
  		try {
  			await t.start({
  				cwd: childCwd,
-@@ -634,22 +683,23 @@ export function runLeader(pi: ExtensionAPI): void {
++				expectedBoundaryDigest: childProfile.profileDigest,
+ 				env: {
++					MYPI_AGENT_TEAMS_ENTRY_PATH: teamsEntry,
++					MYPI_AGENT_TEAMS_PROFILE_DIGEST: childProfile.profileDigest,
+ 					PI_TEAMS_WORKER: "1",
+ 					PI_TEAMS_TEAM_ID: teamId,
+ 					PI_TEAMS_TASK_LIST_ID: taskListId ?? teamId,
+@@ -634,22 +715,23 @@ export function runLeader(pi: ExtensionAPI): void {
  					PI_TEAMS_LEAD_NAME: "team-lead",
  					PI_TEAMS_STYLE: style,
  					PI_TEAMS_AUTO_CLAIM: autoClaim ? "1" : "0",
@@ -239,7 +284,7 @@ index a3bc5c1..cff4402 100644
  		}
  
  		// Also send via mailbox so non-RPC/manual workers can be named the same way.
-@@ -676,6 +726,15 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -676,6 +758,16 @@ export function runLeader(pi: ExtensionAPI): void {
  				workspaceMode,
  				sessionName,
  				thinkingLevel,
@@ -249,13 +294,14 @@ index a3bc5c1..cff4402 100644
 +					tools,
 +					extensionTools: ["team_message"],
 +					extensions: [...extraExtensions, teamsEntry],
++					boundaryProfileDigest: t.getBoundaryProfileDigest(),
 +					forceWorktree: childProfile.forceWorktree,
 +					maxWorkers: workerCeiling.limit,
 +				},
  				...(childModel ? { model: childModel } : {}),
  			},
  		});
-@@ -700,6 +759,7 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -700,6 +792,7 @@ export function runLeader(pi: ExtensionAPI): void {
  		if (!currentCtx || !currentTeamId) return;
  		const teamDir = getTeamDir(currentTeamId);
  		const effectiveTaskListId = taskListId ?? currentTeamId;
@@ -263,7 +309,7 @@ index a3bc5c1..cff4402 100644
  		await pollLeaderInboxImpl({
  			ctx: currentCtx,
  			teamId: currentTeamId,
-@@ -1039,6 +1099,13 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -1039,6 +1132,13 @@ export function runLeader(pi: ExtensionAPI): void {
  				shellQuote,
  				getCurrentCtx: () => currentCtx,
  				stopAllTeammates,
@@ -278,7 +324,7 @@ index a3bc5c1..cff4402 100644
  		},
  	});
 diff --git a/extensions/teams/teammate-rpc.ts b/extensions/teams/teammate-rpc.ts
-index 8c00c49..3ca1279 100644
+index 8c00c49..83eef34 100644
 --- a/extensions/teams/teammate-rpc.ts
 +++ b/extensions/teams/teammate-rpc.ts
 @@ -1,6 +1,40 @@
@@ -322,23 +368,45 @@ index 8c00c49..3ca1279 100644
  export type TeammateStatus = "starting" | "idle" | "streaming" | "stopped" | "error";
  
  type RpcCommand =
-@@ -97,6 +131,7 @@ export class TeammateRpc {
+@@ -97,6 +131,8 @@ export class TeammateRpc {
  	private nextId = 0;
  	private buffer = "";
  	private stderr = "";
 +	private environmentKeys: string[] = [];
++	private boundaryProfileDigest: string | null = null;
  	private eventListeners: Array<(ev: AgentEvent) => void> = [];
  	private closeListeners: Array<(code: number | null) => void> = [];
  
-@@ -125,12 +160,18 @@ export class TeammateRpc {
+@@ -125,12 +161,38 @@ export class TeammateRpc {
  		return this.stderr;
  	}
  
+-	async start(opts: { cwd: string; env: Record<string, string>; args: string[] }): Promise<void> {
 +	getEnvironmentKeys(): string[] {
 +		return [...this.environmentKeys];
 +	}
 +
- 	async start(opts: { cwd: string; env: Record<string, string>; args: string[] }): Promise<void> {
++	getBoundaryProfileDigest(): string | null {
++		return this.boundaryProfileDigest;
++	}
++
++	private async waitForBoundaryReady(expectedDigest: string, timeoutMs = 5_000): Promise<void> {
++		const deadline = Date.now() + timeoutMs;
++		while (Date.now() < deadline) {
++			const matches = [...this.stderr.matchAll(/^MYPI_WORKER_BOUNDARY_READY ([a-f0-9]{64})$/gm)];
++			const observed = matches.at(-1)?.[1];
++			if (observed) {
++				this.boundaryProfileDigest = observed;
++				if (observed !== expectedDigest) throw new Error(`Worker boundary profile digest mismatch: expected ${expectedDigest}, observed ${observed}`);
++				return;
++			}
++			if (!this.proc) throw new Error("Worker exited before boundary readiness marker");
++			await sleep(25);
++		}
++		throw new Error("Timed out waiting for Worker boundary readiness marker");
++	}
++
++	async start(opts: { cwd: string; env: Record<string, string>; args: string[]; expectedBoundaryDigest: string }): Promise<void> {
  		if (this.proc) throw new Error("Teammate already started");
  
 +		const environment = buildTeammateEnvironment(process.env, opts.env);
@@ -350,7 +418,7 @@ index 8c00c49..3ca1279 100644
  			stdio: ["pipe", "pipe", "pipe"],
  		});
  
-@@ -158,6 +199,7 @@ export class TeammateRpc {
+@@ -158,6 +220,7 @@ export class TeammateRpc {
  		});
  
  		this.proc.on("close", (code) => {
@@ -358,7 +426,7 @@ index 8c00c49..3ca1279 100644
  			this.status = code === 0 ? "stopped" : "error";
  			if (code !== 0) this.lastError = `Teammate process exited with code ${code}`;
  			for (const [id, p] of this.pending.entries()) {
-@@ -167,24 +209,33 @@ export class TeammateRpc {
+@@ -167,24 +230,36 @@ export class TeammateRpc {
  			for (const l of this.closeListeners) l(code);
  		});
  
@@ -370,6 +438,7 @@ index 8c00c49..3ca1279 100644
 -		this.lastEventAt = bootNow;
 +		try {
 +			await this.send({ type: "get_state" }, 10_000);
++			await this.waitForBoundaryReady(opts.expectedBoundaryDigest);
 +			this.status = "idle";
 +			const bootNow = Date.now();
 +			this.lastStatusChangeAt = bootNow;
@@ -378,7 +447,9 @@ index 8c00c49..3ca1279 100644
 +			const proc = this.proc;
 +			this.proc = null;
 +			this.status = "error";
-+			this.lastError = error instanceof Error ? error.message : String(error);
++			const reason = error instanceof Error ? error.message : String(error);
++			const stderrTail = this.stderr.trim().slice(-2_000);
++			this.lastError = stderrTail ? `${reason}; stderr=${stderrTail}` : reason;
 +			proc?.kill("SIGTERM");
 +			throw new Error(`Teammate RPC ready handshake failed for ${this.name}: ${this.lastError}`, { cause: error });
 +		}
@@ -402,7 +473,7 @@ index 8c00c49..3ca1279 100644
  		}, 1000);
  		this.proc = null;
  		this.status = "stopped";
-@@ -255,7 +306,7 @@ export class TeammateRpc {
+@@ -255,7 +330,7 @@ export class TeammateRpc {
  		for (const l of this.eventListeners) l(ev);
  	}
  
@@ -411,7 +482,7 @@ index 8c00c49..3ca1279 100644
  		if (!this.proc || !this.proc.stdin) throw new Error("Teammate is not running");
  		const id = `req-${this.name}-${this.nextId++}`;
  		const full = { id, ...cmd } satisfies RpcCommand;
-@@ -269,7 +320,7 @@ export class TeammateRpc {
+@@ -269,7 +344,7 @@ export class TeammateRpc {
  				if (!this.pending.has(id)) return;
  				this.pending.delete(id);
  				reject(new Error(`Timeout waiting for response (id=${id}, cmd=${full.type})`));

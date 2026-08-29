@@ -11,7 +11,7 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
-| 2026-08-29 21:23 | 2026-08-28 15:32 | active — Phase 0 | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | atomic agent-teams overlay/profileผ่าน runtime; exact nextคือ independent review + fault chain |
+| 2026-08-29 22:10 | 2026-08-28 15:32 | active — Phase 0 | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | แก้ independent-review findingsและ fault chainผ่าน; exact nextคือ corrected re-review + acceptance chain |
 | 2026-08-28 15:32 | 2026-08-25 09:19 | superseded | [Pi Coordinator บน Herdr](plans/pi-herdr-coordinator.md) | เก็บ implementation/probe history; authority contract และ Phase 3 เดิมถูกแทนด้วย delegated-autonomy plan |
 | 2026-08-23 11:19 | 2026-08-22 12:40 | superseded | [แยก Workflow Plan, Continuity Ledger และ Plannotator Review](plans/flexible-planning-continuity.md) | implementation รุ่น managed fallback; ต่อมาถูกแทนด้วย pointer-only และ dual session/workspace tracking |
 | 2026-08-09 19:25 | 2026-08-09 11:10 | complete | [ย้ายและขยาย Azure DevOps extension](plans/azure-devops-extension-crud.md) | เพิ่ม opt-in Work Item CRUD; ปัจจุบัน maintain ที่ `local/extensions/azure-devops/` และให้แต่ละ project โหลดเอง |
@@ -32,6 +32,7 @@
 
 ## Change log
 
+- 2026-08-29 22:10 — ปิด independent-review findingsของ agent-teamsด้วย pinned Git/entry/whole-source-tree provenance, required managed env และ exact boundary readiness marker; provider/image/daemon/missing-marker/missing-artifact fault chainผ่าน, productionยัง disabled
 - 2026-08-29 21:23 — package/wire minimal agent-teams overlay + atomic profile + scoped direct tools + immutable Worker boundary; final single/direct/ceiling-2 runtimeและ verifierผ่าน, full suite `115/115`, productionยัง disabled
 - 2026-08-29 20:45 — เพิ่ม pure dangerous-command analyzer/resolver, bounded shell normalization, structured DENY/HUMAN/REVIEW/ALLOW และ short-lived exact review grants; adversarial `15/15`, full suite `106/106`
 - 2026-08-29 19:41 — วิเคราะห์ Hermes Agent approval/security source; adopt hardline/context/bind-mount/combined-guard requirementsแต่ reject regex copy, headless auto-approve, broad allowlist และ fail-open scanner

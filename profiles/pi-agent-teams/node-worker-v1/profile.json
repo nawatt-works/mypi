@@ -11,33 +11,50 @@
     "observedLocalImageDigest": "sha256:8b50f94e47e5085446081411ed152f84ebe0a146a575bba1720b56821db15ff8",
     "dockerfileSha256": "a391813a89ea2dc8ff004f9ca80a06ada2fdce618ff5a5d06b9615fb17e6ba35",
     "sbomSpdxSha256": "7fc73a1a025052371f5f801e0dfff8a6304c6b21df0b1398a78c7be8e9240961",
-    "workerBoundarySha256": "41ee6b8d62b5f6ac38435da14649cbd67c23b7886494b648b22633d4f29b5e0d",
+    "workerBoundarySha256": "c2fac59a6e501e4e76f234833f7577ac0e6387769c49c580da264baaab8b95c8",
     "commandPolicySha256": "d1696594a39fc8eba07ecea9f982abc1aaaaccc5e82abf1be6c8a250a923922f",
     "scopedWorkerToolsSha256": "c9b5cf7796bf8469a28e514ecbdbbe82ee0f61a26da83532792d4c071284dcee"
   },
   "integration": {
     "upstreamRepository": "https://github.com/tmustier/pi-agent-teams.git",
     "upstreamCommit": "2c1776d2a68104aaadc1c622d8a704684c7c35d6",
-    "overlayPatchSha256": "77b0a03b07346372db94ceb2b28115cdb8f5b700a3cd117a79d9e4ff8a55abad"
+    "overlayPatchSha256": "021dce843e00245815c7fbbcd901d4e9b03a48e9de59e53bf45469bc19cd80b4",
+    "patchedTeamsEntrySha256": "4f7715812ac0529a5243c5044138510f9c88b8e070910ee3e00b9f465438756b",
+    "patchedTeamsSourceSha256": "bde3747b6d8f1825a1ff18be570cf91c051b39658f049c4a69c7966e1c6f4557"
   },
   "runtime": {
     "pull": "never",
     "network": "none",
     "readOnlyRoot": true,
     "user": "node",
-    "capDrop": ["ALL"],
+    "capDrop": [
+      "ALL"
+    ],
     "noNewPrivileges": true,
     "pidsLimit": 64,
     "memory": "512m",
     "cpus": 1,
     "tmpfs": "/tmp:rw,noexec,nosuid,size=64m",
     "workdir": "/workspace",
-    "mounts": ["worker-worktree:/workspace:rw"],
-    "prohibitedMounts": ["host-home", "host-tmp", "docker-socket"]
+    "mounts": [
+      "worker-worktree:/workspace:rw"
+    ],
+    "prohibitedMounts": [
+      "host-home",
+      "host-tmp",
+      "docker-socket"
+    ]
   },
   "workerResources": {
-    "tools": ["read", "bash", "edit", "write"],
-    "backendTools": ["team_message"],
+    "tools": [
+      "read",
+      "bash",
+      "edit",
+      "write"
+    ],
+    "backendTools": [
+      "team_message"
+    ],
     "uploads": false,
     "shellNetwork": false,
     "workspaceMode": "worktree"

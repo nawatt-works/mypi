@@ -1,8 +1,8 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import {
@@ -41,6 +41,8 @@ type WorkerProfile = {
 	integration: {
 		upstreamCommit: string;
 		overlayPatchSha256: string;
+		patchedTeamsEntrySha256: string;
+		patchedTeamsSourceSha256: string;
 	};
 	runtime: {
 		pull: "never";
@@ -64,6 +66,28 @@ function sha256File(path: string): string {
 	return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+function sha256DirectoryTree(root: string): string {
+	const canonicalRoot = realpathSync(root);
+	const files: string[] = [];
+	const visit = (directory: string): void => {
+		for (const entry of readdirSync(directory, { withFileTypes: true })) {
+			const path = join(directory, entry.name);
+			if (entry.isSymbolicLink() || lstatSync(path).isSymbolicLink()) throw new Error(`symlink is not allowed in pinned source: ${path}`);
+			if (entry.isDirectory()) visit(path);
+			else if (entry.isFile()) files.push(path);
+			else throw new Error(`unsupported pinned source entry: ${path}`);
+		}
+	};
+	visit(canonicalRoot);
+	const digest = createHash("sha256");
+	for (const path of files.sort()) {
+		const name = relative(canonicalRoot, path).replaceAll("\\", "/");
+		const content = readFileSync(path);
+		digest.update(`${Buffer.byteLength(name)}:`).update(name).update(`:${content.length}:`).update(content);
+	}
+	return digest.digest("hex");
+}
+
 function requireHash(label: string, path: string, expected: string): void {
 	const observed = sha256File(path);
 	if (observed !== expected) throw new Error(`${label} digest mismatch: expected ${expected}, observed ${observed}`);
@@ -83,6 +107,28 @@ export function loadWorkerProfile(): WorkerProfile {
 		throw new Error("unexpected Worker tool set");
 	}
 	return profile;
+}
+
+function verifyManagedAgentTeamsSource(profile: WorkerProfile): string {
+	const requestedEntry = process.env.MYPI_AGENT_TEAMS_ENTRY_PATH;
+	if (!requestedEntry) throw new Error("MYPI_AGENT_TEAMS_ENTRY_PATH is required");
+	const entryPath = realpathSync(requestedEntry);
+	const teamsDirectory = dirname(entryPath);
+	if (entryPath !== join(teamsDirectory, "index.ts")) throw new Error("unexpected patched agent-teams entry path");
+	const checkoutRoot = resolve(teamsDirectory, "..", "..");
+	if (realpathSync(join(checkoutRoot, "extensions", "teams")) !== realpathSync(teamsDirectory)) {
+		throw new Error("patched agent-teams entry is outside the expected checkout layout");
+	}
+	requireHash("patched agent-teams entry", entryPath, profile.integration.patchedTeamsEntrySha256);
+	const sourceDigest = sha256DirectoryTree(teamsDirectory);
+	if (sourceDigest !== profile.integration.patchedTeamsSourceSha256) {
+		throw new Error(`patched agent-teams source tree digest mismatch: expected ${profile.integration.patchedTeamsSourceSha256}, observed ${sourceDigest}`);
+	}
+	const git = spawnSync("git", ["-C", checkoutRoot, "rev-parse", "HEAD"], { encoding: "utf8", timeout: 10_000 });
+	if (git.status !== 0 || git.stdout.trim() !== profile.integration.upstreamCommit) {
+		throw new Error("patched agent-teams checkout does not match the pinned upstream commit");
+	}
+	return entryPath;
 }
 
 export function verifyWorkerProfileArtifacts(profile: WorkerProfile): void {
@@ -265,9 +311,19 @@ export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 
 	pi.on("session_start", () => {
 		try {
+			const contractDigest = process.env.MYPI_AGENT_TEAMS_PROFILE_DIGEST;
+			if (!contractDigest || !/^[a-f0-9]{64}$/.test(contractDigest)) throw new Error("managed boundary contract digest is missing or malformed");
 			verifyWorkerProfileArtifacts(profile);
+			verifyManagedAgentTeamsSource(profile);
 			verifyDockerBoundary(profile);
+			const activeTools = [...pi.getActiveTools()].sort();
+			// Pi reports CLI-selected built-ins here; backend extension tools are pinned by the verified teams source tree.
+			const expectedTools = [...profile.workerResources.tools].sort();
+			if (JSON.stringify(activeTools) !== JSON.stringify(expectedTools)) {
+				throw new Error(`observed Worker tool set mismatch: ${activeTools.join(",")}`);
+			}
 			ready = true;
+			process.stderr.write(`MYPI_WORKER_BOUNDARY_READY ${contractDigest}\n`);
 		} catch (error) {
 			process.stderr.write(`Fatal delegated Worker boundary initialization failure: ${String(error)}\n`);
 			process.exit(78);
