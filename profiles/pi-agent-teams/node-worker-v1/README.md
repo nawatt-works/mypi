@@ -120,4 +120,4 @@ Runtime ต้องเรียก imageด้วย immutable digestและ 
 - `task completed` จาก agent-teamsไม่เท่ากับ accepted; My Pi ต้อง collect artifact/diff/testsเอง
 - Docker daemonและ exact local imageเป็น trusted fail-closed dependencies หาก preflightไม่ผ่านต้องไม่ register Worker
 - Scoped direct operations canonicalizeและ reject symlink escapeก่อน filesystem callแต่ไม่ใช่ OS sandboxและยังมี TOCTOU limitation; strong direct-tool isolationต้องใช้ VM/container filesystem backendในอนาคต
-- Profile package/overlay/atomic builderถูก wireและ runtime/fault-probeแล้วแต่ยัง disabled by default ไม่ production-readyจน corrected profileผ่าน independent re-review, artifact acceptance และ implement→review→correction chainผ่านครบ
+- Profile package/overlay/atomic builderถูก wireและ runtime/fault-probeแล้ว; correction v5ผ่าน independent re-review `PASS` แต่ยัง disabled by defaultและไม่ production-readyจน artifact acceptance + implement→review→correction chainผ่านครบ

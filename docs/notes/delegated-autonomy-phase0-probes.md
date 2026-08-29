@@ -831,6 +831,8 @@ Negative/fault chainหลัง independent review:
 
 Repository testsรวม profile/scoped-operation suitesผ่าน `115/115`
 
+Operational note: ระหว่าง restart reviewer pane, Codex standalone `0.150.1` เรียก auto-updaterเป็น `0.151.0` และ exitก่อน review Coordinatorปิด update checkสำหรับ restartถัดไปและ restore `standalone/current` กลับ exact `0.150.1`; ไม่ใช้ผลจาก `0.151.0` เป็น profile evidence
+
 ข้อจำกัด: scoped host operationsลด path/symlink mistakesแต่มี TOCTOU windowและไม่ใช่ OS sandbox Strong direct-tool isolationยังต้อง VM/container filesystem backend Profileนี้ยัง disabled by defaultและไม่ติดตั้ง agent-teamsลง Pi profileหลัก
 
 ### `codexstar69` hardening selection
@@ -858,7 +860,7 @@ Remaining limitations ก่อน production activation:
 4. upload-capable dedicated toolsถูกตัดออกแทนการทดสอบ reviewed upload profile
 5. Docker daemon และ exact local imageเป็น trusted fail-closed dependencies; ห้าม mount socket/host HOME และห้าม runtime pull
 6. worktree mountไม่ซ่อน secret fileที่เกิดภายใน worktree ต้อง pair clean worktree + pre-exec data policy
-7. provider/image/daemon/missing-marker/missing-artifact/human-only fault injectionผ่านแล้ว; re-review correction v2ยืนยัน wiringดีขึ้นแต่ให้ `FAIL` เพราะ negative evidenceยังไม่เป็น committed executable Correction v3เพิ่ม opt-in probeแต่ reviewerรันจาก stale checkoutและพบ whitespace-bearing patch context Correction v4ใช้ zero-context overlay + explicit `--unidiff-zero`; re-reviewพบ probe childยังพยายามเขียน global Pi session storeใต้ reviewer sandbox Correction v5 inject temporary `--session-dir`ให้ childทุกตัวและ producer probeผ่าน apply-check/negative `6/6` แต่ยังต้อง final re-review
+7. provider/image/daemon/missing-marker/missing-artifact/human-only fault injectionผ่านแล้ว; re-review correction v2ยืนยัน wiringดีขึ้นแต่ให้ `FAIL` เพราะ negative evidenceยังไม่เป็น committed executable Correction v3เพิ่ม opt-in probe; correction v4แก้ whitespaceด้วย zero-context overlay; correction v5 isolate child session store สุดท้าย independent reviewer reproduce apply-check/profile build/negative `6/6`, full suite `115/115`, diff-cleanและให้ verdict **PASS**
 
 ### Adoption decision
 
@@ -899,8 +901,8 @@ Maintenance/upstream strategy:
 
 Remaining before production verified:
 
-1. ให้ independent reviewerตรวจ correction provenance/fail-closed env/readiness marker
-2. รัน implement→independent-review→correction acceptance chainบน atomic profile พร้อม human-only escalation
+1. รัน implement→independent-review→correction acceptance chainบน atomic profile โดย collect artifact/diff/testsจริง
+2. เก็บ HUMAN remote-mutation blockerเป็น acceptance evidenceโดยไม่เปิด dialog
 3. ตัดสิน explicit operator install/activationหลัง acceptance; ห้าม auto-installจาก runtime
 4. เสนอ minimal seams upstreamหรือตัดสิน maintenance cadenceของ overlayก่อน stable release
 

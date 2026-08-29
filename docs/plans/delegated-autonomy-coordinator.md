@@ -183,7 +183,7 @@ hard deny / managed ceiling
 
 ห้าม install production แบบ as-is เพราะ child spawn inherit `process.env`, ใช้ `--no-extensions -e teams` ซึ่งตัด My Pi guardrails/sandbox, default writing workspace เป็น shared และไม่มี deterministic secret/network/upload policy Phase 0 runtime บน explicit worktree ยืนยันว่า fake `.env`, fake parent env, external `/tmp` write และ shell network ผ่านทั้งหมด แม้ routine RPC/worktree lifecycle ทำงานดี
 
-Disposable child-profile patch ยืนยัน env allowlist, exact tools/extensions, worktree ceiling, deterministic no-UI policy และ fail-closed boundary ต่อมาถูก packageเป็น minimal overlayบน exact upstream commit, atomic profile builder/verifier, scoped direct operations และ single Worker boundaryที่รวม immutable Docker Bash + command/data policy Final overlay apply-check, single/direct/ceiling-2 replacement runtime และ observed verifierผ่าน Independent reviewของ `ead8778` พบ provenanceกับ missing-env fail-open gaps; correction `43967a8` เพิ่ม Git/entry/whole-source-tree verificationและ required managed env แต่ re-reviewให้ `FAIL` เพราะ boundary/digest/markerยัง forge/replayได้ Correction v2จึง bind exact boundary content hash, derive contractทั้ง leader/Worker และใช้ structured readinessที่ bind per-spawn nonce/session/source/tools/env/resources พร้อม provider/image/daemon/missing-marker/missing-artifact/human-only fault probes Re-review v2ยืนยัน security wiringแต่ให้ `FAIL` เพราะ evidenceยังไม่เป็น committed executableและไม่ได้ independently reproduce apply-check Correction v3เพิ่ม opt-in runtime probeที่ execute clean apply-check + negative startup `6/6`; re-reviewยัง `FAIL` เพราะรันจาก reviewer checkoutเก่าและพบ whitespace-bearing contextใน patch Correction v4 regenerate overlayเป็น `--unified=0`, require `git apply --unidiff-zero`, probeรันจาก producer checkoutผ่านและ patchไม่มี whitespace context Re-reviewใน sandboxพบ probe childเขียน global Pi sessions จึงได้ EPERMที่ไม่ใช่ boundary outcome Correction v5ส่ง temporary `--session-dir`ให้ childทุกตัวเพื่อ isolated reproduction Candidateยัง disabled by defaultและรอ final re-review/acceptance chain
+Disposable child-profile patch ยืนยัน env allowlist, exact tools/extensions, worktree ceiling, deterministic no-UI policy และ fail-closed boundary ต่อมาถูก packageเป็น minimal overlayบน exact upstream commit, atomic profile builder/verifier, scoped direct operations และ single Worker boundaryที่รวม immutable Docker Bash + command/data policy Final overlay apply-check, single/direct/ceiling-2 replacement runtime และ observed verifierผ่าน Independent reviewของ `ead8778` พบ provenanceกับ missing-env fail-open gaps; correction `43967a8` เพิ่ม Git/entry/whole-source-tree verificationและ required managed env แต่ re-reviewให้ `FAIL` เพราะ boundary/digest/markerยัง forge/replayได้ Correction v2จึง bind exact boundary content hash, derive contractทั้ง leader/Worker และใช้ structured readinessที่ bind per-spawn nonce/session/source/tools/env/resources พร้อม provider/image/daemon/missing-marker/missing-artifact/human-only fault probes Re-review v2ยืนยัน security wiringแต่ให้ `FAIL` เพราะ evidenceยังไม่เป็น committed executableและไม่ได้ independently reproduce apply-check Correction v3เพิ่ม opt-in runtime probeที่ execute clean apply-check + negative startup `6/6`; re-reviewยัง `FAIL` เพราะรันจาก reviewer checkoutเก่าและพบ whitespace-bearing contextใน patch Correction v4 regenerate overlayเป็น `--unified=0`, require `git apply --unidiff-zero`, probeรันจาก producer checkoutผ่านและ patchไม่มี whitespace context Re-reviewใน sandboxพบ probe childเขียน global Pi sessions จึงได้ EPERMที่ไม่ใช่ boundary outcome Correction v5ส่ง temporary `--session-dir`ให้ childทุกตัวเพื่อ isolated reproduction Independent reviewerรันจาก self-contained fixturesแล้วได้ apply-check/profile build/negative `6/6`, full suite `115/115`, diff-clean และ verdict `PASS` Candidateยัง disabled by defaultและรอ acceptance chain
 
 ถ้านำมาใช้ My Pi ยังเป็นเจ้าของ mandate/policy/audit/final verification; agent-teams เป็นเจ้าของ Pi task transport/RPC team lifecycle เท่านั้น และ Herdr ยังดูแล external harnesses
 
@@ -529,7 +529,8 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
     - provider/image/daemon/missing/forged-marker/missing-artifact/human-only fault probesผ่าน
     - re-review v2 `FAIL` เพราะ negative startup/apply evidenceยังไม่เป็น committed executable; correction v3เพิ่ม opt-in runtime probe
     - re-review v3ยัง `FAIL` เพราะ reviewerรันใน stale checkoutและ patchมี upstream whitespace context; correction v4ใช้ zero-context overlay + explicit `--unidiff-zero`
-    - re-review v4 expose test-harness EPERMจาก global Pi session store; correction v5 isolate child sessionsใน temporary rootและ producer probeผ่าน apply-check/negative `6/6`
+    - re-review v4 expose test-harness EPERMจาก global Pi session store; correction v5 isolate child sessionsใน temporary root
+    - final independent re-review reproduce self-contained apply-check/profile/negative `6/6` + full suite `115/115` และให้ `PASS`
     - candidateยัง disabled by defaultและ scoped host operationsยังมี TOCTOU limitation
 - [ ] `pi-extensible-workflows` gate:
   - [ ] ขอ license clarification หรือยืนยัน license artifact ที่มีผลผูกพัน
@@ -801,8 +802,8 @@ Success metric หลัก:
 
 ดำเนิน Phase 0 ส่วนที่เหลือตามลำดับ:
 
-1. ให้ independent reviewerเดิมรัน correction-v5 self-contained probeใน reviewer worktreeและตรวจ applyability/negative `6/6`
-2. collect artifact/diff/test acceptanceจริงผ่าน implement → review → correction chain
+1. collect artifact/diff/test acceptanceจริงผ่าน implement → review → correction chain
+2. บันทึก zero-routine-approval metric และ HUMAN remote-mutation blockerจาก atomic profile
 3. รัน Pi writing profile ผ่าน lifecycleจริง แล้วรัน implement → review → correction chainผ่าน Pi-native laneให้ศูนย์ routine approval
 4. สรุป go/no-go แยก Herdr manual-only, patched agent-teams และ piewf แล้วจึงเริ่ม Phase 1 pure mandate/policy model
 
