@@ -2,7 +2,7 @@
 
 > **Status:** in progress — Codex/Claude initial delegated gate no-go/manual-only; agent-teams Docker-strong เป็น Pi-native candidateหลัก<br>
 > **Created:** 2026-08-28 17:05<br>
-> **Updated:** 2026-08-29 18:17<br>
+> **Updated:** 2026-08-29 20:45<br>
 > **Purpose:** เก็บผล runtime probes แบบ disposable ก่อนเปลี่ยน production behavior ตาม [แผน Delegated Autonomy](../plans/delegated-autonomy-coordinator.md)
 
 ผล piewf ถูกตรวจสองทาง: runtime probes ของ Coordinator ในเอกสารนี้ และ [independent Phase 0 piewf evaluation](piewf-phase0-evaluation.md) จาก Worker บน branch แยก ก่อน cherry-pick เข้าสู่ `main`
@@ -828,10 +828,48 @@ Maintenance/upstream strategy:
 
 Remaining before production verified:
 
-1. เปลี่ยน temporary policy เป็น versioned scoped direct-tool implementation
+1. wire pure command policyเข้ากับ versioned scoped direct-tool implementation; pure moduleยังไม่มี execution side effect
 2. wire versioned image/profile + agent-teams adapter แบบ atomic และ verify observed digestก่อน register
 3. เพิ่ม provider/image/daemon failure และ reviewed artifact collection acceptance
 4. ตัดสิน patched adapter package location หลัง upstream response หรือ maintenance decision
+
+### Pure dangerous-command policy fixture
+
+เพิ่ม [`extensions/command-policy.ts`](../../extensions/command-policy.ts) เป็น pure Phase 0 analyzer/resolverโดยไม่ register Pi tool/event และไม่เปลี่ยน production behavior พร้อม adversarial testsใน [`tests/command-policy.test.ts`](../../tests/command-policy.test.ts)
+
+Decision flow:
+
+```text
+bounded normalize/parse → collect structured findings once
+  DENY  > HUMAN > REVIEW > ALLOW
+```
+
+Coverageที่ผ่าน:
+
+- routine worktree write/test/local Git commandsเป็น `ALLOW` และ analysisไม่เก็บ raw command text
+- root/system/worktree wipe, block-device write, reboot, fork bomb, process-wide kill และ sudoเป็น `DENY`
+- quote/backslash/empty-quote/fullwidth Unicode/ANSI, dynamic command word, command/process substitution, nested shell, BusyBox, `find -exec` และ `xargs rm` fixturesไม่ข้าม hardline
+- bounded recursive deleteภายใน worktreeเป็น `REVIEW`; external/worktree-root deleteเป็น `DENY`
+- `git push`, publish/deploy/cloud mutationเป็น `HUMAN`; remote/encoded content pipeเข้า shellเป็น `DENY`
+- Git state destructionและ policy/config/`.git`/protected-environment tamperingเป็น `DENY`
+- malformed shell, null byte, length/token/segment/nesting budgetเกินกำหนด fail closed
+- quoted proseที่กล่าวถึง dangerous commandsไม่ถูกตีความว่า executable
+- REVIEW grantมี TTLสูงสุด 15 นาทีและ bind exact command digest, Worker/session, mandate, profile, policy version, cwd/workspace, finding codes, resources และเวลา; stale/tampered replayไม่ execute
+- `DENY` และ `HUMAN` สร้าง Coordinator review grantไม่ได้
+
+Targeted testsผ่าน `15/15`; full repository suiteผ่าน `106/106`
+
+```text
+command-policy.ts SHA-256:      d1696594a39fc8eba07ecea9f982abc1aaaaccc5e82abf1be6c8a250a923922f
+command-policy.test.ts SHA-256: fc997590d6c6e6e17b6b55fe64a4c45562b78043f46e0a7dfe08c923d2da7396
+```
+
+ข้อจำกัดที่ตั้งใจไว้:
+
+- เป็น defense-in-depth classifier ไม่ใช่ shell interpreterหรือ OS sandbox
+- inline interpreter code, command/process substitution และ direct `./` local executableถูก routeเป็น `REVIEW`; child processes/scriptsที่ toolchainเรียกภายในไม่ถูก re-intercept จึงต้องพึ่ง container boundaryด้วย
+- grantsเป็น trusted Coordinator registry state ไม่ใช่ bearer token; digestป้องกัน stale/accidental mismatch ไม่ใช่ cryptographic authorizationจาก Worker-controlled storage
+- ยังไม่ wireเข้า `guardrails.ts`, worker spawn หรือ agent-teams adapter จึงต้องคง production manual behaviorเดิม
 
 ## `pi-extensible-workflows` probes
 
@@ -1142,6 +1180,8 @@ Decision: **Codex และ Claude เป็น manual-only external harnesses�
 - [x] กำหนด direct-tool routing และ source-of-truth/upstream strategy
 - [x] สร้าง immutable Node development image/profile package + SPDX SBOM และ rerun single/multi-worker probes
   - ยังเหลือ atomic adapter/scoped direct-tool wiringก่อน production verified
+- [x] เพิ่ม pure dangerous-command analyzer/resolver + exact short-lived REVIEW grants
+  - adversarial targeted `15/15`, full suite `106/106`; ยังไม่ wire production path
 - [x] เลือก patched `pi-agent-teams` เป็น provisional Pi-native candidate; piewf no-go immediate dependency
 - [x] เลือก scoped direct tools + Docker-strong Bash สำหรับ initial strong Pi isolation; Gondolin defer เพราะไม่มี QEMU
 - [x] แปลง disposable config shapes เป็น versioned pure adapter builders/verifiers และ tests; ยังไม่ wire spawn behavior

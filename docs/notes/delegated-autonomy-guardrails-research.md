@@ -2,7 +2,7 @@
 
 > **Status:** ทิศทางที่ผู้ใช้ยืนยันให้ศึกษาต่อ<br>
 > **Created:** 2026-08-28 15:20<br>
-> **Updated:** 2026-08-29 19:41<br>
+> **Updated:** 2026-08-29 20:45<br>
 > **Purpose:** บันทึก pain points, root cause และผลเปรียบเทียบ OpenCode, Claude Code และ Codex CLI เพื่อใช้รื้อ Pi/Herdr Coordinator จากระบบที่ถามอนุมัติทุกขั้นเป็นการมอบอำนาจแบบมีขอบเขต
 
 ## บริบทและความคาดหวังของผู้ใช้
@@ -291,6 +291,8 @@ collect findings once
 Initial Pi Workerไม่มี human prompt REVIEWต้องกลับ Coordinatorพร้อม command digestและ structured findings; Coordinatorอนุญาตได้เฉพาะ capabilityที่ mandateให้ไว้ และ decision tokenต้อง bind command digest, Worker/session, profile/policy version, resource scope และ expiry ห้ามใช้ generic replay/force flag
 
 Containerช่วยลด blast radiusแต่ worktreeเป็น host bind mount จึงยังต้อง block worktree wipe/history destructionตาม role การลบ generated pathsควรอนุญาตแบบ canonical path + task-scoped rule ไม่ใช่ allow `rm` ทั้ง command family
+
+Phase 0 milestoneเพิ่ม pure [`extensions/command-policy.ts`](../../extensions/command-policy.ts) ตาม contractนี้แล้ว: bounded parser, structured outcomes, no raw command retention และ exact REVIEW grant TTLไม่เกิน 15 นาที Targeted adversarial testsผ่าน `15/15`; moduleยังไม่ถูก wireเข้า productionและไม่อ้างเป็น sandbox
 
 แหล่งข้อมูล:
 

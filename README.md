@@ -50,6 +50,9 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
 - `harness-profiles.ts`
   - pure builders/verifiers สำหรับ pinned Codex/Claude delegated profiles, environment allowlist และ requested/effective checks
   - ยังไม่ถูก wire เข้า spawn path จึงยังไม่เปลี่ยน behavior ของ Worker production
+- `command-policy.ts`
+  - pure Phase 0 analyzer/resolver สำหรับ dangerous commands, hardline deny, HUMAN/REVIEW routing และ exact short-lived review grants
+  - normalize shell syntaxแบบ bounded/fail-closed แต่เป็น defense-in-depth ไม่ใช่ sandbox และยังไม่ถูกโหลดใน production path
 - `local/extensions/azure-devops/`
   - maintain source ไว้ใน repository นี้ แต่ไม่โหลดจาก global package
   - แต่ละ trusted project ต้องชี้ path นี้ผ่าน `.pi/settings.json` และมี `.pi/azure-devops.json`
