@@ -2,7 +2,7 @@
 
 > **Status:** ทิศทางที่ผู้ใช้ยืนยันให้ศึกษาต่อ<br>
 > **Created:** 2026-08-28 15:20<br>
-> **Updated:** 2026-08-28 15:20<br>
+> **Updated:** 2026-08-29 19:41<br>
 > **Purpose:** บันทึก pain points, root cause และผลเปรียบเทียบ OpenCode, Claude Code และ Codex CLI เพื่อใช้รื้อ Pi/Herdr Coordinator จากระบบที่ถามอนุมัติทุกขั้นเป็นการมอบอำนาจแบบมีขอบเขต
 
 ## บริบทและความคาดหวังของผู้ใช้
@@ -234,6 +234,69 @@ Auto-review เปลี่ยน reviewer แต่ **ไม่เพิ่ม 
 - <https://developers.openai.com/codex/permissions>
 - <https://developers.openai.com/codex/subagents>
 - <https://developers.openai.com/codex/config-reference>
+
+## Hermes Agent dangerous-command security
+
+ผู้ใช้ส่ง implementation และ security guideมาให้พิจารณาก่อนเริ่ม agent-teams production wiring ตรวจจาก `main` snapshot commit `b1ff8722a53ee223485ac9804945acf07ef5c601` วันที่ 2026-08-29; repository ระบุ MIT license
+
+### โครงสร้างที่มีประโยชน์
+
+`tools/approval.py` แยกการตัดสิน commandเป็นหลายชั้น:
+
+1. **Hardline floor** — block catastrophic operationsก่อน yolo/off/allowlist และไม่มี override
+2. **User deny rules** — deny globที่มาก่อน bypass settings
+3. **Dangerous patterns** — recoverable/destructive actionsที่ส่งเข้า smart/manual approval
+4. **Permanent/session approvals** — reuse approvalตาม scope
+5. **Combined guard** — รวม Tirith + pattern findingsเป็น decisionเดียว เพื่อลด replayที่ผ่าน guardหนึ่งแต่ข้ามอีก guardหนึ่ง
+
+รายละเอียด implementationที่ควรนำมาเป็น requirements/test ideas:
+
+- freeze process-level bypassตอน module import เพื่อไม่ให้ skillเปลี่ยน environmentกลาง sessionแล้วข้าม policy
+- ใช้ context-local identity แยก session/turn/tool-call แทน process-global environmentใน concurrent execution
+- normalize ANSI, null bytes, Unicode, shell wrappers, quoted text, command substitutions และ command positionsก่อน classify
+- parser complexity/sizeเกิน budgetให้ blockแบบ fail-closed
+- protected policy/config filesต้องถูกปิดทั้ง direct file toolsและ terminal routes มิฉะนั้นเป็น “unpaired door”
+- Dockerที่ bind-mount host pathไม่ถือว่า isolated: sourceใช้ `has_host_access` เพื่อไม่ skip guard เพราะ `rm -rf /workspace` ยังทำลาย host worktreeได้
+- timeout/no-human branchesต้องมี explicit outcome และ audit identity; lifecycle contextห้ามอนุมานจาก ambient environmentที่เปลี่ยนข้าม threadได้
+- observer payload redactก่อนส่ง plugin และ correlationต้องผูกกับ real session/turn/tool call
+
+### สิ่งที่ไม่ควร copy ตามตรง
+
+- moduleมีขนาดและ shell edge casesสูงมาก จึงไม่ควรคัดลอก regex/implementationทั้งก้อนเข้า `my-pi`; เหมาะเป็น requirementsและ adversarial test corpusมากกว่า
+- Hermesระบุเองว่า deny/pattern layerเป็น guardrailสำหรับ honest-but-wrong agent ไม่ใช่ sandboxสำหรับ adversarial process ตรงกับการตัดสินเดิมว่า My Pi guardrailห้ามอ้างเป็น enforceable boundary
+- dangerous-command pathใน sourceปัจจุบันยังรักษา historical non-interactive auto-approveบาง branch ซึ่งไม่ตรงกับ delegated Worker ของ My Pi; unknown/headless Workerต้อง fail closedแทน
+- `smart` auxiliary LLMอาจช่วยจัดลำดับ REVIEW แต่ห้ามเป็น authorityที่ชนะ deterministic deny, mandate ceiling หรือ sandbox
+- permanent command allowlist เช่น command name/globกว้างเกินไปสำหรับ delegated autonomy; My Piต้องใช้ scoped capabilityที่ bind worker, mandate, path/resource, operation, expiry และ policy version
+- Tirith default `fail_open: true` และ first-use auto-installไม่ผ่าน initial profile contractของ My Pi หากประเมินภายหลังต้อง pin binary/checksum/provenance, pre-provision และ fail closed
+- security guideกับ sourceมี driftอย่างน้อยหนึ่งจุด: guideยก pipe remote URLเข้า shellไว้ใน hardline table แต่ source commentและ patternsจัด `curl|sh` เป็น recoverable `DANGEROUS_PATTERNS`; production policyต้องอ้าง executable tests/source revision ไม่อ้างตารางเอกสารอย่างเดียว
+
+### ผลต่อ `my-pi`
+
+`extensions/guardrails.ts` ปัจจุบันเน้น secret reads, external writes/uploads และ path-aware mutations ยังไม่มี command-risk taxonomyสำหรับ `rm -rf .`, `git reset --hard`, `git clean -fdx`, fork bomb, device writes, shutdown หรือ policy-file tampering
+
+ก่อน wire patched agent-teams production profile ต้องเพิ่ม command-policy seamที่:
+
+```text
+normalize + bounded parse
+          │
+          ▼
+collect findings once
+          │
+          ├─ hard invariant / mandate deny ───────────────→ DENY
+          ├─ human-only external/irreversible boundary ──→ HUMAN
+          ├─ bounded destructive workspace operation ────→ REVIEW
+          └─ safe operation inside exact profile ─────────→ ALLOW
+```
+
+Initial Pi Workerไม่มี human prompt REVIEWต้องกลับ Coordinatorพร้อม command digestและ structured findings; Coordinatorอนุญาตได้เฉพาะ capabilityที่ mandateให้ไว้ และ decision tokenต้อง bind command digest, Worker/session, profile/policy version, resource scope และ expiry ห้ามใช้ generic replay/force flag
+
+Containerช่วยลด blast radiusแต่ worktreeเป็น host bind mount จึงยังต้อง block worktree wipe/history destructionตาม role การลบ generated pathsควรอนุญาตแบบ canonical path + task-scoped rule ไม่ใช่ allow `rm` ทั้ง command family
+
+แหล่งข้อมูล:
+
+- [`tools/approval.py` at `b1ff8722`](https://github.com/NousResearch/hermes-agent/blob/b1ff8722a53ee223485ac9804945acf07ef5c601/tools/approval.py)
+- [Security guide at `b1ff8722`](https://github.com/NousResearch/hermes-agent/blob/b1ff8722a53ee223485ac9804945acf07ef5c601/website/docs/user-guide/security.md)
+- [MIT license at `b1ff8722`](https://github.com/NousResearch/hermes-agent/blob/b1ff8722a53ee223485ac9804945acf07ef5c601/LICENSE)
 
 ## Pattern ร่วมที่พบ
 

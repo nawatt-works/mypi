@@ -2,7 +2,7 @@
 
 > **Status:** active — Phase 0 runtime probes<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-29 18:17<br>
+> **Updated:** 2026-08-29 19:41<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -193,6 +193,14 @@ Isolated Codex/Claude profilesผ่าน routine/test/environment/declared-cre
 
 `@anthropic-ai/sandbox-runtime` เป็น deny-only read policy ไม่ใช่ mount-only view ส่วน Docker/VM ต้อง provision provider auth/toolchainใหม่และเป็น security tradeoffที่ mandateนี้ไม่ได้อนุญาต ดังนั้นห้ามเปิด delegated spawnให้ Codex/Claudeเพียงเพราะ zero-dialog UXผ่าน เก็บ pure builders/verifiersไว้สำหรับ future separately-isolated execution identity และคง Herdr external lanesใน manual mode
 
+### D12 — Dangerous-command policy เป็น defense-in-depthที่ต้อง bind execution context
+
+Hermes Agent `tools/approval.py` ให้ patternที่ใช้ได้: unconditional hardline floor, user denyก่อน bypass, combined findings, context-local approval identity, quote/Unicode/shell normalization, parser budget fail-closed และ Docker `has_host_access` semantics
+
+My Piจะใช้เป็น requirements/adversarial tests ไม่ copy moduleหรือ regexทั้งก้อน Guardrailไม่ใช่ sandbox และ smart LLMไม่ใช่ authority Unknown/headless Workerต้อง fail closedต่างจาก historical Hermes auto-approve Permanent command-name/glob allowlistถูก reject; delegated REVIEWต้อง bind exact command digest + Worker/session + mandate/profile/policy version + canonical resource scope + expiry
+
+Pi Worker Docker mount worktreeจาก hostจึงยังต้องผ่าน command policy ห้ามถือว่า containerเพียงอย่างเดียวทำให้ `rm -rf /workspace`, history destruction หรือ policy-file tamperingปลอดภัย Initial hardline/mandate denyต้องไม่มี bypass ส่วน generated-path cleanupอนุญาตได้ด้วย narrow task-scoped capability
+
 ## Target architecture
 
 ```text
@@ -222,7 +230,7 @@ Isolated Codex/Claude profilesผ่าน routine/test/environment/declared-cre
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │ Per-worker boundary                                         │
-│ worktree · tools/resources · filesystem · network · secrets │
+│ worktree · tools/resources · command · fs · network · secret│
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -510,6 +518,9 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
     - upstream minimal seamsก่อนพิจารณา maintained fork
   - [x] สร้าง immutable Node `24.15.0` image digest, versioned profile package และ SPDX SBOM
     - exact digestผ่าน standalone + patched agent-teams single/multi-worker probes; role-specific toolchainsเป็น future profiles
+  - [ ] เพิ่ม dangerous-command policy fixtureก่อน production wiring
+    - hardline/mandate denyไม่มี bypass; worktree bind mountยัง guard; delegated REVIEWไม่เปิด human dialog
+    - adversarial testsครอบคลุม quote/escape/wrapper/substitution/Unicode/ANSI/parser-budget และ policy-file tampering
 - [ ] `pi-extensible-workflows` gate:
   - [ ] ขอ license clarification หรือยืนยัน license artifact ที่มีผลผูกพัน
     - npm/source metadata ระบุ MIT แต่ source และ tarball ไม่มี license text
@@ -569,6 +580,9 @@ Files:
 Tasks:
 
 - [ ] แยก detection (`MutationFinding[]`) ออกจาก policy decision และ UI rendering
+- [ ] เพิ่ม structured command findings + bounded normalization/parser seam โดย collect decisionครั้งเดียว
+- [ ] hardline/user-policy/mandate denyมาก่อน bypass; unknown/headless fail closed
+- [ ] bind REVIEW tokenกับ command digest, Worker/session, mandate/profile/policy version, resource scope และ expiry
 - [ ] ให้ normal interactive session คง behavior เดิมใน manual mode
 - [ ] ให้ delegated Worker ไม่เปิด dialog
 - [ ] ส่ง policy reference ตอน spawn แบบ atomic และยืนยัน Worker โหลด profile จริง
@@ -777,10 +791,10 @@ Success metric หลัก:
 
 ดำเนิน Phase 0 ส่วนที่เหลือตามลำดับ:
 
-1. package/wire patched agent-teams adapter, scoped direct tools และ versioned Node image profileแบบ atomicหลัง upstream/maintenance decision
-2. รัน Pi writing profile ผ่าน Herdr lifecycle จริง และเทียบกับ patched agent-teams RPC lane
-3. รัน implement → review → correction chain ผ่าน Pi-native laneให้ได้ศูนย์ routine approval
-4. ทดสอบ provider error, timeout, missing artifact และ human-only escalation
+1. เพิ่ม pure dangerous-command findings/policy fixtureและ adversarial testsจาก Hermes requirements โดยไม่ copy implementation
+2. package/wire patched agent-teams adapter, scoped direct tools, command policy และ versioned Node image profileแบบ atomicหลัง upstream/maintenance decision
+3. รัน Pi writing profile ผ่าน Herdr lifecycleจริง แล้วรัน implement → review → correction chainผ่าน Pi-native laneให้ศูนย์ routine approval
+4. ทดสอบ provider/image/daemon error, timeout, missing artifact และ human-only escalation
 5. สรุป go/no-go แยก Herdr manual-only, patched agent-teams และ piewf แล้วจึงเริ่ม Phase 1 pure mandate/policy model
 
 ห้ามแก้ production behavior ก่อนสรุปผล probe และอัปเดต decisions/profile verification ในแผนนี้
