@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-07-27 08:55<br>
-> **Updated:** 2026-08-29 20:45<br>
+> **Updated:** 2026-08-29 21:23<br>
 > **Purpose:** แสดงภาพรวมของ design notes และ implementation history ที่ repository `my-pi` เป็นเจ้าของ
 
 `docs/` เป็น project documentation ของ repository นี้ ไม่ใช่ workspace-wide artifact store และไม่ใช่ default path สำหรับ plan, note หรือ output จาก AI tool/skill/harness อื่น
@@ -11,7 +11,7 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
-| 2026-08-29 20:45 | 2026-08-28 15:32 | active — Phase 0 | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | pure dangerous-command gateผ่านแล้ว; exact nextคือ atomic agent-teams adapter/profile wiring |
+| 2026-08-29 21:23 | 2026-08-28 15:32 | active — Phase 0 | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | atomic agent-teams overlay/profileผ่าน runtime; exact nextคือ independent review + fault chain |
 | 2026-08-28 15:32 | 2026-08-25 09:19 | superseded | [Pi Coordinator บน Herdr](plans/pi-herdr-coordinator.md) | เก็บ implementation/probe history; authority contract และ Phase 3 เดิมถูกแทนด้วย delegated-autonomy plan |
 | 2026-08-23 11:19 | 2026-08-22 12:40 | superseded | [แยก Workflow Plan, Continuity Ledger และ Plannotator Review](plans/flexible-planning-continuity.md) | implementation รุ่น managed fallback; ต่อมาถูกแทนด้วย pointer-only และ dual session/workspace tracking |
 | 2026-08-09 19:25 | 2026-08-09 11:10 | complete | [ย้ายและขยาย Azure DevOps extension](plans/azure-devops-extension-crud.md) | เพิ่ม opt-in Work Item CRUD; ปัจจุบัน maintain ที่ `local/extensions/azure-devops/` และให้แต่ละ project โหลดเอง |
@@ -22,9 +22,9 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
-| 2026-08-29 20:45 | 2026-08-28 17:05 | in progress | [Phase 0 Probes — Delegated Autonomy Harness Profiles](notes/delegated-autonomy-phase0-probes.md) | เพิ่ม pure command policy/grants evidence; Codex/Claude manual-onlyและ agent-teams candidateยังไม่ wire |
+| 2026-08-29 21:23 | 2026-08-28 17:05 | in progress | [Phase 0 Probes — Delegated Autonomy Harness Profiles](notes/delegated-autonomy-phase0-probes.md) | versioned agent-teams overlay, atomic boundary, scoped tools, single/direct/multi evidenceและ verifier true |
 | 2026-08-28 19:13 | 2026-08-28 19:07 | complete evaluation | [Independent piewf Phase 0 Evaluation](notes/piewf-phase0-evaluation.md) | ตรวจ source/tests/license/install ของ piewf แยกใน Worker worktree และรับเข้า main หลัง Coordinator verification |
-| 2026-08-29 20:45 | 2026-08-28 15:20 | ทิศทางที่ยืนยันให้ศึกษาต่อ | [Delegated Autonomy สำหรับ Coordinator และ Guardrails](notes/delegated-autonomy-guardrails-research.md) | Hermes requirementsถูกแปลงเป็น pure command-policy fixtureแล้ว; production wiringยังไม่เริ่ม |
+| 2026-08-29 21:23 | 2026-08-28 15:20 | ทิศทางที่ยืนยันให้ศึกษาต่อ | [Delegated Autonomy สำหรับ Coordinator และ Guardrails](notes/delegated-autonomy-guardrails-research.md) | Hermes requirementsถูก wireใน disabled agent-teams candidate boundaryแล้ว |
 | 2026-08-28 15:32 | 2026-08-23 22:27 | partially superseded | [Runtime-negotiated Orchestration ผ่าน Pi และ Herdr](notes/runtime-negotiated-herdr-orchestration.md) | Runtime/identity/evidence history ยังใช้ต่อ แต่ authority contract เดิมถูกแทนด้วย bounded mandate |
 | 2026-08-23 11:19 | 2026-07-27 02:31 | ดำเนินการบางส่วน | [Extension Review](notes/extensions-review.md) | ประเมิน third-party extensions และแนวทางปรับ Pi setup |
 | 2026-08-22 11:57 | 2026-08-21 09:43 | อยู่ระหว่างวิเคราะห์ | [ทิศทางพัฒนา Pi โดยเรียนรู้จาก OMP](notes/pi-omp-context-code-intelligence-tui.md) | สรุป context governance, benchmark และ short-cycle candidates สำหรับ code intelligence, orchestration และ OMP-inspired TUI |
@@ -32,6 +32,7 @@
 
 ## Change log
 
+- 2026-08-29 21:23 — package/wire minimal agent-teams overlay + atomic profile + scoped direct tools + immutable Worker boundary; final single/direct/ceiling-2 runtimeและ verifierผ่าน, full suite `115/115`, productionยัง disabled
 - 2026-08-29 20:45 — เพิ่ม pure dangerous-command analyzer/resolver, bounded shell normalization, structured DENY/HUMAN/REVIEW/ALLOW และ short-lived exact review grants; adversarial `15/15`, full suite `106/106`
 - 2026-08-29 19:41 — วิเคราะห์ Hermes Agent approval/security source; adopt hardline/context/bind-mount/combined-guard requirementsแต่ reject regex copy, headless auto-approve, broad allowlist และ fail-open scanner
 - 2026-08-29 18:17 — เพิ่ม versioned agent-teams Node `24.15.0` image profile + SPDX SBOM; canonical no-provenance digestผ่าน standaloneและ patched single/multi-worker probesบน non-root/network-none/read-only constraints

@@ -2,7 +2,7 @@
 
 > **Status:** active — Phase 0 runtime probes<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-29 20:45<br>
+> **Updated:** 2026-08-29 21:23<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -183,7 +183,7 @@ hard deny / managed ceiling
 
 ห้าม install production แบบ as-is เพราะ child spawn inherit `process.env`, ใช้ `--no-extensions -e teams` ซึ่งตัด My Pi guardrails/sandbox, default writing workspace เป็น shared และไม่มี deterministic secret/network/upload policy Phase 0 runtime บน explicit worktree ยืนยันว่า fake `.env`, fake parent env, external `/tmp` write และ shell network ผ่านทั้งหมด แม้ routine RPC/worktree lifecycle ทำงานดี
 
-Disposable child-profile patch ยืนยันว่า env allowlist, exact tools/extensions, worktree ceiling, deterministic no-UI policy และ fail-closed boundary แก้ fake env/secret/external/network fixtures ได้โดยไม่แก้ team/task core Direct/fail-init/ceiling 2/multi-worker/Docker-strong/lifecycle cleanup probes ผ่านแล้ว Versioned Node image/profile/SPDX SBOMถูกเพิ่มและ rerunผ่านบน exact digest แต่ยังไม่ verified productionเพราะ patched adapter/scoped direct toolsยังไม่ถูก package/wireแบบ atomic
+Disposable child-profile patch ยืนยัน env allowlist, exact tools/extensions, worktree ceiling, deterministic no-UI policy และ fail-closed boundary ต่อมาถูก packageเป็น minimal overlayบน exact upstream commit, atomic profile builder/verifier, scoped direct operations และ single Worker boundaryที่รวม immutable Docker Bash + command/data policy Final overlay apply-check, single/direct/ceiling-2 replacement runtime และ observed verifierผ่าน แต่ยัง disabled by defaultและไม่ production-readyจน fault/acceptance chainกับ independent reviewครบ
 
 ถ้านำมาใช้ My Pi ยังเป็นเจ้าของ mandate/policy/audit/final verification; agent-teams เป็นเจ้าของ Pi task transport/RPC team lifecycle เท่านั้น และ Herdr ยังดูแล external harnesses
 
@@ -520,8 +520,11 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
     - exact digestผ่าน standalone + patched agent-teams single/multi-worker probes; role-specific toolchainsเป็น future profiles
   - [x] เพิ่ม pure dangerous-command policy fixtureก่อน production wiring
     - covered hardline/mandate-deny command-string variantsไม่ bypass; worktree bind mountยัง guard; delegated REVIEWไม่เปิด human dialog
-    - adversarial targeted tests `15/15`, full suite `106/106`; exact grant bind context/expiryและ raw commandไม่เข้า analysis
-    - pure fixtureยังไม่ใช่ sandboxและยังไม่ wire production path
+    - adversarial targeted tests `15/15`; exact grant bind context/expiryและ raw commandไม่เข้า analysis
+  - [x] package/wire minimal agent-teams overlay + atomic profile + scoped direct tools
+    - exact commit/overlay/image/artifact hashes, frozen child profile, observed env keys, forced worktree และ ceilingถูก verify
+    - single/direct/multi replacement runtimeผ่าน; verifier true; full suite `115/115`
+    - candidateยัง disabled by defaultและ scoped host operationsยังมี TOCTOU limitation
 - [ ] `pi-extensible-workflows` gate:
   - [ ] ขอ license clarification หรือยืนยัน license artifact ที่มีผลผูกพัน
     - npm/source metadata ระบุ MIT แต่ source และ tarball ไม่มี license text
@@ -792,9 +795,9 @@ Success metric หลัก:
 
 ดำเนิน Phase 0 ส่วนที่เหลือตามลำดับ:
 
-1. package/wire patched agent-teams adapter, scoped direct tools, pure command policy และ versioned Node image profileแบบ atomicหลัง upstream/maintenance decision
-2. รัน Pi writing profile ผ่าน Herdr lifecycleจริง แล้วรัน implement → review → correction chainผ่าน Pi-native laneให้ศูนย์ routine approval
-3. ทดสอบ provider/image/daemon error, timeout, missing artifact และ human-only escalation
+1. ให้ independent reviewerตรวจ minimal overlay, atomic profile, scoped direct tools, fail-closed semantics และ runtime evidence
+2. ทดสอบ provider/image/daemon error, timeout, missing artifact และ human-only escalation
+3. รัน Pi writing profile ผ่าน lifecycleจริง แล้วรัน implement → review → correction chainผ่าน Pi-native laneให้ศูนย์ routine approval
 4. สรุป go/no-go แยก Herdr manual-only, patched agent-teams และ piewf แล้วจึงเริ่ม Phase 1 pure mandate/policy model
 
 ห้ามแก้ production behavior ก่อนสรุปผล probe และอัปเดต decisions/profile verification ในแผนนี้

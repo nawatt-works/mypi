@@ -2,7 +2,7 @@
 
 > **Status:** in progress — Codex/Claude initial delegated gate no-go/manual-only; agent-teams Docker-strong เป็น Pi-native candidateหลัก<br>
 > **Created:** 2026-08-28 17:05<br>
-> **Updated:** 2026-08-29 20:45<br>
+> **Updated:** 2026-08-29 21:23<br>
 > **Purpose:** เก็บผล runtime probes แบบ disposable ก่อนเปลี่ยน production behavior ตาม [แผน Delegated Autonomy](../plans/delegated-autonomy-coordinator.md)
 
 ผล piewf ถูกตรวจสองทาง: runtime probes ของ Coordinator ในเอกสารนี้ และ [independent Phase 0 piewf evaluation](piewf-phase0-evaluation.md) จาก Worker บน branch แยก ก่อน cherry-pick เข้าสู่ `main`
@@ -763,6 +763,58 @@ Patched agent-teams single-worker และ ceiling-2 alpha/beta → graceful al
 
 Caution: mount worktreeทั้งก้อน ไม่ซ่อนไฟล์ sensitive ที่ถูกสร้างภายใน worktreeเอง Clean worktree creation, scoped direct tools และ deterministic secret policyยังเป็น required layers
 
+#### v7 — versioned minimal overlay + atomic Worker boundary
+
+เลือก maintenance strategyเป็น **minimal maintained overlay** บน exact upstream commitแทนการ vendor/fork sourceทั้ง repository:
+
+- [`agent-teams-overlay.patch`](../../profiles/pi-agent-teams/node-worker-v1/agent-teams-overlay.patch) apply-checkผ่านบน clean `2c1776d`
+- [`extensions/agent-teams-profile.ts`](../../extensions/agent-teams-profile.ts) สร้าง leader environment allowlist, force-worktree, ceiling 1–3, exact child tools/extensions และ expected artifact hashesพร้อมกัน
+- patched leader freeze child profileตอน factory load ไม่อ่าน ambient environmentใหม่ทุก spawn
+- child RPCเก็บ observed environment **key namesเท่านั้น** เพื่อ verify allowlistโดยไม่เก็บ values
+- [`worker-boundary.ts`](../../profiles/pi-agent-teams/node-worker-v1/worker-boundary.ts) รวม command/data policy, scoped direct tools, immutable Docker Bash และ artifact/image preflightเป็น extensionเดียว; init failต้องเกิดก่อน Worker ready handshake
+- [`extensions/scoped-worker-tools.ts`](../../extensions/scoped-worker-tools.ts) canonicalize lexical/existing/canonical pathsและ deny external, sensitive, `.git` และ symlink escapeก่อน direct filesystem operation
+
+Final artifact hashes:
+
+```text
+agent-teams-profile.ts:    4e22851f2badfa1c118a96e245092b6e6c6e9834d718904b9ade0c9484c4b624
+scoped-worker-tools.ts:    c9b5cf7796bf8469a28e514ecbdbbe82ee0f61a26da83532792d4c071284dcee
+worker-boundary.ts:        41ee6b8d62b5f6ac38435da14649cbd67c23b7886494b648b22633d4f29b5e0d
+agent-teams overlay:       77b0a03b07346372db94ceb2b28115cdb8f5b700a3cd117a79d9e4ff8a55abad
+profile.json:              c97b92696b8a94d535fe8e8e2d20cdcbf0626fa2fa7583306d5b1b9615bec22f
+```
+
+Atomic single-worker runtimeบน Pi `0.84.3` + exact image digest:
+
+- requested shared workspaceถูก narrowเป็น worktree
+- exact built-ins `read,bash,edit,write`, backend tool `team_message`; effective extensionsมี Worker boundary + backend-owned teams entryเท่านั้น
+- observed child env keysไม่มี parent marker/provider secret; `ENV_ABSENT`
+- routine write `ROUTINE_OK`; integrated `npm test` → `TEST_OK`
+- shell network `NETWORK_DENIED`; unique host `/tmp` read `HOST_READ_ISOLATED`
+- `.env` readได้ structured `secret-read` blocker
+- external writeได้ structured `external-write` blockerและ targetไม่เกิด
+- `rm -rf /workspace`ได้ `DENY/workspace-root-destruction`
+- zero routine dialog; task transport completedแต่ acceptanceยังมาจาก verifier
+- `verifyAgentTeamsProfile()` → `verified: true`, mismatches `[]`
+
+Atomic direct-tool runtime:
+
+- routine direct Write → `DIRECT_ROUTINE_OK`
+- `.env` Read/Writeไม่เปลี่ยน file
+- `/etc/hosts` Read, external Write/Edit และ symlink escapeถูก deny
+- external targetsไม่เกิด/ไม่เปลี่ยน
+
+Final overlay ceiling-2 multi-worker runtime:
+
+- alpha/beta online; overflow Workerถูก block
+- alpha routineและ beta network-denyผ่าน
+- graceful alpha shutdownคืน slot; gamma replacementทำงาน
+- onlineหลัง replacementคือ beta/gamma
+
+Repository testsรวมเพิ่ม profile/scoped-operation suitesผ่าน `115/115`
+
+ข้อจำกัด: scoped host operationsลด path/symlink mistakesแต่มี TOCTOU windowและไม่ใช่ OS sandbox Strong direct-tool isolationยังต้อง VM/container filesystem backend Profileนี้ยัง disabled by defaultและไม่ติดตั้ง agent-teamsลง Pi profileหลัก
+
 ### `codexstar69` hardening selection
 
 | Feature | Decision | Reason |
@@ -780,14 +832,15 @@ Caution: mount worktreeทั้งก้อน ไม่ซ่อนไฟล�
 
 ห้าม cherry-pick hardening commit ใหญ่ทั้งชุด เพราะ fork diverge จาก upstream 35 commitsและ runtime probe พบ worker-ceiling defect ที่ source testsเดิมไม่จับ
 
-Remaining limitations ก่อน `verified: true`:
+Remaining limitations ก่อน production activation:
 
-1. Node image/profile/SBOMถูก versionแล้ว แต่ patched agent-teams adapter/extensionsยังอยู่ disposable sourceและยังไม่ wire atomically
-2. direct toolsยังทำงานบน hostผ่าน scoped-policy candidate ส่วน Bashอยู่ container; production scoped operations implementationยังไม่มี
+1. overlay/profile/boundaryถูก versionและ atomic runtimeผ่านแล้ว แต่ยัง disabledและยังไม่ติดตั้ง agent-teamsลง profileหลัก
+2. scoped direct toolsยังทำงานบน hostและมี TOCTOU limitation; strong direct isolationต้องใช้ VM/container filesystem backend
 3. imageมี Node/npm/sh เท่านั้น projectอื่นที่ต้องใช้ native toolchainต้องมี role-specific image/digest/SBOM
 4. upload-capable dedicated toolsถูกตัดออกแทนการทดสอบ reviewed upload profile
 5. Docker daemon และ exact local imageเป็น trusted fail-closed dependencies; ห้าม mount socket/host HOME และห้าม runtime pull
-6. worktree mountไม่ซ่อน secret fileที่เกิดภายใน worktree ต้อง pair clean worktree + deterministic secret policy
+6. worktree mountไม่ซ่อน secret fileที่เกิดภายใน worktree ต้อง pair clean worktree + pre-exec data policy
+7. provider/image/daemon fault injection, artifact acceptance และ implement→review→correction chainยังไม่ครบ
 
 ### Adoption decision
 
@@ -820,18 +873,18 @@ Docker-strong profile contract:
 
 Maintenance/upstream strategy:
 
-- ไม่ copy/fork ทั้ง repo เข้า `my-pi` ตอนนี้
-- เสนอ upstream seams ขนาดเล็ก: child profile builder, env allowlist, ready handshake, explicit RPC shutdown และ cleanup suppression
+- ไม่ copy/fork ทั้ง repo เข้า `my-pi`; เก็บ minimal overlayใต้ owner-owned versioned profile package
+- เสนอ upstream seams ขนาดเล็ก: child profile builder, env allowlist, ready handshake, explicit RPC shutdown, environment-key observability และ cleanup suppression
 - เก็บ My Pi policy/profile adapter แยกจาก agent-teams task core
-- pin exact upstream commit จน npm source/versionตรงกัน
-- ถ้า upstreamไม่รับ จึงพิจารณา minimal maintained fork/package แยก โดย preserve MIT provenance ของ `tmustier` และ `codexstar69` รายไฟล์/feature
+- pin exact upstream commitจน npm source/versionตรงกัน; overlay apply mismatchต้อง fail closed
+- preserve MIT provenance ของ `tmustier` และ attributionของ comparator featureจาก `codexstar69`
 
 Remaining before production verified:
 
-1. wire pure command policyเข้ากับ versioned scoped direct-tool implementation; pure moduleยังไม่มี execution side effect
-2. wire versioned image/profile + agent-teams adapter แบบ atomic และ verify observed digestก่อน register
-3. เพิ่ม provider/image/daemon failure และ reviewed artifact collection acceptance
-4. ตัดสิน patched adapter package location หลัง upstream response หรือ maintenance decision
+1. เพิ่ม provider/image/daemon failure และ reviewed artifact collection acceptance
+2. รัน implement→independent-review→correction chainบน atomic profile
+3. ตัดสิน explicit operator install/activationหลัง independent security review; ห้าม auto-installจาก runtime
+4. เสนอ minimal seams upstreamหรือตัดสิน maintenance cadenceของ overlayก่อน stable release
 
 ### Pure dangerous-command policy fixture
 
@@ -1179,12 +1232,14 @@ Decision: **Codex และ Claude เป็น manual-only external harnesses�
 - [x] ปิด graceful/abrupt lifecycle gaps: Worker exit release slot และ cleanup suppressionไม่ recreate team entry
 - [x] กำหนด direct-tool routing และ source-of-truth/upstream strategy
 - [x] สร้าง immutable Node development image/profile package + SPDX SBOM และ rerun single/multi-worker probes
-  - ยังเหลือ atomic adapter/scoped direct-tool wiringก่อน production verified
 - [x] เพิ่ม pure dangerous-command analyzer/resolver + exact short-lived REVIEW grants
-  - adversarial targeted `15/15`, full suite `106/106`; ยังไม่ wire production path
+  - adversarial targeted `15/15`; wiredใน candidate Worker boundaryโดย productionยัง disabled
+- [x] package/wire minimal agent-teams overlay + atomic profile + scoped direct tools
+  - final overlay apply-checkผ่าน exact commit; single/direct/ceiling-2 replacement runtimeผ่าน
+  - observed verifier `verified: true`; full repository suite `115/115`
 - [x] เลือก patched `pi-agent-teams` เป็น provisional Pi-native candidate; piewf no-go immediate dependency
 - [x] เลือก scoped direct tools + Docker-strong Bash สำหรับ initial strong Pi isolation; Gondolin defer เพราะไม่มี QEMU
-- [x] แปลง disposable config shapes เป็น versioned pure adapter builders/verifiers และ tests; ยังไม่ wire spawn behavior
+- [x] แปลง disposable config shapes เป็น versioned builders/verifiersและ candidate Worker boundary; production spawn behaviorยังไม่เปลี่ยน
 
 ## Phase 0 recommendation ณ จุดนี้
 

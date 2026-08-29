@@ -1,0 +1,524 @@
+diff --git a/extensions/teams/leader-lifecycle-commands.ts b/extensions/teams/leader-lifecycle-commands.ts
+index ae24ec1..1e9f897 100644
+--- a/extensions/teams/leader-lifecycle-commands.ts
++++ b/extensions/teams/leader-lifecycle-commands.ts
+@@ -158,8 +158,9 @@ export async function handleTeamCleanupCommand(opts: {
+ 	getTasks: () => TeamTask[];
+ 	renderWidget: () => void;
+ 	style: TeamsStyle;
++	suppressConfigBootstrap: (teamId: string) => void;
+ }): Promise<void> {
+-	const { ctx, rest, teamId, teammates, refreshTasks, getTasks, renderWidget, style } = opts;
++	const { ctx, rest, teamId, teammates, refreshTasks, getTasks, renderWidget, style, suppressConfigBootstrap } = opts;
+ 	const strings = getTeamsStrings(style);
+ 
+ 	const flags = rest.filter((a) => a.startsWith("--"));
+@@ -231,6 +232,7 @@ export async function handleTeamCleanupCommand(opts: {
+ 		for (const w of result.warnings) {
+ 			parts.push(`⚠ ${w}`);
+ 		}
++		suppressConfigBootstrap(teamId);
+ 		ctx.ui.notify(parts.join("\n"), "warning");
+ 	} catch (err) {
+ 		ctx.ui.notify(err instanceof Error ? err.message : String(err), "error");
+diff --git a/extensions/teams/leader-team-command.ts b/extensions/teams/leader-team-command.ts
+index 2e6beda..0cd1522 100644
+--- a/extensions/teams/leader-team-command.ts
++++ b/extensions/teams/leader-team-command.ts
+@@ -105,6 +105,7 @@ export async function handleTeamCommand(opts: {
+ 	shellQuote: (v: string) => string;
+ 	getCurrentCtx: () => ExtensionContext | null;
+ 	stopAllTeammates: (ctx: ExtensionContext, reason: string) => Promise<void>;
++	suppressConfigBootstrap: (teamId: string) => void;
+ }): Promise<void> {
+ 	const {
+ 		args,
+@@ -132,6 +133,7 @@ export async function handleTeamCommand(opts: {
+ 		shellQuote,
+ 		getCurrentCtx,
+ 		stopAllTeammates,
++		suppressConfigBootstrap,
+ 	} = opts;
+ 
+ 	const style = getStyle();
+@@ -239,6 +241,7 @@ export async function handleTeamCommand(opts: {
+ 				getTasks,
+ 				renderWidget,
+ 				style,
++				suppressConfigBootstrap,
+ 			});
+ 		},
+ 
+diff --git a/extensions/teams/leader.ts b/extensions/teams/leader.ts
+index a3bc5c1..cff4402 100644
+--- a/extensions/teams/leader.ts
++++ b/extensions/teams/leader.ts
+@@ -18,6 +18,7 @@ import { openInteractiveWidget } from "./teams-panel.js";
+ import { isTeamDone } from "./teams-ui-shared.js";
+ import { createTeamsWidget } from "./teams-widget.js";
+ import { resolveTeammateModelSelection, formatProviderModel } from "./model-policy.js";
++import { evaluateMaxWorkersPolicy } from "./max-workers-policy.js";
+ import { getTeamsStyleFromEnv, type TeamsStyle, formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
+ import { DelegationTracker, pollLeaderInbox as pollLeaderInboxImpl } from "./leader-inbox.js";
+ import {
+@@ -148,6 +149,19 @@ export function runLeader(pi: ExtensionAPI): void {
+ 	let currentTeamId: string | null = null;
+ 	let tasks: TeamTask[] = [];
+ 	let teamConfig: TeamConfig | null = null;
++	const suppressedConfigBootstrapTeams = new Set<string>();
++	const childProfile = Object.freeze({
++		forceWorktree: process.env.PI_TEAMS_FORCE_WORKTREE === "1",
++		tools: process.env.PI_TEAMS_CHILD_TOOLS
++			?.split(",")
++			.map((tool) => tool.trim())
++			.filter(Boolean),
++		extensions: (process.env.PI_TEAMS_CHILD_EXTENSIONS ?? "")
++			.split(path.delimiter)
++			.map((entry) => entry.trim())
++			.filter(Boolean),
++		maxWorkers: process.env.PI_TEAMS_MAX_WORKERS,
++	});
+ 	const pendingPlanApprovals = new Map<string, { requestId: string; name: string; taskId?: string }>();
+ 	const delegationTracker = new DelegationTracker();
+ 	// Task list namespace. By default we keep it aligned with the current session id.
+@@ -470,18 +484,32 @@ export function runLeader(pi: ExtensionAPI): void {
+ 		if (!currentCtx || !currentTeamId) return;
+ 		const teamDir = getTeamDir(currentTeamId);
+ 		const effectiveTaskListId = taskListId ?? currentTeamId;
++		if (suppressedConfigBootstrapTeams.has(currentTeamId) && !fs.existsSync(teamDir)) {
++			tasks = [];
++			teamConfig = null;
++			return;
++		}
+ 
+ 		const [nextTasks, cfg] = await Promise.all([listTasks(teamDir, effectiveTaskListId), loadTeamConfig(teamDir)]);
+-		tasks = nextTasks;
+-		teamConfig =
++		const hasActiveTeammates = [...teammates.values()].some(
++			(teammate) => teammate.status !== "stopped" && teammate.status !== "error",
++		);
++		const bootstrapSuppressed = suppressedConfigBootstrapTeams.has(currentTeamId);
++		const shouldBootstrap = !bootstrapSuppressed || nextTasks.length > 0 || hasActiveTeammates;
++		const nextConfig =
+ 			cfg ??
+-			(await ensureTeamConfig(teamDir, {
+-				teamId: currentTeamId,
+-				taskListId: effectiveTaskListId,
+-				leadName: "team-lead",
+-				style,
+-			}));
+-		style = teamConfig.style ?? style;
++			(shouldBootstrap
++				? await ensureTeamConfig(teamDir, {
++						teamId: currentTeamId,
++						taskListId: effectiveTaskListId,
++						leadName: "team-lead",
++						style,
++					})
++				: null);
++		if (nextConfig) suppressedConfigBootstrapTeams.delete(currentTeamId);
++		tasks = nextTasks;
++		teamConfig = nextConfig;
++		style = nextConfig?.style ?? style;
+ 
+ 		// Auto-done hint (fire once per "all done" state transition)
+ 		if (isTeamDone(tasks, teammates)) {
+@@ -517,6 +545,7 @@ export function runLeader(pi: ExtensionAPI): void {
+ 		const warnings: string[] = [];
+ 		const mode: ContextMode = opts.mode ?? "fresh";
+ 		let workspaceMode: WorkspaceMode = opts.workspaceMode ?? "shared";
++		if (childProfile.forceWorktree) workspaceMode = "worktree";
+ 
+ 		const name = sanitizeName(opts.name);
+ 		if (!name) return { ok: false, error: "Missing comrade name" };
+@@ -525,6 +554,17 @@ export function runLeader(pi: ExtensionAPI): void {
+ 			return { ok: false, error: `${formatMemberDisplayName(style, name)} already exists (${strings.teamNoun})` };
+ 		}
+ 
++		const teamId = currentTeamId ?? ctx.sessionManager.getSessionId();
++		const teamDir = getTeamDir(teamId);
++		const configForCeiling = teamConfig ?? (await loadTeamConfig(teamDir));
++		const workerCeiling = evaluateMaxWorkersPolicy({
++			name,
++			teammates,
++			teamConfig: configForCeiling,
++			env: { PI_TEAMS_MAX_WORKERS: childProfile.maxWorkers },
++		});
++		if (!workerCeiling.ok) return { ok: false, error: workerCeiling.error ?? "Worker ceiling reached" };
++
+ 		// Spawn-time model / thinking overrides (optional).
+ 		const thinkingLevel = opts.thinking ?? pi.getThinkingLevel();
+ 
+@@ -537,8 +577,6 @@ export function runLeader(pi: ExtensionAPI): void {
+ 		const { provider: childProvider, modelId: childModelId, warnings: modelWarnings } = modelResolution.value;
+ 		warnings.push(...modelWarnings);
+ 
+-		const teamId = currentTeamId ?? ctx.sessionManager.getSessionId();
+-		const teamDir = getTeamDir(teamId);
+ 		const teamSessionsDir = getTeamSessionsDir(teamDir);
+ 		const session = await createSessionForTeammate(ctx, mode, teamSessionsDir);
+ 		const { sessionFile, note } = session;
+@@ -591,11 +629,19 @@ export function runLeader(pi: ExtensionAPI): void {
+ 		});
+ 
+ 		const builtInToolSet = new Set(["read", "bash", "edit", "write", "grep", "find", "ls"]);
+-		const tools = (pi.getActiveTools() ?? []).filter((t) => builtInToolSet.has(t));
+-		const argsForChild: string[] = [];
++		const tools = (childProfile.tools ?? (pi.getActiveTools() ?? [])).filter((tool) => builtInToolSet.has(tool));
++		if (tools.length === 0) return { ok: false, error: "Verified child profile resolved to no active tools" };
++
++		const argsForChild: string[] = [
++			"--name",
++			`mypi-worker:agent-teams-${name}`,
++			"--no-skills",
++			"--no-prompt-templates",
++			"--no-themes",
++			"--no-context-files",
++		];
+ 		if (sessionFile) argsForChild.push("--session", sessionFile);
+-		argsForChild.push("--session-dir", teamSessionsDir);
+-		if (tools.length) argsForChild.push("--tools", tools.join(","));
++		argsForChild.push("--session-dir", teamSessionsDir, "--tools", tools.join(","));
+ 
+ 		// Model + thinking for the child process.
+ 		if (childModelId) {
+@@ -605,9 +651,11 @@ export function runLeader(pi: ExtensionAPI): void {
+ 		argsForChild.push("--thinking", thinkingLevel);
+ 
+ 		const teamsEntry = getTeamsExtensionEntryPath();
+-		if (teamsEntry) {
+-			argsForChild.push("--no-extensions", "-e", teamsEntry);
+-		}
++		if (!teamsEntry) return { ok: false, error: "Teams extension entry is unavailable for the child profile" };
++		const extraExtensions = childProfile.extensions;
++		argsForChild.push("--no-extensions");
++		// Boundary extensions initialize before the teams worker registers itself online.
++		for (const entry of [...extraExtensions, teamsEntry]) argsForChild.push("-e", entry);
+ 
+ 		const strings = getTeamsStrings(style);
+ 		const systemAppend = `You are ${strings.memberTitle.toLowerCase()} '${name}'. You collaborate with the ${strings.leaderTitle.toLowerCase()}. Prefer working from the shared task list.\n`;
+@@ -623,6 +671,7 @@ export function runLeader(pi: ExtensionAPI): void {
+ 			warnings.push(...res.warnings);
+ 		}
+ 
++		const sessionName = `pi agent teams - ${strings.memberTitle.toLowerCase()} ${name}`;
+ 		try {
+ 			await t.start({
+ 				cwd: childCwd,
+@@ -634,22 +683,23 @@ export function runLeader(pi: ExtensionAPI): void {
+ 					PI_TEAMS_LEAD_NAME: "team-lead",
+ 					PI_TEAMS_STYLE: style,
+ 					PI_TEAMS_AUTO_CLAIM: autoClaim ? "1" : "0",
++					PI_TEAMS_ROOT_DIR: getTeamsRootDir(),
++					MYPI_WORKER: "1",
+ 					...(opts.planRequired ? { PI_TEAMS_PLAN_REQUIRED: "1" } : {}),
+ 				},
+ 				args: argsForChild,
+ 			});
+-		} catch (err) {
+-			teammates.delete(name);
+-			return { ok: false, error: err instanceof Error ? err.message : String(err) };
+-		}
+-
+-		const sessionName = `pi agent teams - ${strings.memberTitle.toLowerCase()} ${name}`;
+-
+-		// Leader-driven session naming (so teammates are easy to spot in /resume).
+-		try {
++			// A second RPC round-trip closes the race where startup hooks fail immediately
++			// after get_state but before the Worker is recorded as online.
+ 			await t.setSessionName(sessionName);
+ 		} catch (err) {
+-			warnings.push(`Failed to set session name for ${name}: ${err instanceof Error ? err.message : String(err)}`);
++			teammates.delete(name);
++			await t.stop().catch(() => undefined);
++			if (workspaceMode === "worktree") {
++				const cleanup = await cleanupWorktrees({ teamDir, teamId, repoCwd: ctx.cwd });
++				warnings.push(...cleanup.warnings);
++			}
++			return { ok: false, error: `Worker profile startup verification failed: ${err instanceof Error ? err.message : String(err)}` };
+ 		}
+ 
+ 		// Also send via mailbox so non-RPC/manual workers can be named the same way.
+@@ -676,6 +726,15 @@ export function runLeader(pi: ExtensionAPI): void {
+ 				workspaceMode,
+ 				sessionName,
+ 				thinkingLevel,
++				childProfile: {
++					environment: "allowlist",
++					environmentKeys: t.getEnvironmentKeys(),
++					tools,
++					extensionTools: ["team_message"],
++					extensions: [...extraExtensions, teamsEntry],
++					forceWorktree: childProfile.forceWorktree,
++					maxWorkers: workerCeiling.limit,
++				},
+ 				...(childModel ? { model: childModel } : {}),
+ 			},
+ 		});
+@@ -700,6 +759,7 @@ export function runLeader(pi: ExtensionAPI): void {
+ 		if (!currentCtx || !currentTeamId) return;
+ 		const teamDir = getTeamDir(currentTeamId);
+ 		const effectiveTaskListId = taskListId ?? currentTeamId;
++		if (suppressedConfigBootstrapTeams.has(currentTeamId) && !fs.existsSync(teamDir)) return;
+ 		await pollLeaderInboxImpl({
+ 			ctx: currentCtx,
+ 			teamId: currentTeamId,
+@@ -1039,6 +1099,13 @@ export function runLeader(pi: ExtensionAPI): void {
+ 				shellQuote,
+ 				getCurrentCtx: () => currentCtx,
+ 				stopAllTeammates,
++				suppressConfigBootstrap: (teamId) => {
++					suppressedConfigBootstrapTeams.add(teamId);
++					if (currentTeamId === teamId) {
++						tasks = [];
++						teamConfig = null;
++					}
++				},
+ 			});
+ 		},
+ 	});
+diff --git a/extensions/teams/teammate-rpc.ts b/extensions/teams/teammate-rpc.ts
+index 8c00c49..3ca1279 100644
+--- a/extensions/teams/teammate-rpc.ts
++++ b/extensions/teams/teammate-rpc.ts
+@@ -1,6 +1,40 @@
+ import { spawn } from "node:child_process";
+ import type { AgentEvent } from "@earendil-works/pi-agent-core";
+ 
++const CHILD_ENV_ALLOWLIST = new Set([
++	"PATH",
++	"HOME",
++	"USER",
++	"LOGNAME",
++	"SHELL",
++	"TMPDIR",
++	"TMP",
++	"TEMP",
++	"LANG",
++	"TERM",
++	"COLORTERM",
++	"NO_COLOR",
++	"FORCE_COLOR",
++	"CI",
++]);
++
++export function buildTeammateEnvironment(
++	parent: NodeJS.ProcessEnv,
++	overrides: Record<string, string>,
++): NodeJS.ProcessEnv {
++	const child: NodeJS.ProcessEnv = {};
++	for (const [key, value] of Object.entries(parent)) {
++		if (value === undefined) continue;
++		if (CHILD_ENV_ALLOWLIST.has(key) || key.startsWith("LC_")) child[key] = value;
++	}
++	for (const [key, value] of Object.entries(overrides)) child[key] = value;
++	return child;
++}
++
++function sleep(ms: number): Promise<void> {
++	return new Promise((resolve) => setTimeout(resolve, ms));
++}
++
+ export type TeammateStatus = "starting" | "idle" | "streaming" | "stopped" | "error";
+ 
+ type RpcCommand =
+@@ -97,6 +131,7 @@ export class TeammateRpc {
+ 	private nextId = 0;
+ 	private buffer = "";
+ 	private stderr = "";
++	private environmentKeys: string[] = [];
+ 	private eventListeners: Array<(ev: AgentEvent) => void> = [];
+ 	private closeListeners: Array<(code: number | null) => void> = [];
+ 
+@@ -125,12 +160,18 @@ export class TeammateRpc {
+ 		return this.stderr;
+ 	}
+ 
++	getEnvironmentKeys(): string[] {
++		return [...this.environmentKeys];
++	}
++
+ 	async start(opts: { cwd: string; env: Record<string, string>; args: string[] }): Promise<void> {
+ 		if (this.proc) throw new Error("Teammate already started");
+ 
++		const environment = buildTeammateEnvironment(process.env, opts.env);
++		this.environmentKeys = Object.keys(environment).sort();
+ 		this.proc = spawn("pi", ["--mode", "rpc", ...opts.args], {
+ 			cwd: opts.cwd,
+-			env: { ...process.env, ...opts.env },
++			env: environment,
+ 			stdio: ["pipe", "pipe", "pipe"],
+ 		});
+ 
+@@ -158,6 +199,7 @@ export class TeammateRpc {
+ 		});
+ 
+ 		this.proc.on("close", (code) => {
++			this.proc = null;
+ 			this.status = code === 0 ? "stopped" : "error";
+ 			if (code !== 0) this.lastError = `Teammate process exited with code ${code}`;
+ 			for (const [id, p] of this.pending.entries()) {
+@@ -167,24 +209,33 @@ export class TeammateRpc {
+ 			for (const l of this.closeListeners) l(code);
+ 		});
+ 
+-		// Give the child a moment to boot.
+-		await new Promise((r) => setTimeout(r, 120));
+-		this.status = "idle";
+-		const bootNow = Date.now();
+-		this.lastStatusChangeAt = bootNow;
+-		this.lastEventAt = bootNow;
++		try {
++			await this.send({ type: "get_state" }, 10_000);
++			this.status = "idle";
++			const bootNow = Date.now();
++			this.lastStatusChangeAt = bootNow;
++			this.lastEventAt = bootNow;
++		} catch (error) {
++			const proc = this.proc;
++			this.proc = null;
++			this.status = "error";
++			this.lastError = error instanceof Error ? error.message : String(error);
++			proc?.kill("SIGTERM");
++			throw new Error(`Teammate RPC ready handshake failed for ${this.name}: ${this.lastError}`, { cause: error });
++		}
+ 	}
+ 
+ 	async stop(): Promise<void> {
+-		if (!this.proc) return;
++		const proc = this.proc;
++		if (!proc) return;
+ 		try {
+-			await this.abort();
++			await Promise.race([this.abort().catch(() => undefined), sleep(500)]);
+ 		} catch {
+ 			// ignore
+ 		}
+-		this.proc.kill("SIGTERM");
++		proc.kill("SIGTERM");
+ 		setTimeout(() => {
+-			if (this.proc && !this.proc.killed) this.proc.kill("SIGKILL");
++			if (!proc.killed) proc.kill("SIGKILL");
+ 		}, 1000);
+ 		this.proc = null;
+ 		this.status = "stopped";
+@@ -255,7 +306,7 @@ export class TeammateRpc {
+ 		for (const l of this.eventListeners) l(ev);
+ 	}
+ 
+-	private async send(cmd: RpcCommandWithoutId): Promise<RpcResponse> {
++	private async send(cmd: RpcCommandWithoutId, timeoutMs = 60_000): Promise<RpcResponse> {
+ 		if (!this.proc || !this.proc.stdin) throw new Error("Teammate is not running");
+ 		const id = `req-${this.name}-${this.nextId++}`;
+ 		const full = { id, ...cmd } satisfies RpcCommand;
+@@ -269,7 +320,7 @@ export class TeammateRpc {
+ 				if (!this.pending.has(id)) return;
+ 				this.pending.delete(id);
+ 				reject(new Error(`Timeout waiting for response (id=${id}, cmd=${full.type})`));
+-			}, 60_000);
++			}, timeoutMs);
+ 		});
+ 	}
+ }
+diff --git a/extensions/teams/worker.ts b/extensions/teams/worker.ts
+index 78b8b47..e791a44 100644
+--- a/extensions/teams/worker.ts
++++ b/extensions/teams/worker.ts
+@@ -270,10 +270,14 @@ export function runWorker(pi: ExtensionAPI): void {
+ 							// ignore
+ 						}
+ 						try {
++							await setMemberStatus(teamDir, agentName, "offline", {
++								meta: { offlineReason: "shutdown-approved", shutdownRequestId: shutdown.requestId },
++							});
+ 							ctxRef?.shutdown();
+ 						} catch {
+ 							// ignore
+ 						}
++						setTimeout(() => process.exit(0), 25);
+ 						return;
+ 					}
+ 
+diff --git a/extensions/teams/max-workers-policy.ts b/extensions/teams/max-workers-policy.ts
+new file mode 100644
+index 0000000..3447fa5
+--- /dev/null
++++ b/extensions/teams/max-workers-policy.ts
+@@ -0,0 +1,77 @@
++import { sanitizeName } from "./names.js";
++import type { TeamConfig } from "./team-config.js";
++
++export interface MaxWorkersPolicyResult {
++	ok: boolean;
++	limit: number | null;
++	activeWorkers: string[];
++	error?: string;
++}
++
++export function getMaxWorkersLimit(env: NodeJS.ProcessEnv = process.env): number | null {
++	const raw = env.PI_TEAMS_MAX_WORKERS?.trim();
++	if (!raw) return null;
++	const parsed = Number.parseInt(raw, 10);
++	if (!Number.isFinite(parsed) || parsed <= 0) return null;
++	return Math.floor(parsed);
++}
++
++export function getOnlineWorkerNames(opts: {
++	teammates: ReadonlyMap<string, unknown>;
++	teamConfig: TeamConfig | null;
++}): string[] {
++	const names = new Set<string>();
++	for (const [name, worker] of opts.teammates.entries()) {
++		const status = typeof worker === "object" && worker !== null && "status" in worker
++			? (worker as { status?: unknown }).status
++			: undefined;
++		if (status === "stopped" || status === "error") continue;
++		const safeName = sanitizeName(name);
++		if (safeName) names.add(safeName);
++	}
++
++	for (const member of opts.teamConfig?.members ?? []) {
++		if (member.role !== "worker") continue;
++		if (member.status !== "online") continue;
++		const safeName = sanitizeName(member.name);
++		if (safeName) names.add(safeName);
++	}
++
++	return Array.from(names).sort((a, b) => a.localeCompare(b));
++}
++
++export function evaluateMaxWorkersPolicy(opts: {
++	name: string;
++	teammates: ReadonlyMap<string, unknown>;
++	teamConfig: TeamConfig | null;
++	env?: NodeJS.ProcessEnv;
++}): MaxWorkersPolicyResult {
++	const limit = getMaxWorkersLimit(opts.env);
++	const activeWorkers = getOnlineWorkerNames({ teammates: opts.teammates, teamConfig: opts.teamConfig });
++	if (limit === null) return { ok: true, limit, activeWorkers };
++
++	const safeName = sanitizeName(opts.name);
++	if (!safeName) {
++		return {
++			ok: false,
++			limit,
++			activeWorkers,
++			error: "Missing worker name",
++		};
++	}
++
++	if (activeWorkers.includes(safeName)) {
++		return { ok: true, limit, activeWorkers };
++	}
++
++	if (activeWorkers.length < limit) {
++		return { ok: true, limit, activeWorkers };
++	}
++
++	return {
++		ok: false,
++		limit,
++		activeWorkers,
++		error: `Max workers limit reached (${activeWorkers.length}/${limit}). Set PI_TEAMS_MAX_WORKERS=0 to disable or raise the limit.`,
++	};
++}

@@ -3,13 +3,22 @@
   "profileId": "pi-agent-teams-docker-strong-v1",
   "status": "phase0-candidate",
   "platform": "linux/arm64",
+  "policyVersion": "command-policy-v1",
   "toolchain": {
     "node": "24.15.0",
     "baseImage": "docker.io/library/node:24.15.0-alpine3.23",
     "baseDigest": "sha256:d1b3b4da11eefd5941e7f0b9cf17783fc99d9c6fc34884a665f40a06dbdfc94f",
     "observedLocalImageDigest": "sha256:8b50f94e47e5085446081411ed152f84ebe0a146a575bba1720b56821db15ff8",
     "dockerfileSha256": "a391813a89ea2dc8ff004f9ca80a06ada2fdce618ff5a5d06b9615fb17e6ba35",
-    "sbomSpdxSha256": "7fc73a1a025052371f5f801e0dfff8a6304c6b21df0b1398a78c7be8e9240961"
+    "sbomSpdxSha256": "7fc73a1a025052371f5f801e0dfff8a6304c6b21df0b1398a78c7be8e9240961",
+    "workerBoundarySha256": "41ee6b8d62b5f6ac38435da14649cbd67c23b7886494b648b22633d4f29b5e0d",
+    "commandPolicySha256": "d1696594a39fc8eba07ecea9f982abc1aaaaccc5e82abf1be6c8a250a923922f",
+    "scopedWorkerToolsSha256": "c9b5cf7796bf8469a28e514ecbdbbe82ee0f61a26da83532792d4c071284dcee"
+  },
+  "integration": {
+    "upstreamRepository": "https://github.com/tmustier/pi-agent-teams.git",
+    "upstreamCommit": "2c1776d2a68104aaadc1c622d8a704684c7c35d6",
+    "overlayPatchSha256": "77b0a03b07346372db94ceb2b28115cdb8f5b700a3cd117a79d9e4ff8a55abad"
   },
   "runtime": {
     "pull": "never",
@@ -28,6 +37,7 @@
   },
   "workerResources": {
     "tools": ["read", "bash", "edit", "write"],
+    "backendTools": ["team_message"],
     "uploads": false,
     "shellNetwork": false,
     "workspaceMode": "worktree"

@@ -53,6 +53,12 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
 - `command-policy.ts`
   - pure Phase 0 analyzer/resolver สำหรับ dangerous commands, hardline deny, HUMAN/REVIEW routing และ exact short-lived review grants
   - normalize shell syntaxแบบ bounded/fail-closed แต่เป็น defense-in-depth ไม่ใช่ sandbox และยังไม่ถูกโหลดใน production path
+- `scoped-worker-tools.ts`
+  - scoped Read/Write/Edit operationsสำหรับ Worker; canonicalize existing ancestor/targetและ deny external, sensitive, `.git` และ symlink escape
+  - เป็น host-operation guardที่มี TOCTOU limitation ไม่ใช่ OS sandbox
+- `agent-teams-profile.ts`
+  - สร้าง/verify atomic profileสำหรับ exact patched `tmustier/pi-agent-teams` commit, Worker ceiling, tools/extensions, env allowlist และ immutable image evidence
+  - profile candidateยัง disabled by defaultและไม่ติดตั้ง agent-teamsเข้า Pi profileหลัก
 - `local/extensions/azure-devops/`
   - maintain source ไว้ใน repository นี้ แต่ไม่โหลดจาก global package
   - แต่ละ trusted project ต้องชี้ path นี้ผ่าน `.pi/settings.json` และมี `.pi/azure-devops.json`
@@ -71,8 +77,8 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
 ### Delegated worker profiles
 
 - [`profiles/pi-agent-teams/node-worker-v1/`](profiles/pi-agent-teams/node-worker-v1/)
-  - pinned Node `24.15.0` Dockerfile, runtime contract และ SPDX SBOM สำหรับ worktree-only Bash ของ patched agent-teams
-  - ยังเป็น Phase 0 candidate และยังไม่ถูก wire เข้า production spawn
+  - pinned Node `24.15.0` Dockerfile, runtime contract, SPDX SBOM, minimal upstream overlay และ exact Worker boundaryสำหรับ patched agent-teams
+  - atomic builder/runtime probesผ่านแล้ว แต่ยังเป็น Phase 0 candidateและไม่ถูกโหลดใน production spawn
 
 ### Third-party packages
 
