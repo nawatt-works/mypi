@@ -47,6 +47,9 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - ใช้ `/mypi-orchestrate-cleanup` เพื่อลบ worktree ทีละรายการหลังยืนยัน โดยข้ามตัวที่ Worker ยังทำงานอยู่หรือมีงานค้างไม่ commit
   - ประกาศอำนาจสามชั้นและกระตุ้นให้ประเมินการแตกทีมตอนเริ่มงาน เฉพาะเมื่อรันอยู่ใต้ Herdr
   - ใช้ `/mypi-orchestrate automatic|off|status` เพื่อเปิดหรือปิดการเสนอทีมอัตโนมัติราย session
+- `harness-profiles.ts`
+  - pure builders/verifiers สำหรับ pinned Codex/Claude delegated profiles, environment allowlist และ requested/effective checks
+  - ยังไม่ถูก wire เข้า spawn path จึงยังไม่เปลี่ยน behavior ของ Worker production
 - `local/extensions/azure-devops/`
   - maintain source ไว้ใน repository นี้ แต่ไม่โหลดจาก global package
   - แต่ละ trusted project ต้องชี้ path นี้ผ่าน `.pi/settings.json` และมี `.pi/azure-devops.json`
@@ -61,6 +64,12 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - แยกการใช้ Plannotator สำหรับ human review ออกจากการติดตาม continuity ของงาน
   - inject session snapshot หรือ workspace pointer กลับหลัง compaction/resume
   - ใช้ `/mypi-continuity automatic|off|status` เพื่อควบคุม automatic continuity planning ราย session
+
+### Delegated worker profiles
+
+- [`profiles/pi-agent-teams/node-worker-v1/`](profiles/pi-agent-teams/node-worker-v1/)
+  - pinned Node `24.15.0` Dockerfile, runtime contract และ SPDX SBOM สำหรับ worktree-only Bash ของ patched agent-teams
+  - ยังเป็น Phase 0 candidate และยังไม่ถูก wire เข้า production spawn
 
 ### Third-party packages
 

@@ -2,7 +2,7 @@
 
 > **Status:** active — Phase 0 runtime probes<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-28 22:56<br>
+> **Updated:** 2026-08-29 18:17<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -56,7 +56,7 @@
 | Herdr | `0.8.0` | รองรับ `pi`, `claude`, `codex`, `opencode` และ harness อื่น; เป็น process/pane control plane ไม่ใช่ sandbox |
 | Pi | `0.84.3` | จำกัด tools/resources และโหลด explicit extensions ได้; มี sandbox และ Gondolin examples แต่ไม่มี permission-mode กลางใน core |
 | OpenCode | `1.18.21` | `--auto` auto-approve สิ่งที่ไม่ explicit deny; agent-specific permission และ task permission |
-| Claude Code | `2.1.248` | `auto` ใช้ classifier; subagents/teams ทำ orchestration และ permission inheritance |
+| Claude Code | `2.1.251` (latest re-probe) | `dontAsk` + exact allowlist ให้ deterministic deny; sandbox/settings และ env isolationยังต้อง explicit |
 | Codex CLI | `0.150.1` | แยก sandbox กับ approval; `--approve-for-me` route escalation ไป automatic reviewer |
 | `pi-extensible-workflows` | npm `5.8.0`, source `ecadda0` | มี workflows, durable subagents, roles, selectors, budgets, worktrees, replay/resume และ Herdr transport; แต่ release เปลี่ยนเร็วและ repository ยังไม่มี LICENSE file แม้ package metadata/README ระบุ MIT |
 | `tmustier/pi-agent-teams` / `codexstar69` | upstream `2c1776d` / fork `58f0a39` | Pi RPC team runtime, task/mailbox, auto-claim, completion wake, worktrees และ UI; MIT ชัดเจน แต่ child profile ปัจจุบัน inherit env, ตัด guardrails และไม่มี hard policy |
@@ -183,9 +183,15 @@ hard deny / managed ceiling
 
 ห้าม install production แบบ as-is เพราะ child spawn inherit `process.env`, ใช้ `--no-extensions -e teams` ซึ่งตัด My Pi guardrails/sandbox, default writing workspace เป็น shared และไม่มี deterministic secret/network/upload policy Phase 0 runtime บน explicit worktree ยืนยันว่า fake `.env`, fake parent env, external `/tmp` write และ shell network ผ่านทั้งหมด แม้ routine RPC/worktree lifecycle ทำงานดี
 
-Disposable child-profile patch ยืนยันว่า env allowlist, exact tools/extensions, worktree ceiling, deterministic no-UI policy และ fail-closed boundary แก้ fake env/secret/external/network fixtures ได้โดยไม่แก้ team/task core Direct/fail-init/ceiling 2/multi-worker probes ผ่าน และ Docker-strong profile mount เฉพาะ worktreeพร้อม network none ปิด host read/write gap Graceful RPC shutdown release slotได้หลัง explicit process exit แต่ยังไม่ verified production เพราะ image/profile packaging, direct-tool routing และ abrupt leader cleanupยังไม่จบ
+Disposable child-profile patch ยืนยันว่า env allowlist, exact tools/extensions, worktree ceiling, deterministic no-UI policy และ fail-closed boundary แก้ fake env/secret/external/network fixtures ได้โดยไม่แก้ team/task core Direct/fail-init/ceiling 2/multi-worker/Docker-strong/lifecycle cleanup probes ผ่านแล้ว Versioned Node image/profile/SPDX SBOMถูกเพิ่มและ rerunผ่านบน exact digest แต่ยังไม่ verified productionเพราะ patched adapter/scoped direct toolsยังไม่ถูก package/wireแบบ atomic
 
 ถ้านำมาใช้ My Pi ยังเป็นเจ้าของ mandate/policy/audit/final verification; agent-teams เป็นเจ้าของ Pi task transport/RPC team lifecycle เท่านั้น และ Herdr ยังดูแล external harnesses
+
+### D11 — Codex/Claude external harnesses เป็น manual-only ใน initial release
+
+Isolated Codex/Claude profilesผ่าน routine/test/environment/declared-credential/external-write/network fixtures และ Codex warm Herdr session track lifecycleได้ แต่ทั้งสองอ่าน unique generic host fileได้ก่อนเพิ่ม exact deny จึงไม่ผ่าน D5 worktree-only read
+
+`@anthropic-ai/sandbox-runtime` เป็น deny-only read policy ไม่ใช่ mount-only view ส่วน Docker/VM ต้อง provision provider auth/toolchainใหม่และเป็น security tradeoffที่ mandateนี้ไม่ได้อนุญาต ดังนั้นห้ามเปิด delegated spawnให้ Codex/Claudeเพียงเพราะ zero-dialog UXผ่าน เก็บ pure builders/verifiersไว้สำหรับ future separately-isolated execution identity และคง Herdr external lanesใน manual mode
 
 ## Target architecture
 
@@ -207,7 +213,7 @@ Disposable child-profile patch ยืนยันว่า env allowlist, exact 
 ┌─────────────────────────────────────────────────────────────┐
 │ Execution backend                                           │
 │                                                             │
-│  Herdr backend (initial)          Pi-native backends (gate) │
+│  Herdr backend (manual initial)   Pi-native backends (gate) │
 │  ├─ Pi worker profile             ├─ agent-teams RPC/tasks  │
 │  ├─ Codex auto-review profile     └─ piewf workflow/budgets │
 │  ├─ Claude auto profile                                     │
@@ -366,7 +372,7 @@ enabled = false
 
 Phase 0 ยืนยันว่า profile นี้ทำ routine workspace write ได้และ deny fake secret, `/tmp` external write และ shell network ได้โดยไม่มี human prompt แต่ protected `.git` ทำให้ local commit ไม่ผ่าน; ค่าเริ่มต้นจึงให้ Coordinator commit หลัง collect
 
-Herdr probe ยืนยัน boundary เดิม แต่พบ blocker ใหม่: requested `gpt-5.4-mini`/low เปลี่ยนเป็น effective `gpt-5.6-luna`/medium, interactive TUI ยังโหลด user config และ Herdr readiness/working state รายงาน `done` ก่อน execution จบ จึงยังไม่ verified สำหรับ unattended control loop
+Isolated `CODEX_HOME` re-probe ยืนยัน requested/effective `gpt-5.6-luna`/medium จาก persisted `turn_context`, environment allowlist และ routine/test/declared-credential/external/network fixturesผ่าน Warm Herdr sessionที่ `interactive_ready` แล้วเห็น `working` ระหว่าง delayed turn และ settleหลังจบจริง แต่ unique generic host readผ่านก่อนเพิ่ม exact credential deny จึงยัง fail D5 worktree-only read นอกจากนี้ interactive Codex `0.150.1` ไม่มี `--ignore-user-config`; fresh profileต้องมี isolated `CODEX_HOME`, readiness/session gate และ whole-process read isolationก่อน verified
 
 Probe ต้องยืนยัน:
 
@@ -382,24 +388,25 @@ Probe ต้องยืนยัน:
 Candidate launch baseline:
 
 ```text
-claude --permission-mode auto --restricted --safe-mode --strict-mcp-config \
-  --settings <temporary-fail-closed-sandbox-settings>
+claude --permission-mode dontAsk --restricted --setting-sources '' --strict-mcp-config \
+  --settings <fail-closed-settings-plus-exact-herdr-hook> \
+  --tools Read,Edit,Write,Bash --allowedTools Read,Edit,Write,Bash
 ```
 
-Temporary settings ต้องมี explicit Read denies, `sandbox.enabled`, `allowUnsandboxedCommands: false`, `failIfUnavailable: true`, filesystem denies และ network deny/allowlist ตาม mandate Phase 0 ยืนยันว่า `auto --restricted --safe-mode` โดยไม่มี sandbox settings ยังอ่าน secret, เขียน external path และใช้ network ได้
+Temporary settings ต้องมี explicit Read/Write denies, `sandbox.enabled`, `allowUnsandboxedCommands: false`, `failIfUnavailable: true`, filesystem denies และ network deny/allowlistตาม mandate Process environment ต้องเป็น allowlist; direct re-probe รอบที่ inherit parent env ถูก reject ก่อนแก้ด้วย `env -i`
 
-Herdr interactive probes ยืนยันว่า sandbox hard-deny secret/external/network ได้ แต่ทั้ง `auto+sandbox` และ attempt ที่เพิ่ม `--allowedTools Read Edit Write Bash` ยังเปิด dialog ตอนสร้าง in-worktree report จึงเป็น no-go สำหรับ unattended writing จน explicit allow/`dontAsk`/permission-handler profile ผ่านจริง
+Phase 0 direct profile บน Claude `2.1.251` observed model `claude-sonnet-5`, mode `dontAsk`, exact tools, explicit SessionStart hook และผ่าน routine/test/env/declared-credential/external/network fixturesโดยไม่มี prompt Target ไม่ใช้ `--safe-mode` เพราะจะปิด Herdr hook; `--restricted` ตัด ambient settings แล้ว inject exact hook/settingsเอง `sandbox.credentials` ปิด path/env ที่ประกาศแต่ไม่ใช่ generic host read isolation Historical Herdr `auto` attempts ยังเปิด Write dialog ดังนั้น fresh Herdr `dontAsk` spawn ต้องผ่าน interactive proof ก่อน verified
 
 Probe ต้องยืนยัน:
 
-- auto mode พร้อมใช้งานจริง ไม่ fallback เป็น Manual แบบเงียบ
+- observed permission mode เป็น `dontAsk` ไม่ fallback เป็น Manual/auto แบบเงียบ
 - routine edit/test ใน worktree ไม่ prompt
 - explicit denies ยังบังคับ
 - background/subagent prompt ไม่ถูกโยนไป terminal อื่น
 - trust/hooks/MCP/project settings ไม่ขยายสิทธิ์เกิน profile
 - interaction ที่ต้องคนจริงถูกจำแนกเป็น human-only
 
-ถ้า auto mode unavailable ให้ profile เป็น unverified และ delegated spawn ต้อง fallback ไป Pi/Codex หรือ manual mode
+ถ้า `dontAsk`, sandbox หรือ exact settings unavailable ให้ profile เป็น unverified และ delegated spawn ต้อง fallback ไป Pi/Codex หรือ manual mode
 
 ### OpenCode Worker
 
@@ -464,12 +471,12 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
 - [ ] probe Pi read-only และ worktree-write worker profiles โดยไม่มี dialog
   - [x] non-interactive resource profiles + guardrail + sandboxed Bash
   - [ ] Herdr interactive lifecycle profile
-- [x] probe Codex auto-review + custom permission profile
-  - shorthand `--approve-for-me --sandbox workspace-write` ถูก reject
-  - custom profile ผ่าน routine/secret/external/network probes; local commit ถูก deny
-- [x] probe Claude `auto` และ fallback behavior
-  - `auto` อย่างเดียวถูก reject
-  - explicit fail-closed sandbox settings ผ่าน routine/secret/external/network probes
+- [x] gate Codex auto-review + custom permission profile → manual-only
+  - shorthand baselineถูก reject; isolated direct declared boundariesและ requested/effective modelผ่าน
+  - warm Herdr lifecycleผ่าน แต่ generic host read fail D5; ไม่ fresh-spawnจนมี whole-process isolation
+- [x] gate Claude deterministic permission profile → manual-only
+  - `auto` baselineถูก reject; direct `dontAsk` declared boundariesผ่านไม่มี prompt
+  - `sandbox.credentials` ปิดเฉพาะรายการที่ประกาศ; generic host read fail D5
 - [x] probe OpenCode isolated policy + `--auto`
   - direct isolated config ใช้ได้ แต่ Bash redirection ข้าม external-directory deny; delegated profile เป็น no-go
 - [x] ตรวจว่า Herdr lifecycle integrations ของ target harness เป็น `current`
@@ -477,8 +484,8 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
 - [ ] ทดสอบ human-only action, hard deny, provider error, timeout และ missing artifact
   - fake secret, external write และ network hard-deny probes ผ่านใน provisional Pi/Codex/Claude profiles
 - [ ] ทดสอบว่าผู้ใช้ไม่ต้องกด routine permissions ในหนึ่ง implement-review chain
-  - Codex implement ผ่านและ Coordinator commit หลัง collect
-  - Claude review/boundary ผ่านใน pane แต่ Write report prompt ทั้ง auto และ auto+allowedTools; chain ยัง fail
+  - Codex implement ผ่านและ Coordinator commit หลัง collect; warm readiness timing re-probeผ่าน
+  - Claude direct `dontAsk` profileผ่าน แต่ chainยังไม่ได้ rerunบน fresh Herdr profile
 - [ ] `pi-agent-teams` gate:
   - [x] ตรวจ full Git lineage, license, source architecture และ source smoke tests
   - [x] เลือก `tmustier` เป็น base candidate; ใช้ `codexstar69` เป็น hardening comparator
@@ -501,7 +508,8 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
     - My Pi own authority/audit/acceptance; agent-teams own Pi task transport/RPC; one backend per Worker
     - direct toolsใช้ scoped operations; Bash mount worktree-only container; no runtime image pull
     - upstream minimal seamsก่อนพิจารณา maintained fork
-  - [ ] สร้าง/เลือก immutable development image digest และ versioned production profile package
+  - [x] สร้าง immutable Node `24.15.0` image digest, versioned profile package และ SPDX SBOM
+    - exact digestผ่าน standalone + patched agent-teams single/multi-worker probes; role-specific toolchainsเป็น future profiles
 - [ ] `pi-extensible-workflows` gate:
   - [ ] ขอ license clarification หรือยืนยัน license artifact ที่มีผลผูกพัน
     - npm/source metadata ระบุ MIT แต่ source และ tarball ไม่มี license text
@@ -615,10 +623,10 @@ Tasks:
 - [ ] Codex verified profile
 - [ ] Claude verified profile
 - [ ] OpenCode profile เมื่อ isolated config injection พร้อม
-- [ ] runtime validate flags กับ installed CLI version
-- [ ] detect unsupported/removed flags ก่อนสร้าง pane
-- [ ] record requested profile แยก observed/effective profile
-- [ ] deny delegated launch เมื่อ effective permission mode ยืนยันไม่ได้
+- [x] pure builders pin/validate Codex `0.150.1` และ Claude `2.1.251`; real help/config startup probesผ่าน
+- [x] detect unsupported version/removed help flags ใน profile layerก่อนสร้าง pane
+- [x] pure verifiersแยก requested จาก observed/effective model/mode/tools/config digest/readiness/lifecycle
+- [ ] wire profile artifacts/environment injection และ deny launchจริงเมื่อ effective profileยืนยันไม่ได้
 
 Exit criteria:
 
@@ -668,7 +676,7 @@ Acceptance scenarios:
 
 1. Pi Worker implement + test + local commit
 2. Codex Worker ภายใต้ auto-review
-3. Claude Worker ภายใต้ auto classifier
+3. Claude Worker ภายใต้ `dontAsk` + exact allowlist/sandbox
 4. read-only research/review Worker
 5. correction ขณะ Worker active
 6. unexpected permission escalation
@@ -736,6 +744,7 @@ Success metric หลัก:
 8. **Piewf churn** — versions 5.5–5.8 มี breaking changesถี่; ต้อง pin และมี compatibility suite
 9. **Piewf license** — package metadata/README ระบุ MIT แต่ source checkout ไม่มี LICENSE file; เป็น blocker ต่อ dependency adoption จนชัดเจน
 10. **Dual source of truth** — ถ้าใช้ piewf ร่วมกับ custom registry ต้องแบ่ง run ownership ชัด ห้ามทั้งสองควบคุม agent เดียวกัน
+11. **External harness host reads** — Codex/Claude profilesปิด declared credentialsได้แต่ generic host readsยังไม่ใช่ worktree-only isolation; credential registryต้อง explicit และ strong profileต้องใช้ whole-process container/VM
 
 ## Open questions และค่าเริ่มต้นที่แนะนำ
 
@@ -768,12 +777,10 @@ Success metric หลัก:
 
 ดำเนิน Phase 0 ส่วนที่เหลือตามลำดับ:
 
-1. ออกแบบและ probe Codex adapter ที่ยืนยัน effective model/config และรอ lifecycle readiness จริง
-2. probe Claude `dontAsk` หรือ exact settings `permissions.allow` สำหรับ in-worktree writes ภายใต้ sandbox โดยไม่มี dialog
-3. สร้าง/เลือก immutable development image digest และ versioned agent-teams production profile package
-4. รัน Pi writing profile ผ่าน Herdr lifecycle จริง และเทียบกับ patched agent-teams RPC lane
-5. รัน implement → review → correction chain ซ้ำให้ได้ศูนย์ routine approval
-6. ทดสอบ provider error, timeout, missing artifact และ human-only escalation
-7. สรุป go/no-go แยก Herdr, agent-teams และ piewf แล้วจึงเริ่ม Phase 1 pure mandate/policy model
+1. package/wire patched agent-teams adapter, scoped direct tools และ versioned Node image profileแบบ atomicหลัง upstream/maintenance decision
+2. รัน Pi writing profile ผ่าน Herdr lifecycle จริง และเทียบกับ patched agent-teams RPC lane
+3. รัน implement → review → correction chain ผ่าน Pi-native laneให้ได้ศูนย์ routine approval
+4. ทดสอบ provider error, timeout, missing artifact และ human-only escalation
+5. สรุป go/no-go แยก Herdr manual-only, patched agent-teams และ piewf แล้วจึงเริ่ม Phase 1 pure mandate/policy model
 
 ห้ามแก้ production behavior ก่อนสรุปผล probe และอัปเดต decisions/profile verification ในแผนนี้
