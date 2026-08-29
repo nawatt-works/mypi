@@ -66,6 +66,10 @@ function sha256File(path: string): string {
 	return createHash("sha256").update(readFileSync(path)).digest("hex");
 }
 
+function sha256Text(value: string): string {
+	return createHash("sha256").update(value).digest("hex");
+}
+
 function sha256DirectoryTree(root: string): string {
 	const canonicalRoot = realpathSync(root);
 	const files: string[] = [];
@@ -107,6 +111,22 @@ export function loadWorkerProfile(): WorkerProfile {
 		throw new Error("unexpected Worker tool set");
 	}
 	return profile;
+}
+
+function deriveBoundaryContractDigest(profile: WorkerProfile, boundaryPath: string, maxWorkers: number): string {
+	return sha256Text(JSON.stringify({
+		profileId: profile.profileId,
+		upstreamCommit: profile.integration.upstreamCommit,
+		patchedTeamsEntrySha256: profile.integration.patchedTeamsEntrySha256,
+		workerBoundarySha256: profile.toolchain.workerBoundarySha256,
+		commandPolicySha256: profile.toolchain.commandPolicySha256,
+		scopedWorkerToolsSha256: profile.toolchain.scopedWorkerToolsSha256,
+		imageDigest: profile.toolchain.observedLocalImageDigest,
+		childTools: profile.workerResources.tools,
+		childExtensions: [boundaryPath],
+		maxWorkers,
+		forceWorktree: true,
+	}));
 }
 
 function verifyManagedAgentTeamsSource(profile: WorkerProfile): string {
@@ -311,10 +331,18 @@ export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 
 	pi.on("session_start", () => {
 		try {
-			const contractDigest = process.env.MYPI_AGENT_TEAMS_PROFILE_DIGEST;
-			if (!contractDigest || !/^[a-f0-9]{64}$/.test(contractDigest)) throw new Error("managed boundary contract digest is missing or malformed");
+			const requestedContractDigest = process.env.MYPI_AGENT_TEAMS_PROFILE_DIGEST;
+			if (!requestedContractDigest || !/^[a-f0-9]{64}$/.test(requestedContractDigest)) throw new Error("managed boundary contract digest is missing or malformed");
+			const nonce = process.env.MYPI_AGENT_TEAMS_READY_NONCE;
+			if (!nonce || !/^[a-f0-9]{64}$/.test(nonce)) throw new Error("managed Worker readiness nonce is missing or malformed");
+			const requestedBoundaryPath = process.env.MYPI_AGENT_TEAMS_BOUNDARY_PATH;
+			const boundaryPath = realpathSync(fileURLToPath(import.meta.url));
+			if (!requestedBoundaryPath || realpathSync(requestedBoundaryPath) !== boundaryPath) throw new Error("managed Worker boundary path mismatch");
+			const maxWorkers = Number(process.env.MYPI_AGENT_TEAMS_MAX_WORKERS);
+			if (!Number.isSafeInteger(maxWorkers) || maxWorkers < 1 || maxWorkers > 3) throw new Error("managed Worker ceiling is missing or invalid");
+			if (process.env.MYPI_AGENT_TEAMS_WORKSPACE_MODE !== "worktree") throw new Error("managed Worker workspace mode must be worktree");
 			verifyWorkerProfileArtifacts(profile);
-			verifyManagedAgentTeamsSource(profile);
+			const entryPath = verifyManagedAgentTeamsSource(profile);
 			verifyDockerBoundary(profile);
 			const activeTools = [...pi.getActiveTools()].sort();
 			// Pi reports CLI-selected built-ins here; backend extension tools are pinned by the verified teams source tree.
@@ -322,8 +350,25 @@ export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 			if (JSON.stringify(activeTools) !== JSON.stringify(expectedTools)) {
 				throw new Error(`observed Worker tool set mismatch: ${activeTools.join(",")}`);
 			}
+			const contractDigest = deriveBoundaryContractDigest(profile, boundaryPath, maxWorkers);
+			if (contractDigest !== requestedContractDigest) throw new Error("managed boundary contract digest mismatch");
+			const readiness = {
+				contractDigest,
+				nonceDigest: sha256Text(nonce),
+				teamId: process.env.PI_TEAMS_TEAM_ID ?? "",
+				workerName: process.env.PI_TEAMS_AGENT_NAME ?? "",
+				boundaryPath,
+				boundarySha256: profile.toolchain.workerBoundarySha256,
+				entryPath,
+				entrySha256: profile.integration.patchedTeamsEntrySha256,
+				sourceSha256: profile.integration.patchedTeamsSourceSha256,
+				tools: activeTools,
+				environmentKeys: Object.keys(process.env).sort(),
+				workspaceMode: "worktree",
+				maxWorkers,
+			};
 			ready = true;
-			process.stderr.write(`MYPI_WORKER_BOUNDARY_READY ${contractDigest}\n`);
+			process.stderr.write(`MYPI_WORKER_BOUNDARY_READY ${JSON.stringify(readiness)}\n`);
 		} catch (error) {
 			process.stderr.write(`Fatal delegated Worker boundary initialization failure: ${String(error)}\n`);
 			process.exit(78);

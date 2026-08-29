@@ -774,20 +774,20 @@ Caution: mount worktreeทั้งก้อน ไม่ซ่อนไฟล�
 - [`worker-boundary.ts`](../../profiles/pi-agent-teams/node-worker-v1/worker-boundary.ts) รวม command/data policy, scoped direct tools, immutable Docker Bash และ artifact/image preflightเป็น extensionเดียว; init failต้องเกิดก่อน Worker ready handshake
 - [`extensions/scoped-worker-tools.ts`](../../extensions/scoped-worker-tools.ts) canonicalize lexical/existing/canonical pathsและ deny external, sensitive, `.git` และ symlink escapeก่อน direct filesystem operation
 
-Independent reviewของ producer commit `ead8778` ให้ verdict `PASS-WITH-FOLLOWUPS` และพบ medium findingsสองข้อ: patched entryยังไม่มี end-to-end provenance และ overlay fallbackเมื่อ managed envหาย Correctionรอบนี้ปิดทั้งคู่โดย:
+Independent reviewของ producer commit `ead8778` ให้ verdict `PASS-WITH-FOLLOWUPS` และพบ medium findingsสองข้อ: patched entryยังไม่มี end-to-end provenance และ overlay fallbackเมื่อ managed envหาย Correction `43967a8` ปิด provenanceและ missing-env fallback แต่ Codex re-reviewให้ `FAIL` เพราะ digest/markerยัง deriveจากค่าที่ callerส่งและ boundary pathยังไม่ bind trusted content Correction v2ปิดตาม required findingsโดย:
 
-- pin/verify Git `HEAD`, entry SHA-256 `4f7715812ac0529a5243c5044138510f9c88b8e070910ee3e00b9f465438756b` และ deterministic whole `extensions/teams/` tree SHA-256 `bde3747b6d8f1825a1ff18be570cf91c051b39658f049c4a69c7966e1c6f4557` ทั้งใน builderและ Worker startup
-- require managed profile id/contract digest, exact tools/boundary entry, force-worktree, ceiling และ patched entry pathตั้งแต่ leader factory; missing/partial/malformed envไม่มี fallback
-- Worker boundary emit exact contract-digest readiness marker; parent RPCต้องเห็น markerหลัง `get_state` ก่อน register online
+- pin/verify Git `HEAD`, entry SHA-256 `4f7715812ac0529a5243c5044138510f9c88b8e070910ee3e00b9f465438756b` และ deterministic whole `extensions/teams/` tree SHA-256 `ddef0dc28ea79c47ca07c0cbf51d512dbf5308eb68b9a8145db567160a6b6959` ทั้งใน builderและ Worker startup
+- require managed profile id, derived contract digest, exact tools/boundary content hash, force-worktree, ceiling และ patched entry/source identityตั้งแต่ leader factory; missing/partial/malformed envไม่มี fallback
+- Worker boundary recompute contractจาก verified profile/artifacts แล้ว emit structured readinessที่ bind random per-spawn nonce, team/Worker, trusted boundary/source, exact tools/env, worktree modeและ ceiling; parent RPCต้อง validateทั้ง objectหลัง `get_state` ก่อน register online
 
 Final artifact hashes:
 
 ```text
-agent-teams-profile.ts:    66ccb9c23adcce903f77c56063171290113dcbbff00dc4643b0d4114140e0cc9
+agent-teams-profile.ts:    133aa737bdca212b93893e1810ad88c00d225479d2fd13c1f05f84e193b3c79f
 scoped-worker-tools.ts:    c9b5cf7796bf8469a28e514ecbdbbe82ee0f61a26da83532792d4c071284dcee
-worker-boundary.ts:        c2fac59a6e501e4e76f234833f7577ac0e6387769c49c580da264baaab8b95c8
-agent-teams overlay:       021dce843e00245815c7fbbcd901d4e9b03a48e9de59e53bf45469bc19cd80b4
-profile.json:              ee2d3832b6bd50ae8fb43a1c8c1fcfb64c06d4e32a25e5b39b9ffc2cdd5284b0
+worker-boundary.ts:        7e8c97282c0e4afd4b5b080cb4030fd075547c826c1d4cf302c030ab0e922574
+agent-teams overlay:       65d5006d99c900ace27c62cc3054eae68996ab0d67b356d6f358bc065ee0138c
+profile.json:              09d0007e347ddf87036e66aaf0f6b702d25a28c42970864d4e09533942ffefe4
 ```
 
 Atomic single-worker runtimeบน Pi `0.84.3` + exact image digest:
@@ -801,7 +801,7 @@ Atomic single-worker runtimeบน Pi `0.84.3` + exact image digest:
 - external writeได้ structured `external-write` blockerและ targetไม่เกิด
 - `rm -rf /workspace`ได้ `DENY/workspace-root-destruction`
 - zero routine dialog; task transport completedแต่ acceptanceยังมาจาก verifier
-- boundary readiness marker contract digestตรง requested; `verifyAgentTeamsProfile()` → `verified: true`, mismatches `[]`
+- structured readiness contract/nonce/session/boundary/source/tools/env/resourcesตรง requested; `verifyAgentTeamsProfile()` → `verified: true`, mismatches `[]`
 
 Atomic direct-tool runtime:
 
@@ -819,12 +819,13 @@ Final overlay ceiling-2 multi-worker runtime:
 
 Negative/fault chainหลัง independent review:
 
-- missing required managed env 7 keysและ malformed 4 variants → `11/11` failก่อน extension load
+- missing required managed env, valid-but-wrong 64-hex contract digest และ replaced boundary extension → `10/10` failก่อน extension load
 - clean overlay-applied checkoutผ่าน entry/tree/Git provenance;แก้ `leader.ts` ที่ pathเดิมแล้ว builder fail closed
-- missing boundary readiness marker → bounded timeoutประมาณ 5.3 วินาทีและไม่ ready
+- forged/replayed structured markerที่ nonceไม่ตรงถูก reject; missing marker → bounded timeoutประมาณ 5.3 วินาทีและไม่ ready
 - provider/modelไม่มีจริง → child RPCออกและไม่ register Worker
 - Docker daemon unavailable และ immutable image unavailable → Worker boundaryออก code `78`
 - missing committed SBOM → artifact verifier failก่อน readyและ restore fixtureสำเร็จ
+- `git push origin main` ถูก routeเป็น structured `remote-mutation`/HUMAN blockerโดยไม่มี dialog
 
 Repository testsรวม profile/scoped-operation suitesผ่าน `115/115`
 
@@ -855,7 +856,7 @@ Remaining limitations ก่อน production activation:
 4. upload-capable dedicated toolsถูกตัดออกแทนการทดสอบ reviewed upload profile
 5. Docker daemon และ exact local imageเป็น trusted fail-closed dependencies; ห้าม mount socket/host HOME และห้าม runtime pull
 6. worktree mountไม่ซ่อน secret fileที่เกิดภายใน worktree ต้อง pair clean worktree + pre-exec data policy
-7. provider/image/daemon/missing-marker/missing-artifact fault injectionผ่านแล้ว แต่ corrected profileยังต้อง independent re-review และ implement→review→correction acceptance chainเต็ม
+7. provider/image/daemon/missing-marker/missing-artifact/human-only fault injectionผ่านแล้ว; re-reviewแรกของ correctionพบ marker/path bindingยังไม่พอและ correction v2ปิดด้วย trusted content hash + derived contract + nonce/session-bound structured readiness แต่ยังต้อง re-reviewซ้ำ
 
 ### Adoption decision
 

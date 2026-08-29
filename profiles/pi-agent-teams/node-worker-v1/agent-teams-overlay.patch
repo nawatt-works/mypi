@@ -50,10 +50,15 @@ index 2e6beda..0cd1522 100644
  		},
  
 diff --git a/extensions/teams/leader.ts b/extensions/teams/leader.ts
-index a3bc5c1..35b6197 100644
+index a3bc5c1..9278b38 100644
 --- a/extensions/teams/leader.ts
 +++ b/extensions/teams/leader.ts
-@@ -18,6 +18,7 @@ import { openInteractiveWidget } from "./teams-panel.js";
+@@ -1,3 +1,4 @@
++import { createHash, randomBytes } from "node:crypto";
+ import * as fs from "node:fs";
+ import * as path from "node:path";
+ import { fileURLToPath } from "node:url";
+@@ -18,6 +19,7 @@ import { openInteractiveWidget } from "./teams-panel.js";
  import { isTeamDone } from "./teams-ui-shared.js";
  import { createTeamsWidget } from "./teams-widget.js";
  import { resolveTeammateModelSelection, formatProviderModel } from "./model-policy.js";
@@ -61,10 +66,23 @@ index a3bc5c1..35b6197 100644
  import { getTeamsStyleFromEnv, type TeamsStyle, formatMemberDisplayName, getTeamsStrings } from "./teams-style.js";
  import { DelegationTracker, pollLeaderInbox as pollLeaderInboxImpl } from "./leader-inbox.js";
  import {
-@@ -138,6 +139,47 @@ async function teamDirHasAnyTasks(teamDir: string): Promise<boolean> {
+@@ -138,6 +140,84 @@ async function teamDirHasAnyTasks(teamDir: string): Promise<boolean> {
  	return false;
  }
  
++const MANAGED_PROFILE_ID = "pi-agent-teams-docker-strong-v1";
++const MANAGED_UPSTREAM_COMMIT = "2c1776d2a68104aaadc1c622d8a704684c7c35d6";
++const MANAGED_ENTRY_SHA256 = "4f7715812ac0529a5243c5044138510f9c88b8e070910ee3e00b9f465438756b";
++const MANAGED_BOUNDARY_SHA256 = "7e8c97282c0e4afd4b5b080cb4030fd075547c826c1d4cf302c030ab0e922574";
++const MANAGED_COMMAND_POLICY_SHA256 = "d1696594a39fc8eba07ecea9f982abc1aaaaccc5e82abf1be6c8a250a923922f";
++const MANAGED_SCOPED_TOOLS_SHA256 = "c9b5cf7796bf8469a28e514ecbdbbe82ee0f61a26da83532792d4c071284dcee";
++const MANAGED_IMAGE_DIGEST = "sha256:8b50f94e47e5085446081411ed152f84ebe0a146a575bba1720b56821db15ff8";
++const MANAGED_BUILTIN_TOOLS = ["read", "bash", "edit", "write"] as const;
++
++function sha256(value: string | Buffer): string {
++	return createHash("sha256").update(value).digest("hex");
++}
++
 +type ManagedChildProfile = Readonly<{
 +	forceWorktree: true;
 +	tools: ["read", "bash", "edit", "write"];
@@ -72,44 +90,68 @@ index a3bc5c1..35b6197 100644
 +	maxWorkers: string;
 +	profileDigest: string;
 +	patchedTeamsEntryPath: string;
++	patchedTeamsSourceSha256: string;
++	boundaryPath: string;
 +}>;
 +
 +function requireManagedChildProfile(): ManagedChildProfile {
-+	if (process.env.PI_TEAMS_MANAGED_PROFILE_ID !== "pi-agent-teams-docker-strong-v1") {
++	if (process.env.PI_TEAMS_MANAGED_PROFILE_ID !== MANAGED_PROFILE_ID) {
 +		throw new Error("Managed agent-teams profile id is missing or invalid");
 +	}
 +	const profileDigest = process.env.PI_TEAMS_MANAGED_PROFILE_DIGEST;
 +	if (!profileDigest || !/^[a-f0-9]{64}$/.test(profileDigest)) throw new Error("Managed agent-teams profile digest is missing or malformed");
 +	if (process.env.PI_TEAMS_FORCE_WORKTREE !== "1") throw new Error("Managed agent-teams profile must force worktree mode");
 +	const tools = (process.env.PI_TEAMS_CHILD_TOOLS ?? "").split(",").map((tool) => tool.trim()).filter(Boolean);
-+	if (JSON.stringify(tools) !== JSON.stringify(["read", "bash", "edit", "write"])) {
++	if (JSON.stringify(tools) !== JSON.stringify(MANAGED_BUILTIN_TOOLS)) {
 +		throw new Error("Managed agent-teams child tool set is missing or invalid");
 +	}
 +	const extensions = (process.env.PI_TEAMS_CHILD_EXTENSIONS ?? "").split(path.delimiter).map((entry) => entry.trim()).filter(Boolean);
 +	if (extensions.length !== 1 || !path.isAbsolute(extensions[0]) || !fs.existsSync(extensions[0])) {
 +		throw new Error("Managed agent-teams boundary extension is missing or invalid");
 +	}
++	const boundaryPath = fs.realpathSync(extensions[0]);
++	if (sha256(fs.readFileSync(boundaryPath)) !== MANAGED_BOUNDARY_SHA256) {
++		throw new Error("Managed agent-teams boundary extension digest mismatch");
++	}
 +	const maxWorkers = process.env.PI_TEAMS_MAX_WORKERS;
 +	if (!maxWorkers || !/^[1-3]$/.test(maxWorkers)) throw new Error("Managed agent-teams Worker ceiling is missing or invalid");
 +	const requestedEntry = process.env.PI_TEAMS_PATCHED_ENTRY_PATH;
++	const patchedTeamsSourceSha256 = process.env.PI_TEAMS_PATCHED_SOURCE_SHA256;
++	if (!patchedTeamsSourceSha256 || !/^[a-f0-9]{64}$/.test(patchedTeamsSourceSha256)) throw new Error("Managed patched agent-teams source digest is missing or malformed");
 +	const actualEntry = getTeamsExtensionEntryPath();
 +	if (!requestedEntry || !actualEntry || fs.realpathSync(requestedEntry) !== fs.realpathSync(actualEntry)) {
 +		throw new Error("Managed patched agent-teams entry path is missing or invalid");
 +	}
++	const expectedContractDigest = sha256(JSON.stringify({
++		profileId: MANAGED_PROFILE_ID,
++		upstreamCommit: MANAGED_UPSTREAM_COMMIT,
++		patchedTeamsEntrySha256: MANAGED_ENTRY_SHA256,
++		workerBoundarySha256: MANAGED_BOUNDARY_SHA256,
++		commandPolicySha256: MANAGED_COMMAND_POLICY_SHA256,
++		scopedWorkerToolsSha256: MANAGED_SCOPED_TOOLS_SHA256,
++		imageDigest: MANAGED_IMAGE_DIGEST,
++		childTools: MANAGED_BUILTIN_TOOLS,
++		childExtensions: [boundaryPath],
++		maxWorkers: Number(maxWorkers),
++		forceWorktree: true,
++	}));
++	if (profileDigest !== expectedContractDigest) throw new Error("Managed agent-teams profile digest does not match the derived boundary contract");
 +	return Object.freeze({
 +		forceWorktree: true,
 +		tools: ["read", "bash", "edit", "write"],
-+		extensions: [fs.realpathSync(extensions[0])],
++		extensions: [boundaryPath],
 +		maxWorkers,
-+		profileDigest,
++		profileDigest: expectedContractDigest,
 +		patchedTeamsEntryPath: fs.realpathSync(actualEntry),
++		patchedTeamsSourceSha256,
++		boundaryPath,
 +	});
 +}
 +
  // Message parsers are shared with the worker implementation.
  export function runLeader(pi: ExtensionAPI): void {
  	const teammates = new Map<string, TeammateRpc>();
-@@ -148,6 +190,8 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -148,6 +228,8 @@ export function runLeader(pi: ExtensionAPI): void {
  	let currentTeamId: string | null = null;
  	let tasks: TeamTask[] = [];
  	let teamConfig: TeamConfig | null = null;
@@ -118,7 +160,7 @@ index a3bc5c1..35b6197 100644
  	const pendingPlanApprovals = new Map<string, { requestId: string; name: string; taskId?: string }>();
  	const delegationTracker = new DelegationTracker();
  	// Task list namespace. By default we keep it aligned with the current session id.
-@@ -470,18 +514,32 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -470,18 +552,32 @@ export function runLeader(pi: ExtensionAPI): void {
  		if (!currentCtx || !currentTeamId) return;
  		const teamDir = getTeamDir(currentTeamId);
  		const effectiveTaskListId = taskListId ?? currentTeamId;
@@ -160,7 +202,7 @@ index a3bc5c1..35b6197 100644
  
  		// Auto-done hint (fire once per "all done" state transition)
  		if (isTeamDone(tasks, teammates)) {
-@@ -517,6 +575,7 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -517,6 +613,7 @@ export function runLeader(pi: ExtensionAPI): void {
  		const warnings: string[] = [];
  		const mode: ContextMode = opts.mode ?? "fresh";
  		let workspaceMode: WorkspaceMode = opts.workspaceMode ?? "shared";
@@ -168,7 +210,7 @@ index a3bc5c1..35b6197 100644
  
  		const name = sanitizeName(opts.name);
  		if (!name) return { ok: false, error: "Missing comrade name" };
-@@ -525,6 +584,17 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -525,6 +622,17 @@ export function runLeader(pi: ExtensionAPI): void {
  			return { ok: false, error: `${formatMemberDisplayName(style, name)} already exists (${strings.teamNoun})` };
  		}
  
@@ -186,7 +228,7 @@ index a3bc5c1..35b6197 100644
  		// Spawn-time model / thinking overrides (optional).
  		const thinkingLevel = opts.thinking ?? pi.getThinkingLevel();
  
-@@ -537,8 +607,6 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -537,8 +645,6 @@ export function runLeader(pi: ExtensionAPI): void {
  		const { provider: childProvider, modelId: childModelId, warnings: modelWarnings } = modelResolution.value;
  		warnings.push(...modelWarnings);
  
@@ -195,7 +237,7 @@ index a3bc5c1..35b6197 100644
  		const teamSessionsDir = getTeamSessionsDir(teamDir);
  		const session = await createSessionForTeammate(ctx, mode, teamSessionsDir);
  		const { sessionFile, note } = session;
-@@ -591,11 +659,19 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -591,11 +697,19 @@ export function runLeader(pi: ExtensionAPI): void {
  		});
  
  		const builtInToolSet = new Set(["read", "bash", "edit", "write", "grep", "find", "ls"]);
@@ -219,7 +261,7 @@ index a3bc5c1..35b6197 100644
  
  		// Model + thinking for the child process.
  		if (childModelId) {
-@@ -604,10 +680,11 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -604,10 +718,11 @@ export function runLeader(pi: ExtensionAPI): void {
  		}
  		argsForChild.push("--thinking", thinkingLevel);
  
@@ -235,22 +277,40 @@ index a3bc5c1..35b6197 100644
  
  		const strings = getTeamsStrings(style);
  		const systemAppend = `You are ${strings.memberTitle.toLowerCase()} '${name}'. You collaborate with the ${strings.leaderTitle.toLowerCase()}. Prefer working from the shared task list.\n`;
-@@ -623,10 +700,14 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -623,10 +738,32 @@ export function runLeader(pi: ExtensionAPI): void {
  			warnings.push(...res.warnings);
  		}
  
 +		const sessionName = `pi agent teams - ${strings.memberTitle.toLowerCase()} ${name}`;
++		const readinessNonce = randomBytes(32).toString("hex");
  		try {
  			await t.start({
  				cwd: childCwd,
-+				expectedBoundaryDigest: childProfile.profileDigest,
++				expectedReadiness: {
++					contractDigest: childProfile.profileDigest,
++					nonceDigest: sha256(readinessNonce),
++					teamId,
++					workerName: name,
++					boundaryPath: childProfile.boundaryPath,
++					boundarySha256: MANAGED_BOUNDARY_SHA256,
++					entryPath: teamsEntry,
++					entrySha256: MANAGED_ENTRY_SHA256,
++					sourceSha256: childProfile.patchedTeamsSourceSha256,
++					tools: [...tools].sort(),
++					workspaceMode: "worktree",
++					maxWorkers: Number(childProfile.maxWorkers),
++				},
  				env: {
++					MYPI_AGENT_TEAMS_BOUNDARY_PATH: childProfile.boundaryPath,
 +					MYPI_AGENT_TEAMS_ENTRY_PATH: teamsEntry,
++					MYPI_AGENT_TEAMS_MAX_WORKERS: childProfile.maxWorkers,
 +					MYPI_AGENT_TEAMS_PROFILE_DIGEST: childProfile.profileDigest,
++					MYPI_AGENT_TEAMS_READY_NONCE: readinessNonce,
++					MYPI_AGENT_TEAMS_WORKSPACE_MODE: "worktree",
  					PI_TEAMS_WORKER: "1",
  					PI_TEAMS_TEAM_ID: teamId,
  					PI_TEAMS_TASK_LIST_ID: taskListId ?? teamId,
-@@ -634,22 +715,23 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -634,22 +771,23 @@ export function runLeader(pi: ExtensionAPI): void {
  					PI_TEAMS_LEAD_NAME: "team-lead",
  					PI_TEAMS_STYLE: style,
  					PI_TEAMS_AUTO_CLAIM: autoClaim ? "1" : "0",
@@ -284,7 +344,7 @@ index a3bc5c1..35b6197 100644
  		}
  
  		// Also send via mailbox so non-RPC/manual workers can be named the same way.
-@@ -676,6 +758,16 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -676,6 +814,17 @@ export function runLeader(pi: ExtensionAPI): void {
  				workspaceMode,
  				sessionName,
  				thinkingLevel,
@@ -295,13 +355,14 @@ index a3bc5c1..35b6197 100644
 +					extensionTools: ["team_message"],
 +					extensions: [...extraExtensions, teamsEntry],
 +					boundaryProfileDigest: t.getBoundaryProfileDigest(),
++					boundaryReadiness: t.getBoundaryReadiness(),
 +					forceWorktree: childProfile.forceWorktree,
 +					maxWorkers: workerCeiling.limit,
 +				},
  				...(childModel ? { model: childModel } : {}),
  			},
  		});
-@@ -700,6 +792,7 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -700,6 +849,7 @@ export function runLeader(pi: ExtensionAPI): void {
  		if (!currentCtx || !currentTeamId) return;
  		const teamDir = getTeamDir(currentTeamId);
  		const effectiveTaskListId = taskListId ?? currentTeamId;
@@ -309,7 +370,7 @@ index a3bc5c1..35b6197 100644
  		await pollLeaderInboxImpl({
  			ctx: currentCtx,
  			teamId: currentTeamId,
-@@ -1039,6 +1132,13 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -1039,6 +1189,13 @@ export function runLeader(pi: ExtensionAPI): void {
  				shellQuote,
  				getCurrentCtx: () => currentCtx,
  				stopAllTeammates,
@@ -324,13 +385,14 @@ index a3bc5c1..35b6197 100644
  		},
  	});
 diff --git a/extensions/teams/teammate-rpc.ts b/extensions/teams/teammate-rpc.ts
-index 8c00c49..83eef34 100644
+index 8c00c49..543ff7f 100644
 --- a/extensions/teams/teammate-rpc.ts
 +++ b/extensions/teams/teammate-rpc.ts
-@@ -1,6 +1,40 @@
+@@ -1,6 +1,47 @@
  import { spawn } from "node:child_process";
  import type { AgentEvent } from "@earendil-works/pi-agent-core";
  
++const PI_RUNTIME_ENVIRONMENT_KEYS = ["AI_AGENT", "PI_CODING_AGENT", "__CF_USER_TEXT_ENCODING"] as const;
 +const CHILD_ENV_ALLOWLIST = new Set([
 +	"PATH",
 +	"HOME",
@@ -365,19 +427,77 @@ index 8c00c49..83eef34 100644
 +	return new Promise((resolve) => setTimeout(resolve, ms));
 +}
 +
++function redactDiagnostic(value: string): string {
++	return value
++		.replace(/((?:authorization|api[_-]?key|token|secret|password)["']?\s*[:=]\s*["']?)[^\s,"'}]+/gi, "$1[REDACTED]")
++		.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]");
++}
++
  export type TeammateStatus = "starting" | "idle" | "streaming" | "stopped" | "error";
  
  type RpcCommand =
-@@ -97,6 +131,8 @@ export class TeammateRpc {
+@@ -75,6 +116,50 @@ function isAgentEvent(v: unknown): v is AgentEvent {
+ 	);
+ }
+ 
++export type WorkerBoundaryReadiness = {
++	contractDigest: string;
++	nonceDigest: string;
++	teamId: string;
++	workerName: string;
++	boundaryPath: string;
++	boundarySha256: string;
++	entryPath: string;
++	entrySha256: string;
++	sourceSha256: string;
++	tools: string[];
++	environmentKeys: string[];
++	workspaceMode: "worktree";
++	maxWorkers: number;
++};
++
++type ExpectedWorkerBoundaryReadiness = Omit<WorkerBoundaryReadiness, "environmentKeys" | "sourceSha256"> & {
++	sourceSha256: string;
++};
++
++const READINESS_FIELDS = [
++	"contractDigest", "nonceDigest", "teamId", "workerName", "boundaryPath", "boundarySha256",
++	"entryPath", "entrySha256", "sourceSha256", "tools", "environmentKeys", "workspaceMode", "maxWorkers",
++].sort();
++
++function parseWorkerBoundaryReadiness(line: string): WorkerBoundaryReadiness | null {
++	const prefix = "MYPI_WORKER_BOUNDARY_READY ";
++	if (!line.startsWith(prefix)) return null;
++	if (line.length > 16_384) throw new Error("Worker boundary readiness marker exceeds the size limit");
++	const value = safeParseJsonLine(line.slice(prefix.length));
++	if (!isRecord(value) || JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(READINESS_FIELDS)) {
++		throw new Error("Worker boundary readiness marker has an invalid shape");
++	}
++	for (const field of ["contractDigest", "nonceDigest", "teamId", "workerName", "boundaryPath", "boundarySha256", "entryPath", "entrySha256", "sourceSha256"] as const) {
++		if (typeof value[field] !== "string") throw new Error(`Worker boundary readiness field ${field} is invalid`);
++	}
++	if (value.workspaceMode !== "worktree" || !Number.isSafeInteger(value.maxWorkers)) throw new Error("Worker boundary readiness resources are invalid");
++	if (!Array.isArray(value.tools) || !value.tools.every((item) => typeof item === "string") ||
++		!Array.isArray(value.environmentKeys) || !value.environmentKeys.every((item) => typeof item === "string")) {
++		throw new Error("Worker boundary readiness arrays are invalid");
++	}
++	return value as WorkerBoundaryReadiness;
++}
++
+ export class TeammateRpc {
+ 	readonly name: string;
+ 	readonly sessionFile?: string;
+@@ -97,6 +182,9 @@ export class TeammateRpc {
  	private nextId = 0;
  	private buffer = "";
  	private stderr = "";
 +	private environmentKeys: string[] = [];
 +	private boundaryProfileDigest: string | null = null;
++	private boundaryReadiness: WorkerBoundaryReadiness | null = null;
  	private eventListeners: Array<(ev: AgentEvent) => void> = [];
  	private closeListeners: Array<(code: number | null) => void> = [];
  
-@@ -125,12 +161,38 @@ export class TeammateRpc {
+@@ -125,12 +213,60 @@ export class TeammateRpc {
  		return this.stderr;
  	}
  
@@ -390,14 +510,36 @@ index 8c00c49..83eef34 100644
 +		return this.boundaryProfileDigest;
 +	}
 +
-+	private async waitForBoundaryReady(expectedDigest: string, timeoutMs = 5_000): Promise<void> {
++	getBoundaryReadiness(): WorkerBoundaryReadiness | null {
++		return this.boundaryReadiness ? { ...this.boundaryReadiness, tools: [...this.boundaryReadiness.tools], environmentKeys: [...this.boundaryReadiness.environmentKeys] } : null;
++	}
++
++	private async waitForBoundaryReady(expected: ExpectedWorkerBoundaryReadiness, timeoutMs = 5_000): Promise<void> {
 +		const deadline = Date.now() + timeoutMs;
 +		while (Date.now() < deadline) {
-+			const matches = [...this.stderr.matchAll(/^MYPI_WORKER_BOUNDARY_READY ([a-f0-9]{64})$/gm)];
-+			const observed = matches.at(-1)?.[1];
++			const markerLines = this.stderr.split(/\r?\n/).filter((line) => line.startsWith("MYPI_WORKER_BOUNDARY_READY "));
++			if (markerLines.length > 1) throw new Error("Worker emitted multiple boundary readiness markers");
++			const observed = markerLines.length === 1 ? parseWorkerBoundaryReadiness(markerLines[0]) : null;
 +			if (observed) {
-+				this.boundaryProfileDigest = observed;
-+				if (observed !== expectedDigest) throw new Error(`Worker boundary profile digest mismatch: expected ${expectedDigest}, observed ${observed}`);
++				const expectedWithEnvironment: WorkerBoundaryReadiness = {
++					...expected,
++					tools: [...expected.tools].sort(),
++					environmentKeys: [...new Set([...this.environmentKeys, ...PI_RUNTIME_ENVIRONMENT_KEYS])].sort(),
++				};
++				const normalizedObserved = {
++					...observed,
++					tools: [...observed.tools].sort(),
++					environmentKeys: [...observed.environmentKeys].sort(),
++				};
++				const canonical = (value: WorkerBoundaryReadiness) => JSON.stringify(
++					READINESS_FIELDS.map((field) => [field, value[field as keyof WorkerBoundaryReadiness]]),
++				);
++				if (canonical(normalizedObserved) !== canonical(expectedWithEnvironment)) {
++					throw new Error("Worker boundary structured readiness does not match the requested session contract");
++				}
++				this.boundaryReadiness = normalizedObserved;
++				this.boundaryProfileDigest = observed.contractDigest;
++				this.environmentKeys = [...normalizedObserved.environmentKeys];
 +				return;
 +			}
 +			if (!this.proc) throw new Error("Worker exited before boundary readiness marker");
@@ -406,7 +548,7 @@ index 8c00c49..83eef34 100644
 +		throw new Error("Timed out waiting for Worker boundary readiness marker");
 +	}
 +
-+	async start(opts: { cwd: string; env: Record<string, string>; args: string[]; expectedBoundaryDigest: string }): Promise<void> {
++	async start(opts: { cwd: string; env: Record<string, string>; args: string[]; expectedReadiness: ExpectedWorkerBoundaryReadiness }): Promise<void> {
  		if (this.proc) throw new Error("Teammate already started");
  
 +		const environment = buildTeammateEnvironment(process.env, opts.env);
@@ -418,7 +560,7 @@ index 8c00c49..83eef34 100644
  			stdio: ["pipe", "pipe", "pipe"],
  		});
  
-@@ -158,6 +220,7 @@ export class TeammateRpc {
+@@ -158,6 +294,7 @@ export class TeammateRpc {
  		});
  
  		this.proc.on("close", (code) => {
@@ -426,7 +568,7 @@ index 8c00c49..83eef34 100644
  			this.status = code === 0 ? "stopped" : "error";
  			if (code !== 0) this.lastError = `Teammate process exited with code ${code}`;
  			for (const [id, p] of this.pending.entries()) {
-@@ -167,24 +230,36 @@ export class TeammateRpc {
+@@ -167,24 +304,36 @@ export class TeammateRpc {
  			for (const l of this.closeListeners) l(code);
  		});
  
@@ -438,7 +580,7 @@ index 8c00c49..83eef34 100644
 -		this.lastEventAt = bootNow;
 +		try {
 +			await this.send({ type: "get_state" }, 10_000);
-+			await this.waitForBoundaryReady(opts.expectedBoundaryDigest);
++			await this.waitForBoundaryReady(opts.expectedReadiness);
 +			this.status = "idle";
 +			const bootNow = Date.now();
 +			this.lastStatusChangeAt = bootNow;
@@ -448,7 +590,7 @@ index 8c00c49..83eef34 100644
 +			this.proc = null;
 +			this.status = "error";
 +			const reason = error instanceof Error ? error.message : String(error);
-+			const stderrTail = this.stderr.trim().slice(-2_000);
++			const stderrTail = redactDiagnostic(this.stderr.trim().slice(-2_000));
 +			this.lastError = stderrTail ? `${reason}; stderr=${stderrTail}` : reason;
 +			proc?.kill("SIGTERM");
 +			throw new Error(`Teammate RPC ready handshake failed for ${this.name}: ${this.lastError}`, { cause: error });
@@ -473,7 +615,7 @@ index 8c00c49..83eef34 100644
  		}, 1000);
  		this.proc = null;
  		this.status = "stopped";
-@@ -255,7 +330,7 @@ export class TeammateRpc {
+@@ -255,7 +404,7 @@ export class TeammateRpc {
  		for (const l of this.eventListeners) l(ev);
  	}
  
@@ -482,7 +624,7 @@ index 8c00c49..83eef34 100644
  		if (!this.proc || !this.proc.stdin) throw new Error("Teammate is not running");
  		const id = `req-${this.name}-${this.nextId++}`;
  		const full = { id, ...cmd } satisfies RpcCommand;
-@@ -269,7 +344,7 @@ export class TeammateRpc {
+@@ -269,7 +418,7 @@ export class TeammateRpc {
  				if (!this.pending.has(id)) return;
  				this.pending.delete(id);
  				reject(new Error(`Timeout waiting for response (id=${id}, cmd=${full.type})`));

@@ -12,8 +12,8 @@ Profile นี้เป็น versioned Phase 0 candidate สำหรับ pat
 - Dockerfile SHA-256: `a391813a89ea2dc8ff004f9ca80a06ada2fdce618ff5a5d06b9615fb17e6ba35`
 - SPDX 2.3 SBOM: [`sbom.spdx.json`](sbom.spdx.json), SHA-256 `7fc73a1a025052371f5f801e0dfff8a6304c6b21df0b1398a78c7be8e9240961`
 - upstream `tmustier/pi-agent-teams`: commit `2c1776d2a68104aaadc1c622d8a704684c7c35d6`
-- [`agent-teams-overlay.patch`](agent-teams-overlay.patch): SHA-256 `021dce843e00245815c7fbbcd901d4e9b03a48e9de59e53bf45469bc19cd80b4`
-- [`worker-boundary.ts`](worker-boundary.ts): SHA-256 `c2fac59a6e501e4e76f234833f7577ac0e6387769c49c580da264baaab8b95c8`
+- [`agent-teams-overlay.patch`](agent-teams-overlay.patch): SHA-256 `65d5006d99c900ace27c62cc3054eae68996ab0d67b356d6f358bc065ee0138c`
+- [`worker-boundary.ts`](worker-boundary.ts): SHA-256 `7e8c97282c0e4afd4b5b080cb4030fd075547c826c1d4cf302c030ab0e922574`
 - `extensions/command-policy.ts`: SHA-256 `d1696594a39fc8eba07ecea9f982abc1aaaaccc5e82abf1be6c8a250a923922f`
 - `extensions/scoped-worker-tools.ts`: SHA-256 `c9b5cf7796bf8469a28e514ecbdbbe82ee0f61a26da83532792d4c071284dcee`
 
@@ -67,7 +67,7 @@ git -C <pi-agent-teams-checkout> apply \
 - managed Worker ceiling 1–3
 - isolated teams root
 
-Patched leader require managed profile id/digest, tools, boundary extension, force-worktree, ceiling และ patched-entry pathครบตั้งแต่ extension factory; missing/partial/malformed envทำให้ extension loadล้มเหลวแทน fallback แล้ว freezeค่าครั้งเดียว ไม่อ่าน ambient environmentใหม่ทุก spawn Child RPCบันทึกเฉพาะ observed environment key namesและรอ exact `MYPI_WORKER_BOUNDARY_READY <contract-digest>` markerก่อนถือว่า ready โดยไม่บันทึก environment values
+Patched leader require managed profile id, derived contract digest, exact boundary content hash, tools, force-worktree, ceiling และ patched-entry/source identityครบตั้งแต่ extension factory; missing/partial/malformed envทำให้ extension loadล้มเหลวแทน fallback แล้ว freezeค่าครั้งเดียว ไม่อ่าน ambient environmentใหม่ทุก spawn Child RPCบันทึกเฉพาะ observed environment key namesและรอ structured readinessที่ bind random per-spawn nonce, team/Worker identity, trusted boundary/source hashes, exact tools/env, worktree mode, ceiling และ recomputed contract digestก่อนถือว่า ready โดยไม่บันทึก environment values
 
 ## Runtime contract
 
@@ -104,9 +104,9 @@ Runtime ต้องเรียก imageด้วย immutable digestและ 
 - atomic profile runtime: routine `ROUTINE_OK`, integrated `npm test` → `TEST_OK`, parent env absent, network denied, host read isolated
 - Bash secret/external-write fixturesถูก blockก่อน execution; `rm -rf /workspace`ได้ structured `DENY/workspace-root-destruction`
 - scoped direct tools: routine writeผ่าน; `.env` read/write, `/etc/hosts`, external write/edit และ symlink escapeถูก deny
-- observed verifierผ่าน `verified: true`, mismatches `[]`; observed boundary contract digestตรง requested
-- fault probes: missing/malformed managed env `11/11` failก่อน extension load, provider/model unavailableไม่ register Worker, missing readiness marker timeout, missing SBOM fail, Docker daemon/image unavailableออก code `78`
-- clean pinned checkoutผ่าน provenance verifier; source driftที่ pathเดิม fail closed
+- observed verifierผ่าน `verified: true`, mismatches `[]`; structured readinessและ nonce/session/boundary identityตรง requested
+- fault probes: missing required env, valid-but-wrong contract digest และ replaced boundaryถูก blockก่อน extension load; forged/replayed markerถูก reject; provider/model unavailableไม่ register Worker; missing marker timeout; missing SBOM fail; Docker daemon/image unavailableออก code `78`
+- clean pinned checkoutผ่าน provenance verifier; source driftที่ pathเดิม fail closed; `git push`ได้ `HUMAN/remote-mutation` blockerโดยไม่มี dialog
 
 ## Boundaries และข้อจำกัด
 

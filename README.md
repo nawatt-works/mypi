@@ -57,7 +57,7 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - scoped Read/Write/Edit operationsสำหรับ Worker; canonicalize existing ancestor/targetและ deny external, sensitive, `.git` และ symlink escape
   - เป็น host-operation guardที่มี TOCTOU limitation ไม่ใช่ OS sandbox
 - `agent-teams-profile.ts`
-  - สร้าง/verify atomic profileสำหรับ exact patched `tmustier/pi-agent-teams` Git/entry/source-tree state, Worker ceiling, tools/extensions, required env, boundary readiness marker และ immutable image evidence
+  - สร้าง/verify atomic profileสำหรับ exact patched `tmustier/pi-agent-teams` Git/entry/source-tree state, trusted boundary hash, derived contract, Worker ceiling, tools/env และ nonce/session-bound structured readiness
   - profile candidateยัง disabled by defaultและไม่ติดตั้ง agent-teamsเข้า Pi profileหลัก
 - `local/extensions/azure-devops/`
   - maintain source ไว้ใน repository นี้ แต่ไม่โหลดจาก global package

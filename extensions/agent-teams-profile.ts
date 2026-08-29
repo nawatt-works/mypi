@@ -15,9 +15,14 @@ const CHILD_PARENT_ENVIRONMENT_ALLOWLIST = new Set([
 	"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP", "LANG", "TERM",
 	"COLORTERM", "NO_COLOR", "FORCE_COLOR", "CI",
 ]);
+const CHILD_RUNTIME_ENVIRONMENT_KEYS = ["AI_AGENT", "PI_CODING_AGENT", "__CF_USER_TEXT_ENCODING"] as const;
 const CHILD_OVERRIDE_ENVIRONMENT_KEYS = [
+	"MYPI_AGENT_TEAMS_BOUNDARY_PATH",
 	"MYPI_AGENT_TEAMS_ENTRY_PATH",
+	"MYPI_AGENT_TEAMS_MAX_WORKERS",
 	"MYPI_AGENT_TEAMS_PROFILE_DIGEST",
+	"MYPI_AGENT_TEAMS_READY_NONCE",
+	"MYPI_AGENT_TEAMS_WORKSPACE_MODE",
 	"MYPI_WORKER",
 	"PI_TEAMS_AGENT_NAME",
 	"PI_TEAMS_AUTO_CLAIM",
@@ -83,6 +88,9 @@ export type AgentTeamsObservedProfile = {
 	imageReady: boolean;
 	dockerReady: boolean;
 	readyHandshake: boolean;
+	structuredReadiness: boolean;
+	sessionBoundReadiness: boolean;
+	trustedBoundaryIdentity: boolean;
 	forceWorktree: boolean;
 	maxWorkers: number | null;
 	childTools: string[];
@@ -209,16 +217,15 @@ export function buildAgentTeamsProfile(input: {
 	if (!existsSync(requestedTeamsEntryPath)) throw new Error(`patched agent-teams entry is missing: ${requestedTeamsEntryPath}`);
 	const patchedTeamsEntryPath = realpathSync(requestedTeamsEntryPath);
 	if (!existsSync(WORKER_BOUNDARY_PATH)) throw new Error(`Worker boundary is missing: ${WORKER_BOUNDARY_PATH}`);
+	const workerBoundaryPath = realpathSync(WORKER_BOUNDARY_PATH);
 	const { artifact, raw } = loadProfileArtifact();
 	verifyPatchedTeamsSource(patchedTeamsEntryPath, artifact);
-	const injectedChildExtensions = [WORKER_BOUNDARY_PATH];
+	const injectedChildExtensions = [workerBoundaryPath];
 	const childExtensions = [...injectedChildExtensions, patchedTeamsEntryPath];
 	const boundaryContractDigest = sha256(JSON.stringify({
 		profileId: artifact.profileId,
 		upstreamCommit: artifact.integration.upstreamCommit,
-		overlayPatchSha256: artifact.integration.overlayPatchSha256,
 		patchedTeamsEntrySha256: artifact.integration.patchedTeamsEntrySha256,
-		patchedTeamsSourceSha256: artifact.integration.patchedTeamsSourceSha256,
 		workerBoundarySha256: artifact.toolchain.workerBoundarySha256,
 		commandPolicySha256: artifact.toolchain.commandPolicySha256,
 		scopedWorkerToolsSha256: artifact.toolchain.scopedWorkerToolsSha256,
@@ -237,18 +244,20 @@ export function buildAgentTeamsProfile(input: {
 		PI_TEAMS_MANAGED_PROFILE_ID: artifact.profileId,
 		PI_TEAMS_MAX_WORKERS: String(input.maxWorkers),
 		PI_TEAMS_PATCHED_ENTRY_PATH: patchedTeamsEntryPath,
+		PI_TEAMS_PATCHED_SOURCE_SHA256: artifact.integration.patchedTeamsSourceSha256,
 		PI_TEAMS_ROOT_DIR: teamsRootDir,
 	});
 	const childEnvironmentKeys = [...new Set([
 		...Object.keys(leaderEnvironment).filter((key) => CHILD_PARENT_ENVIRONMENT_ALLOWLIST.has(key) || key.startsWith("LC_")),
 		...CHILD_OVERRIDE_ENVIRONMENT_KEYS,
+		...CHILD_RUNTIME_ENVIRONMENT_KEYS,
 	])].sort();
 	const base = {
 		kind: "pi-agent-teams" as const,
 		profileId: artifact.profileId,
 		upstreamCommit: input.upstreamCommit,
 		patchedTeamsEntryPath,
-		workerBoundaryPath: WORKER_BOUNDARY_PATH,
+		workerBoundaryPath,
 		teamsRootDir,
 		maxWorkers: input.maxWorkers,
 		forceWorktree: true as const,
@@ -288,6 +297,9 @@ export function verifyAgentTeamsProfile(input: {
 	if (!observed.imageReady) mismatches.push("image-readiness");
 	if (!observed.dockerReady) mismatches.push("docker-readiness");
 	if (!observed.readyHandshake) mismatches.push("rpc-readiness");
+	if (!observed.structuredReadiness) mismatches.push("structured-readiness");
+	if (!observed.sessionBoundReadiness) mismatches.push("session-bound-readiness");
+	if (!observed.trustedBoundaryIdentity) mismatches.push("trusted-boundary-identity");
 	if (observed.forceWorktree !== requested.forceWorktree) mismatches.push("force-worktree");
 	if (observed.maxWorkers !== requested.maxWorkers) mismatches.push("max-workers");
 	if (JSON.stringify([...observed.childTools].sort()) !== JSON.stringify([...requested.childTools].sort())) mismatches.push("child-tools");
