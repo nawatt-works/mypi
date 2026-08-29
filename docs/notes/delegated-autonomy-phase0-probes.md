@@ -786,8 +786,8 @@ Final artifact hashes:
 agent-teams-profile.ts:    133aa737bdca212b93893e1810ad88c00d225479d2fd13c1f05f84e193b3c79f
 scoped-worker-tools.ts:    c9b5cf7796bf8469a28e514ecbdbbe82ee0f61a26da83532792d4c071284dcee
 worker-boundary.ts:        7e8c97282c0e4afd4b5b080cb4030fd075547c826c1d4cf302c030ab0e922574
-agent-teams overlay:       65d5006d99c900ace27c62cc3054eae68996ab0d67b356d6f358bc065ee0138c
-profile.json:              09d0007e347ddf87036e66aaf0f6b702d25a28c42970864d4e09533942ffefe4
+agent-teams overlay:       488da09cfaeb0bb4395386175b5111c9835304b88bfde9736ae20553ad04407e
+profile.json:              6d8014fe27b08897cfda51570e1eb7440f91a004ae9645c817905b5e3e63f536
 ```
 
 Atomic single-worker runtimeบน Pi `0.84.3` + exact image digest:
@@ -820,6 +820,7 @@ Final overlay ceiling-2 multi-worker runtime:
 Negative/fault chainหลัง independent review:
 
 - committed opt-in [`tests/agent-teams-runtime-probe.mjs`](../../tests/agent-teams-runtime-probe.mjs) รันผ่าน `npm run test:agent-teams-runtime -- <patched-checkout>`: clean upstream `git apply --check`, profile build และ executable negative startup cases `6/6`
+- overlay artifact regenerateเป็น `--unified=0` เพื่อตัด whitespace-bearing upstream context; semantic patched source tree digestคงเดิมและ apply-checkผ่าน
 - missing required managed env, valid-but-wrong 64-hex contract digest และ replaced boundary extension → failก่อน extension load
 - clean overlay-applied checkoutผ่าน entry/tree/Git provenance;แก้ `leader.ts` ที่ pathเดิมแล้ว builder fail closed
 - forged/replayed structured markerที่ nonceไม่ตรงถูก reject; missing marker → bounded timeoutประมาณ 5.3 วินาทีและไม่ ready
@@ -857,7 +858,7 @@ Remaining limitations ก่อน production activation:
 4. upload-capable dedicated toolsถูกตัดออกแทนการทดสอบ reviewed upload profile
 5. Docker daemon และ exact local imageเป็น trusted fail-closed dependencies; ห้าม mount socket/host HOME และห้าม runtime pull
 6. worktree mountไม่ซ่อน secret fileที่เกิดภายใน worktree ต้อง pair clean worktree + pre-exec data policy
-7. provider/image/daemon/missing-marker/missing-artifact/human-only fault injectionผ่านแล้ว; re-review correction v2ยืนยัน wiringดีขึ้นแต่ให้ `FAIL` เพราะ negative evidenceยังไม่เป็น committed executableและไม่ได้ reproduce apply-check Correction v3เพิ่ม opt-in runtime probeพร้อม clean apply-check/negative casesและล้าง whitespace driftแล้ว แต่ยังต้อง final re-review
+7. provider/image/daemon/missing-marker/missing-artifact/human-only fault injectionผ่านแล้ว; re-review correction v2ยืนยัน wiringดีขึ้นแต่ให้ `FAIL` เพราะ negative evidenceยังไม่เป็น committed executable Correction v3เพิ่ม opt-in probeแต่ reviewerรันจาก stale checkoutและพบ whitespace-bearing patch context Correction v4ใช้ zero-context overlay + explicit `--unidiff-zero`; producer probeผ่าน apply-check/negative `6/6` แต่ยังต้อง final re-review
 
 ### Adoption decision
 

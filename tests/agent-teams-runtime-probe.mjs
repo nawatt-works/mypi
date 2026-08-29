@@ -29,7 +29,7 @@ try {
 	if (head.status !== 0 || head.stdout.trim() !== "2c1776d2a68104aaadc1c622d8a704684c7c35d6") throw new Error("unexpected upstream checkout");
 	const add = run("git", ["-C", checkout, "worktree", "add", "--detach", cleanWorktree, head.stdout.trim()]);
 	if (add.status !== 0) throw new Error(add.stderr || "unable to create clean upstream worktree");
-	const apply = run("git", ["-C", cleanWorktree, "apply", "--check", overlayPath]);
+	const apply = run("git", ["-C", cleanWorktree, "apply", "--check", "--unidiff-zero", overlayPath]);
 	if (apply.status !== 0) throw new Error(apply.stderr || "overlay apply-check failed");
 	result.applyCheck = true;
 

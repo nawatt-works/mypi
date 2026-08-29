@@ -12,7 +12,7 @@ Profile นี้เป็น versioned Phase 0 candidate สำหรับ pat
 - Dockerfile SHA-256: `a391813a89ea2dc8ff004f9ca80a06ada2fdce618ff5a5d06b9615fb17e6ba35`
 - SPDX 2.3 SBOM: [`sbom.spdx.json`](sbom.spdx.json), SHA-256 `7fc73a1a025052371f5f801e0dfff8a6304c6b21df0b1398a78c7be8e9240961`
 - upstream `tmustier/pi-agent-teams`: commit `2c1776d2a68104aaadc1c622d8a704684c7c35d6`
-- [`agent-teams-overlay.patch`](agent-teams-overlay.patch): SHA-256 `65d5006d99c900ace27c62cc3054eae68996ab0d67b356d6f358bc065ee0138c`
+- [`agent-teams-overlay.patch`](agent-teams-overlay.patch): SHA-256 `488da09cfaeb0bb4395386175b5111c9835304b88bfde9736ae20553ad04407e`
 - [`worker-boundary.ts`](worker-boundary.ts): SHA-256 `7e8c97282c0e4afd4b5b080cb4030fd075547c826c1d4cf302c030ab0e922574`
 - `extensions/command-policy.ts`: SHA-256 `d1696594a39fc8eba07ecea9f982abc1aaaaccc5e82abf1be6c8a250a923922f`
 - `extensions/scoped-worker-tools.ts`: SHA-256 `c9b5cf7796bf8469a28e514ecbdbbe82ee0f61a26da83532792d4c071284dcee`
@@ -45,16 +45,16 @@ docker scout sbom \
 
 ## Agent-teams overlay และ atomic profile
 
-Overlayเป็น minimal maintained patch ไม่ใช่การ copy/fork sourceทั้ง repository Operatorต้อง pre-provision exact upstream checkoutแล้ว applyแบบ fail-closed:
+Overlayเป็น minimal maintained zero-context patch (`--unified=0`) ไม่ใช่การ copy/fork sourceทั้ง repository รูปแบบ zero-contextตัด whitespace-only context driftจาก upstreamและยัง bindด้วย exact commit/source-tree digest Operatorต้อง pre-provision exact upstream checkoutแล้ว applyแบบ fail-closed:
 
 ```bash
 git -C <pi-agent-teams-checkout> checkout --detach \
   2c1776d2a68104aaadc1c622d8a704684c7c35d6
 
-git -C <pi-agent-teams-checkout> apply --check \
+git -C <pi-agent-teams-checkout> apply --check --unidiff-zero \
   "$PWD/profiles/pi-agent-teams/node-worker-v1/agent-teams-overlay.patch"
 
-git -C <pi-agent-teams-checkout> apply \
+git -C <pi-agent-teams-checkout> apply --unidiff-zero \
   "$PWD/profiles/pi-agent-teams/node-worker-v1/agent-teams-overlay.patch"
 
 npm run test:agent-teams-runtime -- <pi-agent-teams-checkout>
