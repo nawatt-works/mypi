@@ -1,5 +1,5 @@
 import { spawn, spawnSync, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -142,7 +142,7 @@ class RpcClient {
 		const noticeOffset = this.notices.length;
 		await this.send({ type: "prompt", message: value });
 		const failures = this.notices.slice(noticeOffset).filter((notice) => /failed|error|unknown|missing|reached|invalid/i.test(notice));
-		if (failures.length > 0) throw new Error(`extension command failed: ${failures.join("; ")}`);
+		if (failures.length > 0) throw new Error(`extension command reported ${failures.length} failure notice(s)`);
 	}
 
 	async stop(): Promise<void> {
@@ -208,10 +208,22 @@ try {
 	if (!ID.test(teamId)) throw new Error("leader did not expose a bounded session/team identity");
 	await leader.command(`/team spawn ${workerName} fresh worktree`);
 	const teamConfigPath = join(runtimeRoot, "coordination", teamId, "config.json");
-	const config = JSON.parse((await readFile(teamConfigPath, "utf8"))) as { members?: Array<{ name?: string; status?: string; cwd?: string; meta?: unknown }> };
-	const member = config.members?.find((entry) => entry.name === workerName);
-	if (!member || member.status !== "online" || typeof member.cwd !== "string") throw new Error(`Worker readiness was not persisted; notices=${leader.notices.join(" | ")}`);
-	workerCwd = await realpath(member.cwd);
+	type PersistedMember = { name?: string; status?: string; cwd?: string; meta?: { childProfile?: { generatedProfileDigest?: unknown; leaseId?: unknown } } };
+	const readPersistedMember = async (): Promise<PersistedMember> => {
+		const config = JSON.parse((await readFile(teamConfigPath, "utf8"))) as { members?: PersistedMember[] };
+		const member = config.members?.find((entry) => entry.name === workerName);
+		if (!member || member.status !== "online" || typeof member.cwd !== "string" ||
+			typeof member.meta?.childProfile?.generatedProfileDigest !== "string" || typeof member.meta.childProfile.leaseId !== "string") {
+			throw new Error("Worker generated-profile readiness was not persisted");
+		}
+		return member;
+	};
+	const member = await readPersistedMember();
+	const firstGeneration = {
+		profileDigest: member.meta!.childProfile!.generatedProfileDigest as string,
+		leaseId: member.meta!.childProfile!.leaseId as string,
+	};
+	workerCwd = await realpath(member.cwd!);
 	const artifactPath = join(workerCwd, "generated-profile-acceptance.json");
 	const expectedArtifact = { schemaVersion: 1, kind: "mypi-generated-profile-real-provider", nonce: artifactNonce, result: "PASS" };
 	await leader.command(`/team send ${workerName} Create generated-profile-acceptance.json in the current worktree with exactly this JSON and no markdown: ${JSON.stringify(expectedArtifact)}. Use the write tool. Do not modify any other file.`);
@@ -221,6 +233,15 @@ try {
 	const firstWorkerRoot = join(runtimeRoot, "runs", teamId, "workers", workerName);
 	await waitUntilAbsent(firstWorkerRoot);
 	await leader.command(`/team spawn ${workerName} fresh worktree`);
+	const replacement = await readPersistedMember();
+	const secondGeneration = {
+		profileDigest: replacement.meta!.childProfile!.generatedProfileDigest as string,
+		leaseId: replacement.meta!.childProfile!.leaseId as string,
+	};
+	if (secondGeneration.profileDigest === firstGeneration.profileDigest || secondGeneration.leaseId === firstGeneration.leaseId) {
+		throw new Error("same-name replacement reused the prior generated profile or credential lease identity");
+	}
+	await realpath(replacement.cwd!);
 	await leader.command(`/team kill ${workerName}`);
 	await waitUntilAbsent(firstWorkerRoot);
 	const claimed = await readdir(join(runtimeRoot, "claimed-leases"));
@@ -243,12 +264,12 @@ try {
 	process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
 } catch (error) {
 	evidence.status = "FAIL";
-	evidence.error = error instanceof Error ? error.message : String(error);
+	const diagnostic = error instanceof Error ? `${error.name}:${error.message}` : String(error);
+	evidence.errorDigest = createHash("sha256").update(diagnostic).digest("hex");
 	evidence.teamId = teamId || undefined;
-	evidence.workerCwd = workerCwd || undefined;
-	evidence.notices = leader.notices;
+	evidence.noticeCount = leader.notices.length;
 	await writeFile(join(outputRoot, "acceptance.json"), `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
-	throw error;
+	throw new Error("generated-profile acceptance failed; inspect the private redacted evidence status");
 } finally {
 	if (teamId) await leader.command("/team done --force").catch(() => undefined);
 	await leader.stop().catch(() => undefined);

@@ -536,16 +536,15 @@ export default function orchestration(pi: ExtensionAPI): void {
 			environment.MYPI_ACCEPTANCE_THINKING_LEVEL = "low";
 			ctx.ui.notify("เริ่ม generated-profile acceptance; อาจใช้เวลาหลายนาที", "info");
 			try {
-				const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolvePromise, reject) => {
+				const result = await new Promise<{ code: number | null; stdout: string }>((resolvePromise, reject) => {
 					const child = spawn(process.execPath, [WORKER_ACCEPTANCE_RUNNER], { env: environment, stdio: ["ignore", "pipe", "pipe"] });
 					let stdout = "";
-					let stderr = "";
 					child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
-					child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+					child.stderr.resume();
 					child.once("error", reject);
-					child.once("close", (code) => resolvePromise({ code, stdout, stderr }));
+					child.once("close", (code) => resolvePromise({ code, stdout }));
 				});
-				if (result.code !== 0) throw new Error(result.stderr.trim().slice(-2000) || `acceptance exited ${result.code}`);
+				if (result.code !== 0) throw new Error(`acceptance subprocess exited ${result.code ?? "without a status"}; diagnostics were not copied into session audit`);
 				const evidence = JSON.parse(result.stdout) as { status?: unknown; profileDigest?: unknown; teamId?: unknown; checks?: unknown };
 				if (evidence.status !== "PASS" || typeof evidence.profileDigest !== "string") throw new Error("acceptance evidence is malformed or not PASS");
 				pi.appendEntry(WORKER_ACCEPTANCE_ENTRY, {
