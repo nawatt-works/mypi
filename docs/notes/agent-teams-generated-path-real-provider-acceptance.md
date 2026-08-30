@@ -3,8 +3,8 @@
 > **Status:** PASS — production remains disabled<br>
 > **Executed:** 2026-08-30<br>
 > **Provider/model:** `openai-codex/gpt-5.4`, thinking `low`<br>
-> **Candidate commits:** `cb05e2f`, `5340500`, `d09c982`, `567826a`, `8bec3cf`<br>
-> **Profile digest:** `dcf7b3d084e47726f3723ca1715ca441d5f7fbdf392c63f52ccdf90432bde897`
+> **Candidate commits:** `cb05e2f`, `5340500`, `d09c982`, `567826a`, `d5273ed`, `637f0b0`<br>
+> **Profile digest:** `368d561ec19be9b4a57a5b1e0296df606fd814eae958728a97b5464335287f7f`
 
 ## Operator boundary
 
@@ -20,8 +20,8 @@ Startup correctionถัดมาย้าย Git worktreeออกจาก cre
 {
   "status": "PASS",
   "productionActivated": false,
-  "profileDigest": "dcf7b3d084e47726f3723ca1715ca441d5f7fbdf392c63f52ccdf90432bde897",
-  "runtimeAuthorityDigest": "6d90012f628776f6f60ab88478c993452271d01e01fb1799491565e8c119937c",
+  "profileDigest": "368d561ec19be9b4a57a5b1e0296df606fd814eae958728a97b5464335287f7f",
+  "runtimeAuthorityDigest": "7398876bb4d8fe04fe33ac22295e0a7fa153f9a7e26213b88c9b5c19d24a58f7",
   "credentialRevision": 1,
   "providerId": "openai-codex",
   "modelId": "gpt-5.4",
@@ -31,6 +31,9 @@ Startup correctionถัดมาย้าย Git worktreeออกจาก cre
     "boundedWorktreeMutation": true,
     "noInteractiveRequests": true,
     "forcedCrashCleanup": true,
+    "leaderLossCleanup": true,
+    "leaderLossWorktreeRetained": true,
+    "orderlyShutdownClassified": true,
     "stopCleanup": true,
     "sameNameReplacement": true,
     "noReusableCredentialState": true
@@ -58,7 +61,10 @@ trusted machine receipt
   → generation-bound asynchronous cleanup
   → immediate same-name retry serialized behind cleanup
   → same-name replacement with new profile/lease identities
-  → graceful stop
+  → graceful stop classified without false leader-loss marker
+  → third generation + leader SIGKILL
+  → child watchdog/self-clean exact profile and auth
+  → durable generation marker + retained recovery worktree
   → cleanup + no reusable credential state
 ```
 
@@ -72,4 +78,4 @@ trusted machine receipt
 
 ## Remaining gate
 
-ผลนี้ผ่าน generated spawn/readiness/work/forced-crash/immediate retry/stop/replacement path 8/8 และ rotation integrationยืนยัน active block → idle rotate → stale revision reject → new revision spawnแล้ว แต่ยังไม่เปิด production ต้องเพิ่ม leader-loss reconciliation, read-only/worktree-write adaptersและ final Phase 2–3 evidence reviewก่อน root import, releaseหรือ Default Pi switch
+ผลนี้ผ่าน generated spawn/readiness/work/forced-crash/immediate retry/orderly stop/leader-loss self-clean/worktree retention/replacement path 11/11 และ rotation integrationยืนยัน active block → idle rotate → stale revision reject → new revision spawnแล้ว แต่ยังไม่เปิด production ต้องเพิ่ม read-only/worktree-write adaptersและ final Phase 2–3 evidence reviewก่อน root import, releaseหรือ Default Pi switch

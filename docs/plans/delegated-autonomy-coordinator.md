@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — Phase 2 leader-loss reconciliation + execution adapters; production remains disabled<br>
+> **Status:** active — Phase 2 read-only/worktree-write execution adapters; production remains disabled<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 21:00<br>
+> **Updated:** 2026-08-30 21:40<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -899,14 +899,16 @@ Success metric หลัก:
 - corrections `cb05e2f`, `5340500`เพิ่ม exact acceptance dependency lock, sibling private worktree root, full tool readinessและ measured evidence
 - generated-path real-provider run `5340500` **PASS**: 7/7 checks, interactive requests `0`, generated profile removed, no reusable credential state
 - `d09c982`, `567826a`เพิ่ม exact PID SIGKILL, generation-bound cleanup, immediate same-name retry serializationและ rotation integration
-- final crash acceptance **PASS 8/8** profile `dcf7b3d0…`; full suite `194/194`; active rotate block → stale revision reject → new revision spawnผ่าน
+- crash acceptance **PASS 8/8** profile `dcf7b3d0…`; active rotate block → stale revision reject → new revision spawnผ่าน
+- `d5273ed`, `637f0b0`เพิ่ม parent-loss watchdog + exact self-clean, canonical nonsecret marker, orderly-shutdown classificationและ retained recovery worktree
+- final generated-path acceptance **PASS 11/11** profile `368d561e…`; interactive requests `0`, no reusable credential state, full suite `194/194`
 - evidenceอยู่ที่ [Agent-teams Generated-path Real-provider Acceptance](../notes/agent-teams-generated-path-real-provider-acceptance.md)
 - productionยัง disabled
 
 ## Exact next action
 
-1. เพิ่ม leader-loss reconciliationโดยไม่ kill PID reuseหรือเชื่อ stale runtime record
-2. แยก read-only/worktree-write execution adapters
+1. แยก read-only/worktree-write execution adapters
+2. เพิ่ม regressionสำหรับ manifest-disappears ระหว่าง leader-loss concurrent cleanup
 3. ขอ independent Phase 2–3 evidence reviewก่อน production importหรือ Default release
 4. หลัง profile pathผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
 
