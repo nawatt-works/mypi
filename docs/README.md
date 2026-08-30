@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-07-27 08:55<br>
-> **Updated:** 2026-08-30 09:10<br>
+> **Updated:** 2026-08-30 09:20<br>
 > **Purpose:** แสดงภาพรวมของ design notes และ implementation history ที่ repository `my-pi` เป็นเจ้าของ
 
 `docs/` เป็น project documentation ของ repository นี้ ไม่ใช่ workspace-wide artifact store และไม่ใช่ default path สำหรับ plan, note หรือ output จาก AI tool/skill/harness อื่น
@@ -11,11 +11,11 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
-| 2026-08-30 09:10 | 2026-08-30 09:10 | active — planning and inventory | [จัด My Pi เป็น Capability Packages และ Pinned Releases](plans/capability-packages-and-pinned-releases.md) | stable-only capability packages, `project-opt-in/`, incubator boundary, isolated dev profile และ pinned Git release; พัก Worker profileไว้หารือหลัง migration |
+| 2026-08-30 09:20 | 2026-08-30 09:10 | active — planning and inventory | [จัด My Pi เป็น Capability Packages และ Pinned Releases](plans/capability-packages-and-pinned-releases.md) | รวม lanesไว้ใต้ `capabilities/{global,project-opt-in,incubator}`, isolated dev profile และ pinned Git release; พัก Worker profileไว้หารือหลัง migration |
 | 2026-08-30 09:10 | 2026-08-28 15:32 | paused — Phase 2 | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | pure mandate/policy/REVIEW registriesผ่านแล้ว; production wiringพักรอ capability migrationและ Worker-profile decision |
 | 2026-08-28 15:32 | 2026-08-25 09:19 | superseded | [Pi Coordinator บน Herdr](plans/pi-herdr-coordinator.md) | เก็บ implementation/probe history; authority contract และ Phase 3 เดิมถูกแทนด้วย delegated-autonomy plan |
 | 2026-08-23 11:19 | 2026-08-22 12:40 | superseded | [แยก Workflow Plan, Continuity Ledger และ Plannotator Review](plans/flexible-planning-continuity.md) | implementation รุ่น managed fallback; ต่อมาถูกแทนด้วย pointer-only และ dual session/workspace tracking |
-| 2026-08-09 19:25 | 2026-08-09 11:10 | complete | [ย้ายและขยาย Azure DevOps extension](plans/azure-devops-extension-crud.md) | เพิ่ม opt-in Work Item CRUD; sourceปัจจุบันอยู่ `local/extensions/azure-devops/` และมีแผนย้ายเป็น capability packageใต้ `project-opt-in/` |
+| 2026-08-09 19:25 | 2026-08-09 11:10 | complete | [ย้ายและขยาย Azure DevOps extension](plans/azure-devops-extension-crud.md) | เพิ่ม opt-in Work Item CRUD; sourceปัจจุบันอยู่ `local/extensions/azure-devops/` และมีแผนย้ายเป็น `capabilities/project-opt-in/azure-devops/` |
 | 2026-08-23 11:19 | 2026-08-09 09:02 | superseded | [ให้ AI ตัดสินใจเปิด Plannotator](plans/ai-auto-plannotator.md) | implementation เดิมที่ผูกงานใหญ่กับ Plannotator; ดู current design ใน Persistent Todo + Handoff |
 | 2026-08-22 16:15 | 2026-08-05 12:04 | reference | [ประวัติแผนของ My Pi](plans/README.md) | อธิบายขอบเขตของ project-owned plan history โดยไม่เป็น default path ให้กลไกอื่น |
 
@@ -34,6 +34,7 @@
 
 ## Change log
 
+- 2026-08-30 09:20 — ยืนยันให้ capabilityทุก deployment/lifecycle laneอยู่ใต้ rootเดียว: `capabilities/global/`, `capabilities/project-opt-in/` และ `capabilities/incubator/`
 - 2026-08-30 09:10 — เปิดแผน capability-package/pinned-release migration: stable-only global aggregate, `local/` → `project-opt-in/`, whole-capability incubator, isolated dev profile; พัก delegated Worker profileไว้หารือหลังงาน packaging
 - 2026-08-30 08:40 — trusted REVIEW grant registryผ่าน correction review: authoritative combined policy digest, single append transition, consume-once/revoke/expiry/tamper fail closed, full suite `142/142`; productionยัง unwired
 - 2026-08-30 08:30 — Phase 1 pure mandate/policy/audit registryผ่าน correction review: ปิด mutable alias + duplicate active replay, full suite `133/133`; production behaviorยัง unchangedและเริ่ม Phase 2

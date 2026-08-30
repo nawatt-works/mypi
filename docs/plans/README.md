@@ -2,7 +2,7 @@
 
 > **Status:** reference<br>
 > **Created:** 2026-08-05 12:04<br>
-> **Updated:** 2026-08-30 09:10<br>
+> **Updated:** 2026-08-30 09:20<br>
 > **Purpose:** เก็บแผน implementation ที่เป็นเอกสารของ repository `my-pi` และมีประโยชน์สำหรับอ้างอิงย้อนหลัง
 
 ไฟล์ใน directory นี้เป็น project documentation ที่ย้ายมาจาก `.workbench/plans/` เพื่อให้มองเห็นได้จากเครื่องมือทั่วไป ไม่ใช่ default plan directory และไม่สร้างข้อกำหนดให้ AI tool, skill, workflow หรือ harness อื่น
@@ -16,13 +16,14 @@
 
 ## Decisions
 
-- 2026-08-30 — ใช้ capability packageเป็นหน่วย ownership/deployment, stable-only global release, `project-opt-in/`, incubatorและ pinned Git release
+- 2026-08-30 — ใช้ capability packageเป็นหน่วย ownership/deployment, stable-only global release, `capabilities/{global,project-opt-in,incubator}` และ pinned Git release
 - 2026-08-22 — ย้าย project-owned plan history จาก hidden `.workbench/plans/` มา `docs/plans/`
 - 2026-08-22 — ยกเลิกสถานะของ directory นี้ในฐานะ fallback กลางสำหรับ plan
 - 2026-08-22 — artifact owner เป็นผู้กำหนด path, format และ lifecycle; `my-pi` ไม่เพิ่ม schema กลาง
 
 ## Change log
 
+- 2026-08-30 09:20 — รวม global, project opt-inและ incubator lanesไว้ใต้ `capabilities/`
 - 2026-08-30 09:10 — เพิ่ม current plan linksและเปิด capability-package/pinned-release migrationเป็นงานหลักก่อน Worker profile
 - 2026-08-22 16:15 — เปลี่ยนจาก planning policy เป็น project documentation reference และย้ายมา `docs/plans/`
 - 2026-08-22 12:40 — แยก workflow-owned artifact และ continuity tracking ออกจาก fallback durable plan

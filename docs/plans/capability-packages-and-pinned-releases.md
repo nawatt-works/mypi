@@ -2,7 +2,7 @@
 
 > **Status:** active — planning and inventory<br>
 > **Created:** 2026-08-30 09:10<br>
-> **Updated:** 2026-08-30 09:10<br>
+> **Updated:** 2026-08-30 09:20<br>
 > **Purpose:** แยก capability ตามสถานะและขอบเขตการติดตั้ง ให้ Default Pi โหลดเฉพาะของที่ stable จริงจาก pinned Git release โดยไม่ผูกการพัฒนากับ production working tree
 
 ## Goal and scope
@@ -11,8 +11,8 @@
 
 1. extension, skill, prompt, profile, schema, test และเอกสารของ capability เดียวกันอยู่ภายใต้ package เดียว
 2. Default Pi โหลดเฉพาะ stable global capabilities
-3. capability ที่ stable แต่ต้องให้ project เลือกใช้ อยู่ภายใต้ `project-opt-in/`
-4. capability ที่ยังพัฒนาหรือเป็น candidate อยู่ภายใต้ `incubator/` และไม่ถูก stable manifest โหลด
+3. capability ที่ stable แต่ต้องให้ project เลือกใช้ อยู่ภายใต้ `capabilities/project-opt-in/`
+4. capability ที่ยังพัฒนาหรือเป็น candidate อยู่ภายใต้ `capabilities/incubator/` และไม่ถูก stable manifest โหลด
 5. Default Pi ติดตั้ง exact Git tag/commit จาก remote ไม่อ้าง development working tree
 6. Development Pi ใช้ profile แยกและโหลด active checkout ได้โดยไม่กระทบ Default Pi
 7. ไม่ refactor ภายใน capability เพียงเพื่อแยกส่วน stable ออกจากส่วนที่ยังพัฒนา; ถ้ายังมีส่วนไม่พร้อม ให้ทั้ง capability อยู่ incubator
@@ -45,20 +45,20 @@ extension/skill จะไม่เป็นหน่วยจัดโครง�
 ถ้า capability มีทั้ง behavior เดิมที่ใช้งานได้และส่วนใหม่ที่ยังพัฒนา:
 
 - ไม่ผ่าตัดเพื่อสร้าง stable subset เพียงเพื่อให้ยังอยู่ใน global release
-- ให้ทั้ง capability อยู่ `incubator/`
+- ให้ทั้ง capability อยู่ `capabilities/incubator/`
 - promote ทั้ง package เมื่อพร้อม
 
-### D3 — `project-opt-in/` คือ released scope ไม่ใช่ development scope
+### D3 — `capabilities/project-opt-in/` คือ released scope ไม่ใช่ development scope
 
-เปลี่ยนชื่อ `local/` เป็น `project-opt-in/` เพื่อสื่อว่า capability ในพื้นที่นี้:
+เปลี่ยนชื่อ `local/` เป็น `capabilities/project-opt-in/` เพื่อสื่อว่า capability ในพื้นที่นี้:
 
 - ผ่าน stable gate แล้ว
 - ไม่ควรโหลดทุก project
 - project ที่ trusted ต้องเลือกติดตั้งหรือชี้ package ผ่าน `.pi/settings.json`
 
-Project-specific code ที่ไม่มีเจตนา reuse ควรอยู่ใน project เจ้าของ ไม่ย้ายมา `my-pi/project-opt-in/`
+Project-specific code ที่ไม่มีเจตนา reuse ควรอยู่ใน project เจ้าของ ไม่ย้ายมา `my-pi/capabilities/project-opt-in/`
 
-### D4 — `incubator/` ครอบ development และ candidate
+### D4 — `capabilities/incubator/` ครอบ development และ candidate
 
 ใช้ README/status ของแต่ละ package แยก `development` กับ `candidate` โดยไม่สร้าง lifecycle directory เพิ่มและไม่ย้าย sourceทุกครั้งที่สถานะเปลี่ยน
 
@@ -130,33 +130,33 @@ Default profile โหลด pinned release เท่านั้น ห้า�
 ```text
 my-pi/
 ├── capabilities/
-│   └── global/
-│       ├── <stable-capability>/
+│   ├── global/
+│   │   ├── <stable-capability>/
+│   │   │   ├── package.json
+│   │   │   ├── extensions/
+│   │   │   ├── skills/
+│   │   │   ├── tests/
+│   │   │   └── README.md
+│   │   └── ...
+│   │
+│   ├── project-opt-in/
+│   │   ├── azure-devops/
+│   │   │   ├── package.json
+│   │   │   ├── extensions/
+│   │   │   ├── skills/
+│   │   │   ├── tests/
+│   │   │   └── README.md
+│   │   └── ...
+│   │
+│   └── incubator/
+│       ├── delegated-autonomy/
 │       │   ├── package.json
 │       │   ├── extensions/
 │       │   ├── skills/
+│       │   ├── profiles/
 │       │   ├── tests/
 │       │   └── README.md
 │       └── ...
-│
-├── project-opt-in/
-│   ├── azure-devops/
-│   │   ├── package.json
-│   │   ├── extensions/
-│   │   ├── skills/
-│   │   ├── tests/
-│   │   └── README.md
-│   └── ...
-│
-├── incubator/
-│   ├── delegated-autonomy/
-│   │   ├── package.json
-│   │   ├── extensions/
-│   │   ├── skills/
-│   │   ├── profiles/
-│   │   ├── tests/
-│   │   └── README.md
-│   └── ...
 │
 ├── lab/                       # disposable experiments/probes
 ├── docs/                      # repository-owned docs/plans/notes
@@ -167,8 +167,8 @@ my-pi/
 ตำแหน่งสุดท้ายอาจปรับจาก inventory ได้ แต่ semantic boundary ต่อไปนี้ห้ามเปลี่ยนโดยไม่มี decision ใหม่:
 
 - `capabilities/global/` = stable + autoload global
-- `project-opt-in/` = stable + project-selected
-- `incubator/` = not released
+- `capabilities/project-opt-in/` = stable + project-selected
+- `capabilities/incubator/` = not released
 - root manifest = stable global aggregate เท่านั้น
 
 ## Capability package contract
@@ -185,7 +185,7 @@ my-pi/
 - README ระบุ purpose, scope, status, configuration, commands/tools, security boundary และ verification
 - tests ที่ resolve sourceจาก package owner ไม่อาศัย path เดิมแบบซ่อน
 
-Root packageทำหน้าที่ aggregate stable global resources ไม่ auto-discover incubatorหรือ project-opt-in resources
+Root packageทำหน้าที่ aggregate stable global resources ไม่ auto-discover `capabilities/incubator/` หรือ `capabilities/project-opt-in/` resources
 
 ต้องประเมิน npm workspacesหรือวิธีติดตั้ง dependenciesร่วมกันก่อนย้าย packageจริง เพื่อให้ clean Git installทำงานโดยไม่อาศัย `node_modules` จาก development checkoutโดยบังเอิญ
 
@@ -213,7 +213,7 @@ Root packageทำหน้าที่ aggregate stable global resources ไม
 ### Phase 0 — Freeze decisions and inventory
 
 - [x] ยืนยัน capability packageเป็นหน่วย ownership/deployment
-- [x] ยืนยัน `local/` → `project-opt-in/`
+- [x] ยืนยัน `local/` → `capabilities/project-opt-in/`
 - [x] ยืนยัน stable-only global releaseและไม่รักษา compatibilityกับ Default working-tree install
 - [x] ยืนยันไม่ split capabilityเพื่อช่วย stable subset
 - [x] ยืนยัน pinned Git release + isolated development profile
@@ -230,9 +230,9 @@ Exit criteria: ไม่มี current global resourceหรือ transitive im
 - [ ] ตัดสิน root npm workspace/dependency layout
 - [ ] ตัดสิน root Pi manifest aggregationโดยไม่ auto-discover resourceนอก stable lane
 - [ ] เพิ่ม architecture tests:
-  - root releaseห้ามโหลด `incubator/`
-  - root releaseห้ามโหลด `project-opt-in/`
-  - stable global transitive importsห้ามข้ามไป incubator
+  - root releaseห้ามโหลด `capabilities/incubator/`
+  - root releaseห้ามโหลด `capabilities/project-opt-in/`
+  - stable global transitive importsห้ามข้ามไป `capabilities/incubator/`
   - package manifestsต้องอ้าง pathที่มีจริง
   - package/tool/command namesห้ามชนโดยไม่ตั้งใจ
 - [ ] กำหนด clean-install smoke harnessด้วย isolated Pi directory
@@ -246,24 +246,24 @@ Exit criteria: package skeletonหนึ่งตัวติดตั้ง/tes
 - [ ] แก้ importsและ test paths
 - [ ] ตรวจ extension commandsยังใช้ prefix `/mypi-`
 - [ ] เก็บเฉพาะ capabilityที่ stableจริงใน root aggregate manifest
-- [ ] capabilityที่ไม่ผ่าน gateย้ายหรือคงไว้ใน incubatorทั้งชุด
+- [ ] capabilityที่ไม่ผ่าน gateย้ายหรือคงไว้ใน `capabilities/incubator/` ทั้งชุด
 
 Exit criteria: root stable manifestโหลดเฉพาะ packagesที่มี evidenceครบและ full stable suiteผ่าน
 
 ### Phase 3 — Rename and package project opt-ins
 
-- [ ] เปลี่ยน `local/` เป็น `project-opt-in/`
-- [ ] ย้าย Azure DevOpsเป็น `project-opt-in/azure-devops/`
+- [ ] เปลี่ยน `local/` เป็น `capabilities/project-opt-in/`
+- [ ] ย้าย Azure DevOpsเป็น `capabilities/project-opt-in/azure-devops/`
 - [ ] เพิ่ม package manifestและจัด extension/tests/docsให้อยู่กับ capability
 - [ ] อัปเดต `.pi/settings.json` examplesทั้งหมด
 - [ ] ตรวจ project trust, read-only compatibility, opt-in writesและ non-interactive denial
-- [ ] ยืนยัน project-opt-in packageไม่ถูก root global manifestโหลด
+- [ ] ยืนยัน `capabilities/project-opt-in/` packageไม่ถูก root global manifestโหลด
 
 Exit criteria: trusted fixture projectเปิด Azure DevOps packageได้อย่าง explicit และ fixtureที่ไม่ opt inไม่เห็น tools/commandsของ package
 
 ### Phase 4 — Consolidate incubator capabilities
 
-- [ ] สร้าง `incubator/delegated-autonomy/`
+- [ ] สร้าง `capabilities/incubator/delegated-autonomy/`
 - [ ] ย้าย orchestration/delegated resourcesทั้ง capabilityตาม ownershipที่ inventoryตัดสิน
 - [ ] ไม่ split stable manual subsetออกมาเพียงเพื่อ global release
 - [ ] ย้าย tests/profiles/probesพร้อม source owner
@@ -275,7 +275,7 @@ Exit criteria: incubator package self-contained, testsอ้าง owner pathใ
 
 ### Phase 5 — Documentation and clean installation
 
-- [ ] อัปเดต root READMEให้แยก stable global/project-opt-in/incubatorชัดเจน
+- [ ] อัปเดต root READMEให้แยก `capabilities/global/`, `capabilities/project-opt-in/` และ `capabilities/incubator/` ชัดเจน
 - [ ] อัปเดต `docs/README.md` และ historical links
 - [ ] อัปเดต install/update/rollback instructions
 - [ ] ทดสอบ `npm ci` จาก clean checkout
@@ -313,7 +313,7 @@ Exit criteria: Default Pi โหลด exact remote Git refและการแ
 
 ## Stable promotion gate
 
-Capability จะเข้า stable globalหรือ project-opt-inได้เมื่อ:
+Capability จะเข้า `capabilities/global/` หรือ `capabilities/project-opt-in/` ได้เมื่อ:
 
 - package boundaryและ ownershipชัด
 -ไม่มีส่วนที่รู้ว่าอยู่ระหว่างพัฒนาใน runtime path
@@ -323,7 +323,7 @@ Capability จะเข้า stable globalหรือ project-opt-inได้�
 - commands/tools/resourcesที่สังเกตจริงตรง manifest
 - project/global scopeตรงที่ประกาศ
 - configuration migrationและrollbackเขียนไว้
-- ไม่มี dependency/importไป incubator
+- ไม่มี dependency/importไป `capabilities/incubator/`
 - ไม่มี secretหรือmachine-local pathใน committed config
 - documentationระบุข้อจำกัดตาม enforcementจริง
 
@@ -360,7 +360,7 @@ Testsผ่านเพียงอย่างเดียวไม่ทำใ
 | root packageใช้ npm workspacesหรือไม่ | ประเมินจาก clean installและ dependency ownershipก่อนย้ายจริง |
 | themesเป็น capabilityเดียวหรือ resourceของ UI capability | ตัดสินใน inventory |
 | third-party RPIV/Plannotatorอยู่ packageใด | capability ownerต้องตรง behaviorและ scope; ห้ามโหลดเพียงเพราะเป็น root dependency |
-| project-opt-in distributionข้ามเครื่อง | เริ่มจาก stable checkout path; ประเมิน npm/separate Git packageภายหลัง |
+| `capabilities/project-opt-in/` distributionข้ามเครื่อง | เริ่มจาก stable checkout path; ประเมิน npm/separate Git packageภายหลัง |
 | package version syncกันหรือแยก | root releaseมี version; capability versionเริ่มแยกเฉพาะเมื่อมี independent lifecycleจริง |
 | Agent Plugins compatibility | พักจนมี separate evaluation |
 | Worker profile/auth | พักจน Phase 7 discussion |
@@ -372,9 +372,15 @@ Testsผ่านเพียงอย่างเดียวไม่ทำใ
 - ยืนยัน stable-only releaseโดยไม่รักษา Default working-tree consumers
 - ยืนยัน capability packageสำหรับ extension/skillทั้งหมด
 - ยืนยันไม่ split mixed capabilityเพื่อรักษา stable subset
-- ยืนยัน `project-opt-in/`, `incubator/`, pinned Git releaseและ dev profile separation
+- ยืนยัน `capabilities/project-opt-in/`, `capabilities/incubator/`, pinned Git releaseและ dev profile separation
 - พัก `pi-doc` migration, Agent Plugins adoptionและ Worker profile decisions
 - บันทึก Worker Default-profile fallbackเป็น blockerก่อน delegated production activation
+
+### 2026-08-30 — Capability lanesรวมใต้ rootเดียว
+
+- ยืนยันให้ global, project opt-inและ incubatorอยู่ใต้ `capabilities/` ทั้งหมด
+- semantic lanesคือ `capabilities/global/`, `capabilities/project-opt-in/` และ `capabilities/incubator/`
+- `lab/`, `docs/` และ aggregate testsยังอยู่นอก capability root
 
 ## Exact next action
 
@@ -382,7 +388,7 @@ Testsผ่านเพียงอย่างเดียวไม่ทำใ
 
 1. enumerate root Pi manifest resourcesและ transitive local imports
 2. map extension/skill/theme/third-party resourceทุกตัวไป capability owner
-3. เสนอ stable/global, project-opt-in หรือ incubator laneพร้อมเหตุผลและ blockers
+3. เสนอ `capabilities/global/`, `capabilities/project-opt-in/` หรือ `capabilities/incubator/` laneพร้อมเหตุผลและ blockers
 4. ระบุ path-bound hash/profile/test contractsที่จะเสียจากการย้าย
 5. ให้ผู้ใช้ตรวจ capability groupingก่อนเริ่ม bulk move
 
