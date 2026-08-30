@@ -276,6 +276,20 @@ try {
 	await realpath(replacement.cwd!);
 	await leader.command(`/team kill ${workerName}`);
 	await waitUntilAbsent(firstWorkerRoot);
+	await leader.command(`/team spawn ${workerName} fresh worktree`);
+	const orphaned = await readPersistedMember();
+	const orphanedDigest = orphaned.meta!.childProfile!.generatedProfileDigest as string;
+	const orphanedPid = verifyExactWorkerPid(orphaned.meta!.childProfile!.processId as number, leader.child.pid!);
+	const leaderPid = leader.child.pid!;
+	leader.child.kill("SIGKILL");
+	await waitUntilProcessAbsent(leaderPid);
+	await waitUntilProcessAbsent(orphanedPid);
+	await waitUntilAbsent(firstWorkerRoot);
+	const leaderLossMarker = JSON.parse(await readFile(join(runtimeRoot, "coordination", teamId, `leader-loss-${workerName}-${orphanedDigest}.json`), "utf8"));
+	if (leaderLossMarker.kind !== "mypi-agent-teams-leader-loss" || leaderLossMarker.teamId !== teamId ||
+		leaderLossMarker.workerId !== workerName || leaderLossMarker.profileDigest !== orphanedDigest || leaderLossMarker.worktree !== orphaned.cwd) {
+		throw new Error("leader-loss reconciliation marker does not match the exact orphaned generation");
+	}
 	const claimed = await readdir(join(runtimeRoot, "claimed-leases"));
 	const leasesRunRoot = join(runtimeRoot, "credential-leases", teamId);
 	const leases = existsSync(leasesRunRoot) ? await readdir(leasesRunRoot) : [];
@@ -286,6 +300,7 @@ try {
 	checks.boundedWorktreeMutation = true;
 	checks.noInteractiveRequests = true;
 	checks.forcedCrashCleanup = true;
+	checks.leaderLossCleanup = true;
 	checks.stopCleanup = true;
 	checks.sameNameReplacement = true;
 	checks.noReusableCredentialState = true;

@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync } from "node:fs";
+import { lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -19,6 +19,10 @@ import {
 } from "../../../extensions/command-policy.ts";
 import { analyzeToolCall } from "@nawatt-works/mypi-safety-guardrails";
 import { createScopedToolOperations } from "../../../extensions/scoped-worker-tools.ts";
+import {
+	cleanupMaterializedWorkerProfile,
+	type MaterializedWorkerProfileManifest,
+} from "../../../extensions/worker-profile-runtime.ts";
 
 const PROFILE_DIR = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = join(PROFILE_DIR, "..", "..", "..");
@@ -272,6 +276,46 @@ function policyRequest(profile: WorkerProfile, cwd: string): CommandPolicyReques
 	};
 }
 
+async function reconcileLeaderLoss(generatedProfileDigest: string): Promise<void> {
+	const manifestPathValue = process.env.MYPI_WORKER_PROFILE_MANIFEST;
+	const teamId = process.env.PI_TEAMS_TEAM_ID ?? "";
+	const workerId = process.env.PI_TEAMS_AGENT_NAME ?? "";
+	const teamsRootValue = process.env.PI_TEAMS_ROOT_DIR;
+	if (!manifestPathValue || !teamsRootValue || !/^[A-Za-z0-9._-]{1,128}$/.test(teamId) || !/^[A-Za-z0-9._-]{1,128}$/.test(workerId)) {
+		throw new Error("leader-loss reconciliation identity is missing or invalid");
+	}
+	const manifestPath = realpathSync(manifestPathValue);
+	const manifestInfo = lstatSync(manifestPath);
+	if (manifestInfo.isSymbolicLink() || !manifestInfo.isFile()) throw new Error("leader-loss Worker manifest identity is invalid");
+	const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as MaterializedWorkerProfileManifest;
+	if (manifest.profileDigest !== generatedProfileDigest || manifest.paths.manifest !== manifestPath || manifest.workerId !== workerId || manifest.runId !== teamId) {
+		throw new Error("leader-loss Worker manifest does not match the ready generation");
+	}
+	const workerRoot = dirname(manifestPath);
+	const runtimeRoot = resolve(workerRoot, "..", "..", "..", "..");
+	if (manifest.paths.workerRoot !== workerRoot || workerRoot !== join(runtimeRoot, "runs", teamId, "workers", workerId)) {
+		throw new Error("leader-loss Worker root is outside the exact runtime generation");
+	}
+	const teamsRoot = realpathSync(teamsRootValue);
+	if (teamsRoot !== join(runtimeRoot, "coordination")) throw new Error("leader-loss coordination root is outside the runtime authority");
+	const teamDir = realpathSync(join(teamsRoot, teamId));
+	const markerPath = join(teamDir, `leader-loss-${workerId}-${generatedProfileDigest}.json`);
+	writeFileSync(markerPath, `${JSON.stringify({
+		schemaVersion: 1,
+		kind: "mypi-agent-teams-leader-loss",
+		teamId,
+		workerId,
+		profileDigest: generatedProfileDigest,
+		worktree: manifest.worktree,
+		detectedAt: new Date().toISOString(),
+	})}\n`, { mode: 0o600, flag: "wx" });
+	await cleanupMaterializedWorkerProfile({
+		profile: { manifest, environment: {} },
+		runtimeRoot,
+		expectedProfileDigest: generatedProfileDigest,
+	});
+}
+
 export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 	const cwd = process.cwd();
 	const profile = loadWorkerProfile();
@@ -281,6 +325,10 @@ export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 	const editTool = createEditTool(cwd, { operations: scoped.edit });
 	const bashTool = createBashTool(cwd, { operations: createDockerBashOperations(profile) });
 	let ready = false;
+	let leaderWatchdog: NodeJS.Timeout | undefined;
+	let expectedLeaderPid: number | undefined;
+	let readyProfileDigest: string | undefined;
+	let reconcilingLeaderLoss = false;
 	const assertReady = () => {
 		if (!ready) throw new Error("Delegated Worker boundary is not ready");
 	};
@@ -386,14 +434,34 @@ export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 				workspaceMode: "worktree",
 				maxWorkers,
 			};
+			const leaderPid = process.ppid;
+			if (!Number.isSafeInteger(leaderPid) || leaderPid <= 1) throw new Error("managed Worker leader process identity is invalid");
+			expectedLeaderPid = leaderPid;
+			readyProfileDigest = generatedProfileDigest;
 			ready = true;
 			process.stderr.write(`MYPI_WORKER_BOUNDARY_READY ${JSON.stringify(readiness)}\n`);
+			leaderWatchdog = setInterval(() => {
+				if (!ready || reconcilingLeaderLoss || process.ppid === leaderPid) return;
+				reconcilingLeaderLoss = true;
+				ready = false;
+				if (leaderWatchdog) clearInterval(leaderWatchdog);
+				void reconcileLeaderLoss(generatedProfileDigest).then(() => process.exit(78), (error) => {
+					process.stderr.write(`Fatal delegated Worker leader-loss reconciliation failure: ${error instanceof Error ? error.message : String(error)}\n`);
+					process.exit(79);
+				});
+			}, 250);
+			leaderWatchdog.unref?.();
 		} catch (error) {
 			process.stderr.write(`Fatal delegated Worker boundary initialization failure: ${String(error)}\n`);
 			process.exit(78);
 		}
 	});
-	pi.on("session_shutdown", () => {
+	pi.on("session_shutdown", async () => {
 		ready = false;
+		if (leaderWatchdog) clearInterval(leaderWatchdog);
+		if (!reconcilingLeaderLoss && expectedLeaderPid && readyProfileDigest && process.ppid !== expectedLeaderPid) {
+			reconcilingLeaderLoss = true;
+			await reconcileLeaderLoss(readyProfileDigest);
+		}
 	});
 }

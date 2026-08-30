@@ -20,7 +20,7 @@ index 2e6beda..0cd1522 100644
 @@ -241,0 +244 @@ export async function handleTeamCommand(opts: {
 +				suppressConfigBootstrap,
 diff --git a/extensions/teams/leader.ts b/extensions/teams/leader.ts
-index a3bc5c1..1405d9e 100644
+index a3bc5c1..67d3a63 100644
 --- a/extensions/teams/leader.ts
 +++ b/extensions/teams/leader.ts
 @@ -0,0 +1 @@
@@ -97,7 +97,7 @@ index a3bc5c1..1405d9e 100644
 +const MANAGED_PROFILE_ID = "pi-agent-teams-docker-strong-v1";
 +const MANAGED_UPSTREAM_COMMIT = "2c1776d2a68104aaadc1c622d8a704684c7c35d6";
 +const MANAGED_ENTRY_SHA256 = "4f7715812ac0529a5243c5044138510f9c88b8e070910ee3e00b9f465438756b";
-+const MANAGED_BOUNDARY_SHA256 = "46ddf63f6ffba961fa24be36f114ec4e08e209184f32728cda35533306c20ba1";
++const MANAGED_BOUNDARY_SHA256 = "4a55413124bdc69f2d9098197663938d69b5d8ab851bec6f300b9c9e808fa3ab";
 +const MANAGED_WORKER_PROFILE_RUNTIME_SHA256 = "654cbeeb5b8525c4cf03feded21d20fae7c7a788aacd6de6c9098de8325d67eb";
 +const MANAGED_WORKER_MACHINE_SETUP_SHA256 = "b19e344c889a93533da6afb0dcd89137a909600d84bace65c9f225eec4cedb16";
 +const MANAGED_AGENT_TEAMS_WORKER_PROFILE_SHA256 = "d67fe7603137fe025b7f384edebc9538d841d72794ce17312818ed9b1cbff466";
