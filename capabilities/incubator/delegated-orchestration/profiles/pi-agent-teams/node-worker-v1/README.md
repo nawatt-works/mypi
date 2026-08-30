@@ -12,8 +12,10 @@ Profile นี้เป็น versioned Phase 0 candidate ภายใน incuba
 - Dockerfile SHA-256: `a391813a89ea2dc8ff004f9ca80a06ada2fdce618ff5a5d06b9615fb17e6ba35`
 - SPDX 2.3 SBOM: [`sbom.spdx.json`](sbom.spdx.json), SHA-256 `7fc73a1a025052371f5f801e0dfff8a6304c6b21df0b1398a78c7be8e9240961`
 - upstream `tmustier/pi-agent-teams`: commit `2c1776d2a68104aaadc1c622d8a704684c7c35d6`
-- [`agent-teams-overlay.patch`](agent-teams-overlay.patch): SHA-256 `1eac46691483d997063f0be798672e1b3e1da259e38f3dcefc21d87e7290855d`
-- [`worker-boundary.ts`](worker-boundary.ts): SHA-256 `32c1e6e271188936c233b99946eb65f835c7e0a04624bba7500debab1ace8ed6`
+- [`agent-teams-overlay.patch`](agent-teams-overlay.patch): SHA-256 `b05e4ec4be2c1c50264518a118dbf9103b0a16d54637f8115b5e75fd9b7efd53`
+- [`worker-boundary.ts`](worker-boundary.ts): SHA-256 `f92f5d651359d2ad1a6d5af2e9bd435c12109af5f82c04858e55b62532067bf8`
+- `extensions/worker-profile-runtime.ts`: SHA-256 `654cbeeb5b8525c4cf03feded21d20fae7c7a788aacd6de6c9098de8325d67eb`
+- `extensions/agent-teams-worker-profile.ts`: SHA-256 `56ce32b96d9b5835df69d9e451f06ae3c109fcda66e5873456f4c2abaf2fe5e5`
 - `extensions/command-policy.ts`: SHA-256 `d1696594a39fc8eba07ecea9f982abc1aaaaccc5e82abf1be6c8a250a923922f`
 - `extensions/scoped-worker-tools.ts`: SHA-256 `7941dcb47cf3c789096c9644f1df663e1c3612b429600ca6db2f0563b9606b72`
 
@@ -76,7 +78,9 @@ Opt-in acceptance probeใช้ pinned checkoutที่ลง dependenciesไ�
 - managed Worker ceiling 1–3
 - isolated teams root
 
-Patched leader require managed profile id, derived contract digest, exact boundary content hash, tools, force-worktree, ceiling และ patched-entry/source identityครบตั้งแต่ extension factory; missing/partial/malformed envทำให้ extension loadล้มเหลวแทน fallback แล้ว freezeค่าครั้งเดียว ไม่อ่าน ambient environmentใหม่ทุก spawn Child RPCบันทึกเฉพาะ observed environment key namesและรอ structured readinessที่ bind random per-spawn nonce, team/Worker identity, trusted boundary/source hashes, exact tools/env, worktree mode, ceiling และ recomputed contract digestก่อนถือว่า ready โดยไม่บันทึก environment values
+Patched leader require managed profile id, derived boundary/runtime contract digests, exact boundary/adapter/runtime module hashes, private runtime/default-profile separation, pinned provider/model/thinking/key authority, tools, force-worktree, ceiling และ patched-entry/source identityครบตั้งแต่ extension factory; missing/partial/malformed envทำให้ extension loadล้มเหลวแทน fallback แล้ว freezeค่าครั้งเดียว ไม่อ่าน ambient environmentใหม่ทุก spawn
+
+Spawn candidateใช้ adapterออก signed single-use credential leaseจาก private source, atomic claim/materialize generated Worker profileก่อน `TeammateRpc.start` และส่ง exact generated argv/environment เท่านั้น Readiness bind random per-spawn nonce, lease ID, generated profile digest, runtime contract, team/Worker identity, trusted boundary/source hashes, exact tools/env, worktree modeและ ceiling Cleanupถูก serializeต่อ Workerและทำเมื่อ startup verification, stopหรือ process close; failureไม่ถูก suppress
 
 ## Runtime contract
 
@@ -114,7 +118,7 @@ Runtime ต้องเรียก imageด้วย immutable digestและ 
 - Bash secret/external-write fixturesถูก blockก่อน execution; `rm -rf /workspace`ได้ structured `DENY/workspace-root-destruction`
 - scoped direct tools: routine writeผ่าน; `.env` read/write, `/etc/hosts`, external write/edit และ symlink escapeถูก deny
 - observed verifierผ่าน `verified: true`, mismatches `[]`; structured readinessและ nonce/session/boundary identityตรง requested
-- committed opt-in runtime probeผ่าน apply-check + negative startup cases `6/6`: missing env, valid-wrong contract, replaced boundary, forged/replayed marker, missing marker และ post-marker process exit
+- committed opt-in runtime probeผ่าน apply-check + negative startup cases `9/9`: missing env, wrong contract, missing/stale adapter, Default-linked runtime, replaced boundary, forged/replayed marker, missing marker และ post-marker process exit
 - additional fault probes: provider/model unavailableไม่ register Worker; missing SBOM fail; Docker daemon/image unavailableออก code `78`
 - clean pinned checkoutผ่าน provenance verifier; source driftที่ pathเดิม fail closed; `git push`ได้ `HUMAN/remote-mutation` blockerโดยไม่มี dialog
 - real Pi-native acceptance chainผ่าน: implement/review/correction/acceptance tasks `5/5`, artifacts `7/7`, user approvals `0`, routine dialogs `0`, HUMAN side effects `0`; Worker readinessทั้ง implementer/reviewer/verifier bind exact profile/session/worktree
@@ -126,4 +130,4 @@ Runtime ต้องเรียก imageด้วย immutable digestและ 
 - `task completed` จาก agent-teamsไม่เท่ากับ accepted; My Pi ต้อง collect artifact/diff/testsเอง
 - Docker daemonและ exact local imageเป็น trusted fail-closed dependencies หาก preflightไม่ผ่านต้องไม่ register Worker
 - Scoped direct operations canonicalizeและ reject symlink escapeก่อน filesystem callแต่ไม่ใช่ OS sandboxและยังมี TOCTOU limitation; strong direct-tool isolationต้องใช้ VM/container filesystem backendในอนาคต
-- Profile package/overlay/atomic builderถูก wireและ Phase 0 runtime/fault/acceptance probesผ่านแล้ว แต่ยัง disabled by defaultและไม่ production-readyจน Phase 1 mandate/policy/audit registry + production adapter wiringผ่าน acceptanceแยก
+- Profile package/overlay/generated-profile adapterถูก bindใน candidateแล้ว แต่ one-time machine setup/credential provisioning commandและ real provider production-path acceptanceยังไม่เสร็จ จึงยัง disabled by defaultและไม่มี production import

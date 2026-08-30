@@ -35,6 +35,8 @@ type WorkerProfile = {
 		dockerfileSha256: string;
 		sbomSpdxSha256: string;
 		workerBoundarySha256: string;
+		workerProfileRuntimeSha256: string;
+		agentTeamsWorkerProfileSha256: string;
 		commandPolicySha256: string;
 		scopedWorkerToolsSha256: string;
 	};
@@ -119,6 +121,8 @@ function deriveBoundaryContractDigest(profile: WorkerProfile, boundaryPath: stri
 		upstreamCommit: profile.integration.upstreamCommit,
 		patchedTeamsEntrySha256: profile.integration.patchedTeamsEntrySha256,
 		workerBoundarySha256: profile.toolchain.workerBoundarySha256,
+		workerProfileRuntimeSha256: profile.toolchain.workerProfileRuntimeSha256,
+		agentTeamsWorkerProfileSha256: profile.toolchain.agentTeamsWorkerProfileSha256,
 		commandPolicySha256: profile.toolchain.commandPolicySha256,
 		scopedWorkerToolsSha256: profile.toolchain.scopedWorkerToolsSha256,
 		imageDigest: profile.toolchain.observedLocalImageDigest,
@@ -155,6 +159,8 @@ export function verifyWorkerProfileArtifacts(profile: WorkerProfile): void {
 	requireHash("Dockerfile", join(PROFILE_DIR, "Dockerfile"), profile.toolchain.dockerfileSha256);
 	requireHash("SBOM", join(PROFILE_DIR, "sbom.spdx.json"), profile.toolchain.sbomSpdxSha256);
 	requireHash("Worker boundary", fileURLToPath(import.meta.url), profile.toolchain.workerBoundarySha256);
+	requireHash("Worker profile runtime", join(REPOSITORY_ROOT, "extensions", "worker-profile-runtime.ts"), profile.toolchain.workerProfileRuntimeSha256);
+	requireHash("agent-teams Worker profile adapter", join(REPOSITORY_ROOT, "extensions", "agent-teams-worker-profile.ts"), profile.toolchain.agentTeamsWorkerProfileSha256);
 	requireHash("command policy", join(REPOSITORY_ROOT, "extensions", "command-policy.ts"), profile.toolchain.commandPolicySha256);
 	requireHash("scoped Worker tools", join(REPOSITORY_ROOT, "extensions", "scoped-worker-tools.ts"), profile.toolchain.scopedWorkerToolsSha256);
 	requireHash("agent-teams overlay", join(PROFILE_DIR, "agent-teams-overlay.patch"), profile.integration.overlayPatchSha256);
@@ -333,6 +339,12 @@ export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 		try {
 			const requestedContractDigest = process.env.MYPI_AGENT_TEAMS_PROFILE_DIGEST;
 			if (!requestedContractDigest || !/^[a-f0-9]{64}$/.test(requestedContractDigest)) throw new Error("managed boundary contract digest is missing or malformed");
+			const runtimeContractDigest = process.env.MYPI_AGENT_TEAMS_RUNTIME_CONTRACT_DIGEST;
+			if (!runtimeContractDigest || !/^[a-f0-9]{64}$/.test(runtimeContractDigest)) throw new Error("managed runtime contract digest is missing or malformed");
+			const generatedProfileDigest = process.env.MYPI_WORKER_PROFILE_DIGEST;
+			if (!generatedProfileDigest || !/^[a-f0-9]{64}$/.test(generatedProfileDigest)) throw new Error("generated Worker profile digest is missing or malformed");
+			const leaseId = process.env.MYPI_AGENT_TEAMS_LEASE_ID;
+			if (!leaseId || !/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$/.test(leaseId)) throw new Error("Worker credential lease identity is missing or malformed");
 			const nonce = process.env.MYPI_AGENT_TEAMS_READY_NONCE;
 			if (!nonce || !/^[a-f0-9]{64}$/.test(nonce)) throw new Error("managed Worker readiness nonce is missing or malformed");
 			const requestedBoundaryPath = process.env.MYPI_AGENT_TEAMS_BOUNDARY_PATH;
@@ -354,6 +366,9 @@ export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 			if (contractDigest !== requestedContractDigest) throw new Error("managed boundary contract digest mismatch");
 			const readiness = {
 				contractDigest,
+				runtimeContractDigest,
+				generatedProfileDigest,
+				leaseId,
 				nonceDigest: sha256Text(nonce),
 				teamId: process.env.PI_TEAMS_TEAM_ID ?? "",
 				workerName: process.env.PI_TEAMS_AGENT_NAME ?? "",

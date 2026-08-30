@@ -1,6 +1,7 @@
-import { createHash, verify as verifySignature } from "node:crypto";
-import { lstat, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { createHash, randomUUID, sign as signPayload, verify as verifySignature } from "node:crypto";
+import { lstat, mkdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
 	cleanupMaterializedWorkerProfile,
 	materializeWorkerProfile,
@@ -24,6 +25,11 @@ export type AgentTeamsWorkerProfileConfiguration = {
 	workerBoundaryPath: string;
 	teamsExtensionPath: string;
 	boundaryContractDigest: string;
+	runtimeAuthorityDigest: string;
+	workerProfileRuntimePath: string;
+	workerProfileRuntimeSha256: string;
+	agentTeamsWorkerProfilePath: string;
+	agentTeamsWorkerProfileSha256: string;
 	maxWorkers: number;
 	leasePublicKeyPath: string;
 	leasePublicKeySha256: string;
@@ -61,6 +67,11 @@ export type AgentTeamsMaterializedWorker = {
 	profile: MaterializedWorkerProfile;
 	childArgs: string[];
 	leaseId: string;
+};
+
+export type IssuedAgentTeamsCredentialLease = {
+	leaseId: string;
+	credentialLeasePath: string;
 };
 
 type LoadedCredentialLease = {
@@ -152,6 +163,98 @@ async function loadLeasePublicKey(input: {
 		throw new Error("lease public key digest mismatch");
 	}
 	return content;
+}
+
+async function loadPrivateFile(label: string, path: string): Promise<Buffer> {
+	const info = await lstat(path);
+	if (info.isSymbolicLink() || !info.isFile()) throw new Error(`${label} must be a real file`);
+	if (typeof process.getuid === "function" && info.uid !== process.getuid()) throw new Error(`${label} has a different owner`);
+	if (process.platform !== "win32" && ((info.mode & 0o077) !== 0 || (info.mode & 0o600) !== 0o600)) {
+		throw new Error(`${label} must use private owner read/write permissions`);
+	}
+	if (await realpath(path) !== path) throw new Error(`${label} identity is not canonical`);
+	return readFile(path);
+}
+
+function parseCredentialSource(raw: Buffer, providerId: string): WorkerCredential {
+	let value: unknown;
+	try {
+		value = JSON.parse(raw.toString("utf8"));
+	} catch {
+		throw new Error("Worker credential source is malformed");
+	}
+	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Worker credential source must be an object");
+	const record = value as Record<string, unknown>;
+	if (JSON.stringify(Object.keys(record).sort()) !== JSON.stringify(["credential", "providerId", "schemaVersion"])) {
+		throw new Error("Worker credential source has an invalid shape");
+	}
+	if (record.schemaVersion !== 1 || record.providerId !== providerId || !record.credential || typeof record.credential !== "object") {
+		throw new Error("Worker credential source identity does not match the requested provider");
+	}
+	return record.credential as WorkerCredential;
+}
+
+export async function issueAgentTeamsCredentialLease(input: {
+	configuration: AgentTeamsWorkerProfileConfiguration;
+	runId: string;
+	workerId: string;
+	readyNonce: string;
+	now?: number;
+}): Promise<IssuedAgentTeamsCredentialLease> {
+	const runtimeRoot = await canonicalPrivateDirectory("runtimeRoot", input.configuration.runtimeRoot);
+	const providerId = requireIdentifier("providerId", input.configuration.providerId);
+	const runId = requireIdentifier("runId", input.runId);
+	const workerId = requireIdentifier("workerId", input.workerId);
+	const readyNonce = requireDigest("readyNonce", input.readyNonce);
+	const authorityRoot = await canonicalPrivateDirectory("lease authority root", join(runtimeRoot, "lease-authority"));
+	const privateKeyPath = join(authorityRoot, "private.pem");
+	const privateKey = await loadPrivateFile("lease private key", privateKeyPath);
+	const publicKey = await loadLeasePublicKey({
+		runtimeRoot,
+		path: input.configuration.leasePublicKeyPath,
+		expectedSha256: input.configuration.leasePublicKeySha256,
+	});
+	const credentialSourceRoot = await canonicalPrivateDirectory("credential source root", join(runtimeRoot, "credential-source"));
+	const credentialSourcePath = join(credentialSourceRoot, `${providerId}.auth.json`);
+	const credential = parseCredentialSource(await loadPrivateFile("Worker credential source", credentialSourcePath), providerId);
+	const leasesRoot = await canonicalPrivateDirectory("credential lease root", join(runtimeRoot, "credential-leases"));
+	const runLeaseRootPath = join(leasesRoot, runId);
+	try {
+		await mkdir(runLeaseRootPath, { mode: 0o700 });
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+	}
+	const runLeaseRoot = await canonicalPrivateDirectory("run credential lease root", runLeaseRootPath);
+	const credentialLeasePath = join(runLeaseRoot, `${workerId}.auth.json`);
+	const now = input.now ?? Date.now();
+	if (!Number.isSafeInteger(now)) throw new Error("credential lease issuance time is invalid");
+	const payload: CredentialLeasePayload = {
+		schemaVersion: 1,
+		leaseId: randomUUID(),
+		runId,
+		workerId,
+		providerId,
+		readyNonceSha256: sha256(readyNonce),
+		issuedAt: now,
+		expiresAt: now + 60_000,
+		credential,
+	};
+	let signature: Buffer;
+	try {
+		signature = signPayload(null, credentialLeaseSigningPayload(payload), privateKey);
+	} catch (error) {
+		throw new Error("credential lease signing failed", { cause: error });
+	}
+	if (!verifySignature(null, credentialLeaseSigningPayload(payload), publicKey, signature)) {
+		throw new Error("lease authority private key does not match the pinned public key");
+	}
+	const raw = `${JSON.stringify({ ...payload, signature: signature.toString("base64") }, null, 2)}\n`;
+	try {
+		await writeFile(credentialLeasePath, raw, { mode: 0o600, flag: "wx" });
+	} catch (error) {
+		throw new Error("Worker credential lease could not be issued", { cause: error });
+	}
+	return { leaseId: payload.leaseId, credentialLeasePath };
 }
 
 function parseSignedLease(raw: Buffer): SignedCredentialLease {
@@ -286,6 +389,20 @@ export async function materializeAgentTeamsWorkerProfile(input: {
 		throw new Error("maxWorkers must be an integer from 1 to 3");
 	}
 	const boundaryContractDigest = requireDigest("boundaryContractDigest", configuration.boundaryContractDigest);
+	const runtimeAuthorityDigest = requireDigest("runtimeAuthorityDigest", configuration.runtimeAuthorityDigest);
+	const workerProfileRuntimePath = await canonicalFile("workerProfileRuntimePath", configuration.workerProfileRuntimePath);
+	const agentTeamsWorkerProfilePath = await canonicalFile("agentTeamsWorkerProfilePath", configuration.agentTeamsWorkerProfilePath);
+	const expectedAdapterPath = await realpath(fileURLToPath(import.meta.url));
+	const expectedRuntimePath = await realpath(join(dirname(expectedAdapterPath), "worker-profile-runtime.ts"));
+	if (agentTeamsWorkerProfilePath !== expectedAdapterPath || workerProfileRuntimePath !== expectedRuntimePath) {
+		throw new Error("Worker profile adapter module identity mismatch");
+	}
+	if (sha256(await readFile(workerProfileRuntimePath)) !== requireDigest("workerProfileRuntimeSha256", configuration.workerProfileRuntimeSha256)) {
+		throw new Error("Worker profile runtime digest mismatch");
+	}
+	if (sha256(await readFile(agentTeamsWorkerProfilePath)) !== requireDigest("agentTeamsWorkerProfileSha256", configuration.agentTeamsWorkerProfileSha256)) {
+		throw new Error("agent-teams Worker profile adapter digest mismatch");
+	}
 	const runId = requireIdentifier("runId", spawn.runId);
 	const workerId = requireIdentifier("workerId", spawn.workerId);
 	const readyNonce = requireDigest("readyNonce", spawn.readyNonce);
@@ -323,8 +440,10 @@ export async function materializeAgentTeamsWorkerProfile(input: {
 	let profile: MaterializedWorkerProfile | undefined;
 	try {
 		const runtimeEnvironment = {
+			MYPI_AGENT_TEAMS_RUNTIME_CONTRACT_DIGEST: runtimeAuthorityDigest,
 			MYPI_AGENT_TEAMS_BOUNDARY_PATH: workerBoundaryPath,
 			MYPI_AGENT_TEAMS_ENTRY_PATH: teamsExtensionPath,
+			MYPI_AGENT_TEAMS_LEASE_ID: credential.leaseId,
 			MYPI_AGENT_TEAMS_MAX_WORKERS: String(configuration.maxWorkers),
 			MYPI_AGENT_TEAMS_PROFILE_DIGEST: boundaryContractDigest,
 			MYPI_AGENT_TEAMS_READY_NONCE: readyNonce,
@@ -347,7 +466,7 @@ export async function materializeAgentTeamsWorkerProfile(input: {
 			template: {
 				schemaVersion: 1,
 				profileId: "pi-agent-teams-docker-strong-v1",
-				profileVersion: "1",
+				profileVersion: "2",
 				workspaceMode: "worktree-write",
 				providerId,
 				modelId: configuration.modelId,
@@ -394,6 +513,45 @@ export async function materializeAgentTeamsWorkerProfile(input: {
 			failures.push(leaseCleanupError);
 		}
 		if (failures.length > 1) throw new AggregateError(failures, "agent-teams Worker profile failed and cleanup was incomplete");
+		throw error;
+	}
+}
+
+export async function provisionAgentTeamsWorkerProfile(input: {
+	configuration: AgentTeamsWorkerProfileConfiguration;
+	spawn: Omit<AgentTeamsWorkerSpawnIdentity, "credentialLeasePath">;
+	environment?: NodeJS.ProcessEnv;
+	now?: number;
+}): Promise<AgentTeamsMaterializedWorker> {
+	const issued = await issueAgentTeamsCredentialLease({
+		configuration: input.configuration,
+		runId: input.spawn.runId,
+		workerId: input.spawn.workerId,
+		readyNonce: input.spawn.readyNonce,
+		now: input.now,
+	});
+	try {
+		const worker = await materializeAgentTeamsWorkerProfile({
+			configuration: input.configuration,
+			spawn: { ...input.spawn, credentialLeasePath: issued.credentialLeasePath },
+			environment: input.environment,
+			now: input.now,
+		});
+		if (worker.leaseId !== issued.leaseId) {
+			await cleanupAgentTeamsWorkerProfile({
+				worker,
+				runtimeRoot: input.configuration.runtimeRoot,
+				expectedProfileDigest: worker.profile.manifest.profileDigest,
+			});
+			throw new Error("Materialized Worker lease identity does not match the issued lease");
+		}
+		return worker;
+	} catch (error) {
+		try {
+			await rm(issued.credentialLeasePath, { force: true });
+		} catch (leaseCleanupError) {
+			throw new AggregateError([error, leaseCleanupError], "Worker profile provisioning failed and the issued lease could not be removed");
+		}
 		throw error;
 	}
 }

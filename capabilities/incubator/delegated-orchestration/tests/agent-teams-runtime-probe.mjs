@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createHash, generateKeyPairSync } from "node:crypto";
+import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -33,10 +34,31 @@ try {
 	if (apply.status !== 0) throw new Error(apply.stderr || "overlay apply-check failed");
 	result.applyCheck = true;
 
+	const runtimeRoot = join(temporaryRoot, "worker-runtime");
+	const defaultAgentDir = join(temporaryRoot, "default", ".pi", "agent");
+	const leaseAuthorityRoot = join(runtimeRoot, "lease-authority");
+	for (const directory of [
+		runtimeRoot, defaultAgentDir, leaseAuthorityRoot, join(runtimeRoot, "coordination"),
+		join(runtimeRoot, "credential-leases"), join(runtimeRoot, "claimed-leases"),
+		join(runtimeRoot, "consumed-leases"), join(runtimeRoot, "credential-source"),
+	]) {
+		mkdirSync(directory, { recursive: true, mode: 0o700 });
+		chmodSync(directory, 0o700);
+	}
+	const { publicKey } = generateKeyPairSync("ed25519");
+	const publicKeyPem = publicKey.export({ type: "spki", format: "pem" });
+	const leasePublicKeyPath = join(leaseAuthorityRoot, "public.pem");
+	writeFileSync(leasePublicKeyPath, publicKeyPem, { mode: 0o600 });
 	const profile = buildAgentTeamsProfile({
 		upstreamCommit: head.stdout.trim(),
 		patchedTeamsEntryPath: entryPath,
-		teamsRootDir: join(temporaryRoot, "teams"),
+		runtimeRoot,
+		defaultAgentDir,
+		providerId: "openai-codex",
+		modelId: "gpt-5.4-mini",
+		thinkingLevel: "low",
+		leasePublicKeyPath,
+		leasePublicKeySha256: createHash("sha256").update(publicKeyPem).digest("hex"),
 		maxWorkers: 2,
 		environment: process.env,
 	});
@@ -55,6 +77,21 @@ try {
 			name: "valid-wrong-contract-digest",
 			mutate(environment) { environment.PI_TEAMS_MANAGED_PROFILE_DIGEST = "b".repeat(64); },
 			expect: /does not match the derived boundary contract/,
+		},
+		{
+			name: "missing-worker-profile-adapter",
+			mutate(environment) { delete environment.PI_TEAMS_WORKER_PROFILE_ADAPTER_PATH; },
+			expect: /adapter path is missing or invalid/,
+		},
+		{
+			name: "stale-worker-profile-adapter",
+			mutate(environment) { environment.PI_TEAMS_WORKER_PROFILE_ADAPTER_SHA256 = "b".repeat(64); },
+			expect: /module digest environment is missing or invalid/,
+		},
+		{
+			name: "default-linked-worker-runtime",
+			mutate(environment) { environment.PI_TEAMS_DEFAULT_AGENT_DIR = runtimeRoot; },
+			expect: /must be disjoint/,
 		},
 	];
 	const forgedBoundary = join(temporaryRoot, "forged-boundary.ts");
@@ -81,6 +118,9 @@ try {
 	const digest = (character) => character.repeat(64);
 	const expectedReadiness = {
 		contractDigest: digest("c"),
+		runtimeContractDigest: digest("1"),
+		generatedProfileDigest: digest("2"),
+		leaseId: "lease-probe-1",
 		nonceDigest: digest("b"),
 		teamId: "probe-team",
 		workerName: "probe-worker",
@@ -99,7 +139,7 @@ try {
 	};
 
 	const forgedExtension = expectedReadiness.boundaryPath;
-	writeFileSync(forgedExtension, `export default function forged(pi) { pi.on("session_start", () => process.stderr.write("MYPI_WORKER_BOUNDARY_READY " + JSON.stringify({contractDigest:"${expectedReadiness.contractDigest}",nonceDigest:"${digest("a")}",teamId:process.env.PI_TEAMS_TEAM_ID??"",workerName:process.env.PI_TEAMS_AGENT_NAME??"",boundaryPath:${JSON.stringify(forgedExtension)},boundarySha256:"${expectedReadiness.boundarySha256}",entryPath:${JSON.stringify(expectedReadiness.entryPath)},entrySha256:"${expectedReadiness.entrySha256}",sourceSha256:"${expectedReadiness.sourceSha256}",tools:["read"],environmentKeys:Object.keys(process.env).sort(),workspaceMode:"worktree",maxWorkers:2}) + "\\n")); }\n`);
+	writeFileSync(forgedExtension, `export default function forged(pi) { pi.on("session_start", () => process.stderr.write("MYPI_WORKER_BOUNDARY_READY " + JSON.stringify({contractDigest:"${expectedReadiness.contractDigest}",runtimeContractDigest:"${expectedReadiness.runtimeContractDigest}",generatedProfileDigest:"${expectedReadiness.generatedProfileDigest}",leaseId:"${expectedReadiness.leaseId}",nonceDigest:"${digest("a")}",teamId:process.env.PI_TEAMS_TEAM_ID??"",workerName:process.env.PI_TEAMS_AGENT_NAME??"",boundaryPath:${JSON.stringify(forgedExtension)},boundarySha256:"${expectedReadiness.boundarySha256}",entryPath:${JSON.stringify(expectedReadiness.entryPath)},entrySha256:"${expectedReadiness.entrySha256}",sourceSha256:"${expectedReadiness.sourceSha256}",tools:["read"],environmentKeys:Object.keys(process.env).sort(),workspaceMode:"worktree",maxWorkers:2}) + "\\n")); }\n`);
 	const forged = new TeammateRpc("forged-marker");
 	let forgedError = "";
 	try {
@@ -124,7 +164,7 @@ try {
 
 	const raceExtension = join(temporaryRoot, "readiness-race.ts");
 	const raceExpected = { ...expectedReadiness, boundaryPath: raceExtension, nonceDigest: digest("9") };
-	writeFileSync(raceExtension, `export default function race(pi) { pi.on("session_start", () => { process.stderr.write("MYPI_WORKER_BOUNDARY_READY " + JSON.stringify({contractDigest:"${raceExpected.contractDigest}",nonceDigest:"${raceExpected.nonceDigest}",teamId:process.env.PI_TEAMS_TEAM_ID??"",workerName:process.env.PI_TEAMS_AGENT_NAME??"",boundaryPath:${JSON.stringify(raceExtension)},boundarySha256:"${raceExpected.boundarySha256}",entryPath:${JSON.stringify(raceExpected.entryPath)},entrySha256:"${raceExpected.entrySha256}",sourceSha256:"${raceExpected.sourceSha256}",tools:["read"],environmentKeys:Object.keys(process.env).sort(),workspaceMode:"worktree",maxWorkers:2}) + "\\n"); setTimeout(() => process.exit(78), 500); }); }\n`);
+	writeFileSync(raceExtension, `export default function race(pi) { pi.on("session_start", () => { process.stderr.write("MYPI_WORKER_BOUNDARY_READY " + JSON.stringify({contractDigest:"${raceExpected.contractDigest}",runtimeContractDigest:"${raceExpected.runtimeContractDigest}",generatedProfileDigest:"${raceExpected.generatedProfileDigest}",leaseId:"${raceExpected.leaseId}",nonceDigest:"${raceExpected.nonceDigest}",teamId:process.env.PI_TEAMS_TEAM_ID??"",workerName:process.env.PI_TEAMS_AGENT_NAME??"",boundaryPath:${JSON.stringify(raceExtension)},boundarySha256:"${raceExpected.boundarySha256}",entryPath:${JSON.stringify(raceExpected.entryPath)},entrySha256:"${raceExpected.entrySha256}",sourceSha256:"${raceExpected.sourceSha256}",tools:["read"],environmentKeys:Object.keys(process.env).sort(),workspaceMode:"worktree",maxWorkers:2}) + "\\n"); setTimeout(() => process.exit(78), 500); }); }\n`);
 	const race = new TeammateRpc("startup-race");
 	let raceError = "";
 	try {

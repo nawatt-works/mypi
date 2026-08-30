@@ -11,16 +11,18 @@
     "observedLocalImageDigest": "sha256:8b50f94e47e5085446081411ed152f84ebe0a146a575bba1720b56821db15ff8",
     "dockerfileSha256": "a391813a89ea2dc8ff004f9ca80a06ada2fdce618ff5a5d06b9615fb17e6ba35",
     "sbomSpdxSha256": "7fc73a1a025052371f5f801e0dfff8a6304c6b21df0b1398a78c7be8e9240961",
-    "workerBoundarySha256": "32c1e6e271188936c233b99946eb65f835c7e0a04624bba7500debab1ace8ed6",
+    "workerBoundarySha256": "f92f5d651359d2ad1a6d5af2e9bd435c12109af5f82c04858e55b62532067bf8",
+    "workerProfileRuntimeSha256": "654cbeeb5b8525c4cf03feded21d20fae7c7a788aacd6de6c9098de8325d67eb",
+    "agentTeamsWorkerProfileSha256": "56ce32b96d9b5835df69d9e451f06ae3c109fcda66e5873456f4c2abaf2fe5e5",
     "commandPolicySha256": "d1696594a39fc8eba07ecea9f982abc1aaaaccc5e82abf1be6c8a250a923922f",
     "scopedWorkerToolsSha256": "7941dcb47cf3c789096c9644f1df663e1c3612b429600ca6db2f0563b9606b72"
   },
   "integration": {
     "upstreamRepository": "https://github.com/tmustier/pi-agent-teams.git",
     "upstreamCommit": "2c1776d2a68104aaadc1c622d8a704684c7c35d6",
-    "overlayPatchSha256": "1eac46691483d997063f0be798672e1b3e1da259e38f3dcefc21d87e7290855d",
+    "overlayPatchSha256": "b05e4ec4be2c1c50264518a118dbf9103b0a16d54637f8115b5e75fd9b7efd53",
     "patchedTeamsEntrySha256": "4f7715812ac0529a5243c5044138510f9c88b8e070910ee3e00b9f465438756b",
-    "patchedTeamsSourceSha256": "ddef0dc28ea79c47ca07c0cbf51d512dbf5308eb68b9a8145db567160a6b6959"
+    "patchedTeamsSourceSha256": "dc93fff49486100b45f4baa866af33997e798c857406282fbbc1c68ac7be7911"
   },
   "runtime": {
     "pull": "never",

@@ -1,13 +1,15 @@
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
-import { isAbsolute, delimiter, dirname, join, relative, resolve } from "node:path";
+import { isAbsolute, delimiter, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PROFILE_DIR = join(REPOSITORY_ROOT, "profiles", "pi-agent-teams", "node-worker-v1");
 const PROFILE_PATH = join(PROFILE_DIR, "profile.json");
 const WORKER_BOUNDARY_PATH = join(PROFILE_DIR, "worker-boundary.ts");
+const WORKER_PROFILE_RUNTIME_PATH = join(REPOSITORY_ROOT, "extensions", "worker-profile-runtime.ts");
+const AGENT_TEAMS_WORKER_PROFILE_PATH = join(REPOSITORY_ROOT, "extensions", "agent-teams-worker-profile.ts");
 const PINNED_UPSTREAM_COMMIT = "2c1776d2a68104aaadc1c622d8a704684c7c35d6";
 const EXACT_CHILD_BUILTIN_TOOLS = ["read", "bash", "edit", "write"] as const;
 const EXACT_CHILD_BACKEND_TOOLS = ["team_message"] as const;
@@ -19,11 +21,17 @@ const CHILD_RUNTIME_ENVIRONMENT_KEYS = ["AI_AGENT", "PI_CODING_AGENT", "__CF_USE
 const CHILD_OVERRIDE_ENVIRONMENT_KEYS = [
 	"MYPI_AGENT_TEAMS_BOUNDARY_PATH",
 	"MYPI_AGENT_TEAMS_ENTRY_PATH",
+	"MYPI_AGENT_TEAMS_LEASE_ID",
 	"MYPI_AGENT_TEAMS_MAX_WORKERS",
 	"MYPI_AGENT_TEAMS_PROFILE_DIGEST",
 	"MYPI_AGENT_TEAMS_READY_NONCE",
+	"MYPI_AGENT_TEAMS_RUNTIME_CONTRACT_DIGEST",
 	"MYPI_AGENT_TEAMS_WORKSPACE_MODE",
 	"MYPI_WORKER",
+	"MYPI_WORKER_PROFILE_DIGEST",
+	"MYPI_WORKER_PROFILE_MANIFEST",
+	"PI_CODING_AGENT_DIR",
+	"PI_CODING_AGENT_SESSION_DIR",
 	"PI_TEAMS_AGENT_NAME",
 	"PI_TEAMS_AUTO_CLAIM",
 	"PI_TEAMS_LEAD_NAME",
@@ -32,6 +40,8 @@ const CHILD_OVERRIDE_ENVIRONMENT_KEYS = [
 	"PI_TEAMS_TASK_LIST_ID",
 	"PI_TEAMS_TEAM_ID",
 	"PI_TEAMS_WORKER",
+	"TEMP",
+	"TMP",
 ] as const;
 
 const LEADER_ENVIRONMENT_ALLOWLIST = [
@@ -55,7 +65,16 @@ export type AgentTeamsProfile = {
 	upstreamCommit: string;
 	patchedTeamsEntryPath: string;
 	workerBoundaryPath: string;
+	workerProfileRuntimePath: string;
+	agentTeamsWorkerProfilePath: string;
+	runtimeRoot: string;
+	defaultAgentDir: string;
 	teamsRootDir: string;
+	providerId: string;
+	modelId: string;
+	thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+	leasePublicKeyPath: string;
+	leasePublicKeySha256: string;
 	maxWorkers: number;
 	forceWorktree: true;
 	childTools: string[];
@@ -66,11 +85,14 @@ export type AgentTeamsProfile = {
 	profileArtifactSha256: string;
 	overlayPatchSha256: string;
 	workerBoundarySha256: string;
+	workerProfileRuntimeSha256: string;
+	agentTeamsWorkerProfileSha256: string;
 	commandPolicySha256: string;
 	scopedWorkerToolsSha256: string;
 	patchedTeamsEntrySha256: string;
 	patchedTeamsSourceSha256: string;
 	boundaryContractDigest: string;
+	runtimeAuthorityDigest: string;
 	profileDigest: string;
 };
 
@@ -79,11 +101,14 @@ export type AgentTeamsObservedProfile = {
 	profileDigest: string;
 	overlayPatchSha256: string;
 	workerBoundarySha256: string;
+	workerProfileRuntimeSha256: string;
+	agentTeamsWorkerProfileSha256: string;
 	commandPolicySha256: string;
 	scopedWorkerToolsSha256: string;
 	patchedTeamsEntrySha256: string;
 	patchedTeamsSourceSha256: string;
 	boundaryContractDigest: string;
+	runtimeAuthorityDigest: string;
 	imageDigest: string;
 	imageReady: boolean;
 	dockerReady: boolean;
@@ -91,6 +116,10 @@ export type AgentTeamsObservedProfile = {
 	structuredReadiness: boolean;
 	sessionBoundReadiness: boolean;
 	trustedBoundaryIdentity: boolean;
+	generatedProfileReady: boolean;
+	credentialLeaseConsumed: boolean;
+	runtimeContractBound: boolean;
+	cleanupVerified: boolean;
 	forceWorktree: boolean;
 	maxWorkers: number | null;
 	childTools: string[];
@@ -120,6 +149,8 @@ type ProfileArtifact = {
 	toolchain: {
 		observedLocalImageDigest: string;
 		workerBoundarySha256: string;
+		workerProfileRuntimeSha256: string;
+		agentTeamsWorkerProfileSha256: string;
 		commandPolicySha256: string;
 		scopedWorkerToolsSha256: string;
 	};
@@ -181,6 +212,36 @@ function requireAbsolutePath(label: string, value: string): string {
 	return resolve(value);
 }
 
+function requireDigest(label: string, value: string): string {
+	if (!/^[a-f0-9]{64}$/.test(value)) throw new Error(`${label} must be a SHA-256 digest`);
+	return value;
+}
+
+function requireIdentifier(label: string, value: string): string {
+	if (!/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$/.test(value)) {
+		throw new Error(`${label} must be a bounded identifier`);
+	}
+	return value;
+}
+
+function requirePrivateDirectory(label: string, value: string): string {
+	const requested = requireAbsolutePath(label, value);
+	const info = lstatSync(requested);
+	if (info.isSymbolicLink() || !info.isDirectory()) throw new Error(`${label} must be a real directory`);
+	if (typeof process.getuid === "function" && info.uid !== process.getuid()) throw new Error(`${label} has a different owner`);
+	if (process.platform !== "win32" && ((info.mode & 0o077) !== 0 || (info.mode & 0o700) !== 0o700)) {
+		throw new Error(`${label} must be private and owner-accessible`);
+	}
+	return realpathSync(requested);
+}
+
+function pathsOverlap(left: string, right: string): boolean {
+	const relation = relative(left, right);
+	if (relation === "" || (!relation.startsWith(`..${sep}`) && relation !== ".." && !isAbsolute(relation))) return true;
+	const reverse = relative(right, left);
+	return reverse === "" || (!reverse.startsWith(`..${sep}`) && reverse !== ".." && !isAbsolute(reverse));
+}
+
 function loadProfileArtifact(): { artifact: ProfileArtifact; raw: Buffer } {
 	const raw = readFileSync(PROFILE_PATH);
 	const artifact = JSON.parse(raw.toString("utf8")) as ProfileArtifact;
@@ -204,7 +265,13 @@ function orderedLeaderEnvironment(source: NodeJS.ProcessEnv, additions: Record<s
 export function buildAgentTeamsProfile(input: {
 	upstreamCommit: string;
 	patchedTeamsEntryPath: string;
-	teamsRootDir: string;
+	runtimeRoot: string;
+	defaultAgentDir: string;
+	providerId: string;
+	modelId: string;
+	thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
+	leasePublicKeyPath: string;
+	leasePublicKeySha256: string;
 	maxWorkers: number;
 	environment: NodeJS.ProcessEnv;
 }): AgentTeamsProfile {
@@ -213,13 +280,37 @@ export function buildAgentTeamsProfile(input: {
 		throw new Error("maxWorkers must be an integer from 1 to 3");
 	}
 	const requestedTeamsEntryPath = requireAbsolutePath("patchedTeamsEntryPath", input.patchedTeamsEntryPath);
-	const teamsRootDir = requireAbsolutePath("teamsRootDir", input.teamsRootDir);
 	if (!existsSync(requestedTeamsEntryPath)) throw new Error(`patched agent-teams entry is missing: ${requestedTeamsEntryPath}`);
 	const patchedTeamsEntryPath = realpathSync(requestedTeamsEntryPath);
 	if (!existsSync(WORKER_BOUNDARY_PATH)) throw new Error(`Worker boundary is missing: ${WORKER_BOUNDARY_PATH}`);
 	const workerBoundaryPath = realpathSync(WORKER_BOUNDARY_PATH);
+	if (!existsSync(WORKER_PROFILE_RUNTIME_PATH) || !existsSync(AGENT_TEAMS_WORKER_PROFILE_PATH)) {
+		throw new Error("Worker profile adapter modules are missing");
+	}
+	const workerProfileRuntimePath = realpathSync(WORKER_PROFILE_RUNTIME_PATH);
+	const agentTeamsWorkerProfilePath = realpathSync(AGENT_TEAMS_WORKER_PROFILE_PATH);
 	const { artifact, raw } = loadProfileArtifact();
 	verifyPatchedTeamsSource(patchedTeamsEntryPath, artifact);
+	if (sha256(readFileSync(workerProfileRuntimePath)) !== artifact.toolchain.workerProfileRuntimeSha256) {
+		throw new Error("Worker profile runtime digest mismatch");
+	}
+	if (sha256(readFileSync(agentTeamsWorkerProfilePath)) !== artifact.toolchain.agentTeamsWorkerProfileSha256) {
+		throw new Error("agent-teams Worker profile adapter digest mismatch");
+	}
+	const runtimeRoot = requirePrivateDirectory("runtimeRoot", input.runtimeRoot);
+	const defaultAgentDir = requirePrivateDirectory("defaultAgentDir", input.defaultAgentDir);
+	if (pathsOverlap(runtimeRoot, defaultAgentDir)) throw new Error("Worker runtime and Default Pi profile must be disjoint");
+	const teamsRootDir = requirePrivateDirectory("teamsRootDir", join(runtimeRoot, "coordination"));
+	const leaseAuthorityRoot = requirePrivateDirectory("lease authority root", join(runtimeRoot, "lease-authority"));
+	const requestedPublicKey = requireAbsolutePath("leasePublicKeyPath", input.leasePublicKeyPath);
+	const publicKeyInfo = lstatSync(requestedPublicKey);
+	if (publicKeyInfo.isSymbolicLink() || !publicKeyInfo.isFile()) throw new Error("lease public key must be a real file");
+	const leasePublicKeyPath = realpathSync(requestedPublicKey);
+	if (leasePublicKeyPath !== join(leaseAuthorityRoot, "public.pem")) throw new Error("lease public key is outside the authority root");
+	const leasePublicKeySha256 = requireDigest("leasePublicKeySha256", input.leasePublicKeySha256);
+	if (sha256(readFileSync(leasePublicKeyPath)) !== leasePublicKeySha256) throw new Error("lease public key digest mismatch");
+	const providerId = requireIdentifier("providerId", input.providerId);
+	const modelId = requireIdentifier("modelId", input.modelId);
 	const injectedChildExtensions = [workerBoundaryPath];
 	const childExtensions = [...injectedChildExtensions, patchedTeamsEntryPath];
 	const boundaryContractDigest = sha256(JSON.stringify({
@@ -227,6 +318,8 @@ export function buildAgentTeamsProfile(input: {
 		upstreamCommit: artifact.integration.upstreamCommit,
 		patchedTeamsEntrySha256: artifact.integration.patchedTeamsEntrySha256,
 		workerBoundarySha256: artifact.toolchain.workerBoundarySha256,
+		workerProfileRuntimeSha256: artifact.toolchain.workerProfileRuntimeSha256,
+		agentTeamsWorkerProfileSha256: artifact.toolchain.agentTeamsWorkerProfileSha256,
 		commandPolicySha256: artifact.toolchain.commandPolicySha256,
 		scopedWorkerToolsSha256: artifact.toolchain.scopedWorkerToolsSha256,
 		imageDigest: artifact.toolchain.observedLocalImageDigest,
@@ -235,17 +328,44 @@ export function buildAgentTeamsProfile(input: {
 		maxWorkers: input.maxWorkers,
 		forceWorktree: true,
 	}));
+	const runtimeAuthorityDigest = sha256(JSON.stringify({
+		boundaryContractDigest,
+		workerProfileRuntimePath,
+		workerProfileRuntimeSha256: artifact.toolchain.workerProfileRuntimeSha256,
+		agentTeamsWorkerProfilePath,
+		agentTeamsWorkerProfileSha256: artifact.toolchain.agentTeamsWorkerProfileSha256,
+		runtimeRoot,
+		defaultAgentDir,
+		teamsRootDir,
+		providerId,
+		modelId,
+		thinkingLevel: input.thinkingLevel,
+		leasePublicKeyPath,
+		leasePublicKeySha256,
+	}));
 	const leaderEnvironment = orderedLeaderEnvironment(input.environment, {
 		PI_TEAMS_CHILD_EXTENSIONS: injectedChildExtensions.join(delimiter),
 		PI_TEAMS_CHILD_TOOLS: EXACT_CHILD_BUILTIN_TOOLS.join(","),
 		PI_TEAMS_DEFAULT_AUTO_CLAIM: "0",
 		PI_TEAMS_FORCE_WORKTREE: "1",
 		PI_TEAMS_MANAGED_PROFILE_DIGEST: boundaryContractDigest,
+		PI_TEAMS_RUNTIME_CONTRACT_DIGEST: runtimeAuthorityDigest,
 		PI_TEAMS_MANAGED_PROFILE_ID: artifact.profileId,
 		PI_TEAMS_MAX_WORKERS: String(input.maxWorkers),
 		PI_TEAMS_PATCHED_ENTRY_PATH: patchedTeamsEntryPath,
 		PI_TEAMS_PATCHED_SOURCE_SHA256: artifact.integration.patchedTeamsSourceSha256,
 		PI_TEAMS_ROOT_DIR: teamsRootDir,
+		PI_TEAMS_WORKER_PROFILE_ADAPTER_PATH: agentTeamsWorkerProfilePath,
+		PI_TEAMS_WORKER_PROFILE_ADAPTER_SHA256: artifact.toolchain.agentTeamsWorkerProfileSha256,
+		PI_TEAMS_WORKER_PROFILE_RUNTIME_PATH: workerProfileRuntimePath,
+		PI_TEAMS_WORKER_PROFILE_RUNTIME_SHA256: artifact.toolchain.workerProfileRuntimeSha256,
+		PI_TEAMS_WORKER_RUNTIME_ROOT: runtimeRoot,
+		PI_TEAMS_DEFAULT_AGENT_DIR: defaultAgentDir,
+		PI_TEAMS_WORKER_PROVIDER_ID: providerId,
+		PI_TEAMS_WORKER_MODEL_ID: modelId,
+		PI_TEAMS_WORKER_THINKING_LEVEL: input.thinkingLevel,
+		PI_TEAMS_LEASE_PUBLIC_KEY_PATH: leasePublicKeyPath,
+		PI_TEAMS_LEASE_PUBLIC_KEY_SHA256: leasePublicKeySha256,
 	});
 	const childEnvironmentKeys = [...new Set([
 		...Object.keys(leaderEnvironment).filter((key) => CHILD_PARENT_ENVIRONMENT_ALLOWLIST.has(key) || key.startsWith("LC_")),
@@ -258,7 +378,16 @@ export function buildAgentTeamsProfile(input: {
 		upstreamCommit: input.upstreamCommit,
 		patchedTeamsEntryPath,
 		workerBoundaryPath,
+		workerProfileRuntimePath,
+		agentTeamsWorkerProfilePath,
+		runtimeRoot,
+		defaultAgentDir,
 		teamsRootDir,
+		providerId,
+		modelId,
+		thinkingLevel: input.thinkingLevel,
+		leasePublicKeyPath,
+		leasePublicKeySha256,
 		maxWorkers: input.maxWorkers,
 		forceWorktree: true as const,
 		childTools: [...EXACT_CHILD_BUILTIN_TOOLS, ...EXACT_CHILD_BACKEND_TOOLS],
@@ -269,11 +398,14 @@ export function buildAgentTeamsProfile(input: {
 		profileArtifactSha256: sha256(raw),
 		overlayPatchSha256: artifact.integration.overlayPatchSha256,
 		workerBoundarySha256: artifact.toolchain.workerBoundarySha256,
+		workerProfileRuntimeSha256: artifact.toolchain.workerProfileRuntimeSha256,
+		agentTeamsWorkerProfileSha256: artifact.toolchain.agentTeamsWorkerProfileSha256,
 		commandPolicySha256: artifact.toolchain.commandPolicySha256,
 		scopedWorkerToolsSha256: artifact.toolchain.scopedWorkerToolsSha256,
 		patchedTeamsEntrySha256: artifact.integration.patchedTeamsEntrySha256,
 		patchedTeamsSourceSha256: artifact.integration.patchedTeamsSourceSha256,
 		boundaryContractDigest,
+		runtimeAuthorityDigest,
 	};
 	return { ...base, profileDigest: sha256(JSON.stringify(base)) };
 }
@@ -288,11 +420,14 @@ export function verifyAgentTeamsProfile(input: {
 	if (observed.profileDigest !== requested.profileDigest) mismatches.push("profile-digest");
 	if (observed.overlayPatchSha256 !== requested.overlayPatchSha256) mismatches.push("overlay-digest");
 	if (observed.workerBoundarySha256 !== requested.workerBoundarySha256) mismatches.push("worker-boundary-digest");
+	if (observed.workerProfileRuntimeSha256 !== requested.workerProfileRuntimeSha256) mismatches.push("worker-profile-runtime-digest");
+	if (observed.agentTeamsWorkerProfileSha256 !== requested.agentTeamsWorkerProfileSha256) mismatches.push("agent-teams-worker-profile-digest");
 	if (observed.commandPolicySha256 !== requested.commandPolicySha256) mismatches.push("command-policy-digest");
 	if (observed.scopedWorkerToolsSha256 !== requested.scopedWorkerToolsSha256) mismatches.push("scoped-tools-digest");
 	if (observed.patchedTeamsEntrySha256 !== requested.patchedTeamsEntrySha256) mismatches.push("patched-entry-digest");
 	if (observed.patchedTeamsSourceSha256 !== requested.patchedTeamsSourceSha256) mismatches.push("patched-source-digest");
 	if (observed.boundaryContractDigest !== requested.boundaryContractDigest) mismatches.push("boundary-contract-digest");
+	if (observed.runtimeAuthorityDigest !== requested.runtimeAuthorityDigest) mismatches.push("runtime-authority-digest");
 	if (observed.imageDigest !== requested.imageDigest) mismatches.push("image-digest");
 	if (!observed.imageReady) mismatches.push("image-readiness");
 	if (!observed.dockerReady) mismatches.push("docker-readiness");
@@ -321,6 +456,10 @@ export function verifyAgentTeamsProfile(input: {
 		"networkDenied",
 		"commandHardlineDenied",
 		"noRoutinePrompt",
+		"generatedProfileReady",
+		"credentialLeaseConsumed",
+		"runtimeContractBound",
+		"cleanupVerified",
 	] as const) {
 		if (!observed[field]) mismatches.push(`boundary:${field}`);
 	}
@@ -331,4 +470,6 @@ export const AGENT_TEAMS_PROFILE_PATHS = Object.freeze({
 	profileDir: PROFILE_DIR,
 	profilePath: PROFILE_PATH,
 	workerBoundaryPath: WORKER_BOUNDARY_PATH,
+	workerProfileRuntimePath: WORKER_PROFILE_RUNTIME_PATH,
+	agentTeamsWorkerProfilePath: AGENT_TEAMS_WORKER_PROFILE_PATH,
 });

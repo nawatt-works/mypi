@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
 import { createHash, generateKeyPairSync, sign } from "node:crypto";
-import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test, { type TestContext } from "node:test";
 import {
 	cleanupAgentTeamsWorkerProfile,
 	credentialLeaseSigningPayload,
 	materializeAgentTeamsWorkerProfile,
+	provisionAgentTeamsWorkerProfile,
 	type AgentTeamsWorkerProfileConfiguration,
 	type AgentTeamsWorkerSpawnIdentity,
 	type CredentialLeasePayload,
@@ -58,9 +60,10 @@ async function fixture(t: TestContext) {
 	const leaseAuthorityRoot = join(runtimeRoot, "lease-authority");
 	const consumedLeasesRoot = join(runtimeRoot, "consumed-leases");
 	const claimedLeasesRoot = join(runtimeRoot, "claimed-leases");
+	const credentialSourceRoot = join(runtimeRoot, "credential-source");
 	for (const path of [
 		runtimeRoot, defaultAgentDir, credentialRoot, teamsRootDir, worktree,
-		leaseAuthorityRoot, consumedLeasesRoot, claimedLeasesRoot,
+		leaseAuthorityRoot, consumedLeasesRoot, claimedLeasesRoot, credentialSourceRoot,
 	]) {
 		await mkdir(path, { recursive: true, mode: 0o700 });
 		await chmod(path, 0o700);
@@ -69,10 +72,18 @@ async function fixture(t: TestContext) {
 	const publicKeyPem = publicKey.export({ type: "spki", format: "pem" }).toString();
 	const leasePublicKeyPath = join(leaseAuthorityRoot, "public.pem");
 	await writeFile(leasePublicKeyPath, publicKeyPem, { mode: 0o600 });
+	await writeFile(join(leaseAuthorityRoot, "private.pem"), privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o600 });
+	await writeFile(join(credentialSourceRoot, "openai-codex.auth.json"), `${JSON.stringify({
+		schemaVersion: 1,
+		providerId: "openai-codex",
+		credential: CREDENTIAL,
+	}, null, 2)}\n`, { mode: 0o600 });
 	const leaseRaw = issueLease({ privateKey, leaseId: "lease-worker-a-1", runId: "run-1", workerId: "worker-a" });
 	await writeFile(credentialLeasePath, leaseRaw, { mode: 0o600 });
 	await writeFile(workerBoundaryPath, "export default function boundary() {}\n", { mode: 0o600 });
 	await writeFile(teamsExtensionPath, "export default function teams() {}\n", { mode: 0o600 });
+	const agentTeamsWorkerProfilePath = fileURLToPath(new URL("../extensions/agent-teams-worker-profile.ts", import.meta.url));
+	const workerProfileRuntimePath = fileURLToPath(new URL("../extensions/worker-profile-runtime.ts", import.meta.url));
 	const configuration: AgentTeamsWorkerProfileConfiguration = {
 		runtimeRoot,
 		defaultAgentDir,
@@ -82,6 +93,11 @@ async function fixture(t: TestContext) {
 		workerBoundaryPath,
 		teamsExtensionPath,
 		boundaryContractDigest: "a".repeat(64),
+		runtimeAuthorityDigest: "c".repeat(64),
+		workerProfileRuntimePath,
+		workerProfileRuntimeSha256: createHash("sha256").update(await readFile(workerProfileRuntimePath)).digest("hex"),
+		agentTeamsWorkerProfilePath,
+		agentTeamsWorkerProfileSha256: createHash("sha256").update(await readFile(agentTeamsWorkerProfilePath)).digest("hex"),
 		maxWorkers: 2,
 		leasePublicKeyPath,
 		leasePublicKeySha256: createHash("sha256").update(publicKeyPem).digest("hex"),
@@ -105,6 +121,54 @@ async function fixture(t: TestContext) {
 	};
 }
 
+test("provisions an identity-bound lease and profile atomically without exposing secrets", async (t) => {
+	const f = await fixture(t);
+	await rm(f.credentialLeasePath);
+	const { credentialLeasePath: _credentialLeasePath, ...spawn } = f.spawn;
+	const worker = await provisionAgentTeamsWorkerProfile({
+		configuration: f.configuration,
+		spawn,
+		environment: { PATH: "/bin" },
+		now: NOW,
+	});
+	assert.ok(!JSON.stringify(worker).includes(SECRET));
+	assert.ok(worker.leaseId.length > 0);
+	const canonicalCredentialRoot = await realpath(f.credentialRoot);
+	await assert.rejects(() => lstat(join(canonicalCredentialRoot, "worker-a.auth.json")), /ENOENT/);
+	await cleanupAgentTeamsWorkerProfile({ worker, runtimeRoot: f.runtimeRoot, expectedProfileDigest: worker.profile.manifest.profileDigest });
+});
+
+test("atomic provisioning removes issued leases and partial profiles when materialization fails", async (t) => {
+	const f = await fixture(t);
+	await rm(f.credentialLeasePath);
+	const { credentialLeasePath: _credentialLeasePath, ...spawn } = f.spawn;
+	await assert.rejects(() => provisionAgentTeamsWorkerProfile({
+		configuration: f.configuration,
+		spawn,
+		environment: {},
+		now: NOW,
+	}), /Worker environment requires PATH/);
+	await assert.rejects(() => lstat(f.credentialLeasePath), /ENOENT/);
+	await assert.rejects(() => lstat(join(f.runtimeRoot, "runs", "run-1", "workers", "worker-a")), /ENOENT/);
+	assert.deepEqual(await readdir(f.claimedLeasesRoot), []);
+	assert.equal((await readdir(f.consumedLeasesRoot)).length, 1);
+});
+
+test("lease issuance rejects a mismatched private key before creating a Worker lease", async (t) => {
+	const f = await fixture(t);
+	await rm(f.credentialLeasePath);
+	const wrongPrivateKey = generateKeyPairSync("ed25519").privateKey.export({ type: "pkcs8", format: "pem" });
+	await writeFile(join(f.runtimeRoot, "lease-authority", "private.pem"), wrongPrivateKey, { mode: 0o600 });
+	const { credentialLeasePath: _credentialLeasePath, ...spawn } = f.spawn;
+	await assert.rejects(() => provisionAgentTeamsWorkerProfile({
+		configuration: f.configuration,
+		spawn,
+		environment: { PATH: "/bin" },
+		now: NOW,
+	}), /private key does not match/);
+	await assert.rejects(() => lstat(f.credentialLeasePath), /ENOENT/);
+});
+
 test("materializes an exact child profile from a signed single-use lease without returning secrets", async (t) => {
 	const f = await fixture(t);
 	const worker = await materializeAgentTeamsWorkerProfile({
@@ -122,8 +186,8 @@ test("materializes an exact child profile from a signed single-use lease without
 		await realpath(f.configuration.teamsExtensionPath),
 	]);
 	for (const key of [
-		"MYPI_AGENT_TEAMS_BOUNDARY_PATH", "MYPI_AGENT_TEAMS_ENTRY_PATH", "MYPI_AGENT_TEAMS_PROFILE_DIGEST",
-		"MYPI_AGENT_TEAMS_READY_NONCE", "PI_TEAMS_TEAM_ID", "PI_TEAMS_WORKER",
+		"MYPI_AGENT_TEAMS_RUNTIME_CONTRACT_DIGEST", "MYPI_AGENT_TEAMS_BOUNDARY_PATH", "MYPI_AGENT_TEAMS_ENTRY_PATH",
+		"MYPI_AGENT_TEAMS_PROFILE_DIGEST", "MYPI_AGENT_TEAMS_READY_NONCE", "PI_TEAMS_TEAM_ID", "PI_TEAMS_WORKER",
 	]) assert.ok(worker.profile.manifest.environmentKeys.includes(key), key);
 	assert.equal(worker.profile.environment.OPENAI_API_KEY, undefined);
 	assert.ok(!JSON.stringify(worker).includes(SECRET));
@@ -318,6 +382,18 @@ test("requires exact coordination, trusted extensions, Worker limits, and public
 		environment: { PATH: "/bin" },
 		now: NOW,
 	}), /bounded identifier/);
+	await assert.rejects(() => materializeAgentTeamsWorkerProfile({
+		configuration: { ...f.configuration, agentTeamsWorkerProfileSha256: "f".repeat(64) },
+		spawn: f.spawn,
+		environment: { PATH: "/bin" },
+		now: NOW,
+	}), /adapter digest mismatch/);
+	await assert.rejects(() => materializeAgentTeamsWorkerProfile({
+		configuration: { ...f.configuration, workerProfileRuntimeSha256: "f".repeat(64) },
+		spawn: f.spawn,
+		environment: { PATH: "/bin" },
+		now: NOW,
+	}), /runtime digest mismatch/);
 	await assert.rejects(() => materializeAgentTeamsWorkerProfile({
 		configuration: { ...f.configuration, maxWorkers: 4 },
 		spawn: f.spawn,
