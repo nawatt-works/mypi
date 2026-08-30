@@ -556,7 +556,7 @@ export default function orchestration(pi: ExtensionAPI): void {
 				let evidence: { status?: unknown; profileDigest?: unknown; teamId?: unknown; checks?: unknown; errorDigest?: unknown; noticeCount?: unknown; stage?: unknown; exitCode?: unknown } = {};
 				try { evidence = JSON.parse(result.stdout); } catch { /* malformed output is handled below */ }
 				if (evidence.status === "FAIL" || evidence.status === "BLOCKED") {
-					const allowedStages = new Set(["clone", "checkout", "overlay", "install", "probe"]);
+					const allowedStages = new Set(["clone", "checkout", "overlay", "dependencies", "probe"]);
 					safeFailureEvidence = {
 						outcome: evidence.status,
 						stage: typeof evidence.stage === "string" && allowedStages.has(evidence.stage) ? evidence.stage : undefined,

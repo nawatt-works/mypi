@@ -12,8 +12,8 @@ Profile นี้เป็น versioned Phase 0 candidate ภายใน incuba
 - Dockerfile SHA-256: `a391813a89ea2dc8ff004f9ca80a06ada2fdce618ff5a5d06b9615fb17e6ba35`
 - SPDX 2.3 SBOM: [`sbom.spdx.json`](sbom.spdx.json), SHA-256 `7fc73a1a025052371f5f801e0dfff8a6304c6b21df0b1398a78c7be8e9240961`
 - upstream `tmustier/pi-agent-teams`: commit `2c1776d2a68104aaadc1c622d8a704684c7c35d6`
-- [`agent-teams-overlay.patch`](agent-teams-overlay.patch): SHA-256 `5e7e559757d7ccdff041b3d56ba6c2b146b62664684e140ee2ca79fa8a990425`
-- [`worker-boundary.ts`](worker-boundary.ts): SHA-256 `e367e828f45de8d5778a869f7f74de3beed2dffec9cfec207404083fb026be55`
+- [`agent-teams-overlay.patch`](agent-teams-overlay.patch): SHA-256 `8d8a762a4acbd724e364b72a0018577c770be70e89beaa9aaafa0cfeec9b318b`
+- [`worker-boundary.ts`](worker-boundary.ts): SHA-256 `46ddf63f6ffba961fa24be36f114ec4e08e209184f32728cda35533306c20ba1`
 - `extensions/worker-profile-runtime.ts`: SHA-256 `654cbeeb5b8525c4cf03feded21d20fae7c7a788aacd6de6c9098de8325d67eb`
 - `extensions/worker-machine-setup.ts`: SHA-256 `b19e344c889a93533da6afb0dcd89137a909600d84bace65c9f225eec4cedb16`
 - `extensions/agent-teams-worker-profile.ts`: SHA-256 `d67fe7603137fe025b7f384edebc9538d841d72794ce17312818ed9b1cbff466`

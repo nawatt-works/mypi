@@ -20,7 +20,7 @@ index 2e6beda..0cd1522 100644
 @@ -241,0 +244 @@ export async function handleTeamCommand(opts: {
 +				suppressConfigBootstrap,
 diff --git a/extensions/teams/leader.ts b/extensions/teams/leader.ts
-index a3bc5c1..110365f 100644
+index a3bc5c1..edab0ed 100644
 --- a/extensions/teams/leader.ts
 +++ b/extensions/teams/leader.ts
 @@ -0,0 +1 @@
@@ -97,7 +97,7 @@ index a3bc5c1..110365f 100644
 +const MANAGED_PROFILE_ID = "pi-agent-teams-docker-strong-v1";
 +const MANAGED_UPSTREAM_COMMIT = "2c1776d2a68104aaadc1c622d8a704684c7c35d6";
 +const MANAGED_ENTRY_SHA256 = "4f7715812ac0529a5243c5044138510f9c88b8e070910ee3e00b9f465438756b";
-+const MANAGED_BOUNDARY_SHA256 = "e367e828f45de8d5778a869f7f74de3beed2dffec9cfec207404083fb026be55";
++const MANAGED_BOUNDARY_SHA256 = "46ddf63f6ffba961fa24be36f114ec4e08e209184f32728cda35533306c20ba1";
 +const MANAGED_WORKER_PROFILE_RUNTIME_SHA256 = "654cbeeb5b8525c4cf03feded21d20fae7c7a788aacd6de6c9098de8325d67eb";
 +const MANAGED_WORKER_MACHINE_SETUP_SHA256 = "b19e344c889a93533da6afb0dcd89137a909600d84bace65c9f225eec4cedb16";
 +const MANAGED_AGENT_TEAMS_WORKER_PROFILE_SHA256 = "d67fe7603137fe025b7f384edebc9538d841d72794ce17312818ed9b1cbff466";
@@ -517,7 +517,7 @@ index a3bc5c1..110365f 100644
 +					entryPath: teamsEntry,
 +					entrySha256: MANAGED_ENTRY_SHA256,
 +					sourceSha256: childProfile.patchedTeamsSourceSha256,
-+					tools: [...tools].sort(),
++					tools: [...tools, "team_message"].sort(),
 +					workspaceMode: "worktree",
 +					maxWorkers: Number(childProfile.maxWorkers),
 @@ -639 +873,2 @@ export function runLeader(pi: ExtensionAPI): void {
@@ -873,3 +873,39 @@ index 78b8b47..e791a44 100644
 +							});
 @@ -276,0 +280 @@ export function runWorker(pi: ExtensionAPI): void {
 +						setTimeout(() => process.exit(0), 25);
+diff --git a/extensions/teams/worktree.ts b/extensions/teams/worktree.ts
+index 845b04e..19cb0a7 100644
+--- a/extensions/teams/worktree.ts
++++ b/extensions/teams/worktree.ts
+@@ -42,0 +43,25 @@ export type WorktreeResult = {
++function managedWorktreesDir(teamDir: string, teamId: string): string {
++	const configuredRuntimeRoot = process.env.PI_TEAMS_WORKER_RUNTIME_ROOT;
++	if (!configuredRuntimeRoot) return path.join(teamDir, "worktrees");
++	const runtimeInfo = fs.lstatSync(configuredRuntimeRoot);
++	if (runtimeInfo.isSymbolicLink() || !runtimeInfo.isDirectory()) throw new Error("Managed Worker runtime root must be a real directory");
++	const runtimeRoot = fs.realpathSync(configuredRuntimeRoot);
++	const parent = path.dirname(runtimeRoot);
++	const parentInfo = fs.lstatSync(parent);
++	if (parentInfo.isSymbolicLink() || !parentInfo.isDirectory()) throw new Error("Managed Worker runtime parent must be a real directory");
++	if (typeof process.getuid === "function" && parentInfo.uid !== process.getuid()) throw new Error("Managed Worker runtime parent has a different owner");
++	if (process.platform !== "win32" && ((parentInfo.mode & 0o077) !== 0 || (parentInfo.mode & 0o700) !== 0o700)) {
++		throw new Error("Managed Worker runtime parent must be private and owner-accessible");
++	}
++	const root = path.join(parent, "worker-worktrees-v1");
++	fs.mkdirSync(root, { recursive: true, mode: 0o700 });
++	fs.chmodSync(root, 0o700);
++	const rootInfo = fs.lstatSync(root);
++	if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory() || fs.realpathSync(root) !== root) throw new Error("Managed worktree root identity is invalid");
++	if (typeof process.getuid === "function" && rootInfo.uid !== process.getuid()) throw new Error("Managed worktree root has a different owner");
++	const teamRoot = path.join(root, sanitizeName(teamId));
++	fs.mkdirSync(teamRoot, { recursive: true, mode: 0o700 });
++	fs.chmodSync(teamRoot, 0o700);
++	return teamRoot;
++}
++
+@@ -81 +106 @@ export async function ensureWorktreeCwd(opts: {
+-	const worktreesDir = path.join(opts.teamDir, "worktrees");
++	const worktreesDir = managedWorktreesDir(opts.teamDir, opts.teamId);
+@@ -158 +183 @@ export async function cleanupWorktrees(opts: {
+-	const worktreesDir = path.join(opts.teamDir, "worktrees");
++	const worktreesDir = managedWorktreesDir(opts.teamDir, opts.teamId);

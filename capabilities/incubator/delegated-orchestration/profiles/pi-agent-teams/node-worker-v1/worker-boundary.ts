@@ -360,8 +360,9 @@ export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 			const entryPath = verifyManagedAgentTeamsSource(profile);
 			verifyDockerBoundary(profile);
 			const activeTools = [...pi.getActiveTools()].sort();
-			// Pi reports CLI-selected built-ins here; backend extension tools are pinned by the verified teams source tree.
-			const expectedTools = [...profile.workerResources.tools].sort();
+			// Pi reports built-ins and extension tools together. The backend tool is
+			// pinned by both the immutable profile and the verified teams source.
+			const expectedTools = [...profile.workerResources.tools, ...profile.workerResources.backendTools].sort();
 			if (JSON.stringify(activeTools) !== JSON.stringify(expectedTools)) {
 				throw new Error(`observed Worker tool set mismatch: ${activeTools.join(",")}`);
 			}

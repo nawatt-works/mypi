@@ -36,5 +36,8 @@
       "./capabilities/global/ui-themes/themes"
     ],
     "skills": []
+  },
+  "devDependencies": {
+    "@sinclair/typebox": "0.34.48"
   }
 }
