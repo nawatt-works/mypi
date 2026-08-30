@@ -10,6 +10,7 @@ import {
 	reconcileWorkers,
 	resolveIdentity,
 	restoreRegistry,
+	restoreWorkerRegistryState,
 	assuranceMet,
 	restoreAssurance,
 	restoreAuthorityRegistry,
@@ -76,6 +77,56 @@ test("rebuilds the mapping from session entries after compaction or resume", () 
 	assert.equal(restored[0].paneId, "w7:p9");
 	assert.deepEqual(restored[0].artifacts.map((artifact) => artifact.value), ["reports/auth.md"]);
 	assert.equal(entries[0].customType, REGISTRY_ENTRY);
+});
+
+test("worker registry snapshots do not alias returned values, inputs, or appended history", () => {
+	const { pi, entries } = fakePi();
+	const registry = createWorkerRegistry(pi);
+	const registered = registry.register({ name: "developer", task: "implement", requestedHarness: "pi", worktree: { path: "/tree" } });
+	registered.task = "tampered";
+	registered.worktree!.path = "/tampered";
+	assert.equal(registry.get("developer")?.task, "implement");
+	assert.equal(registry.get("developer")?.worktree?.path, "/tree");
+	assert.equal((entries[0].data as any).worker.task, "implement");
+
+	const updated = registry.update("developer", { status: "live", worktree: { path: "/tree-2" } });
+	updated!.worktree!.path = "/tampered-2";
+	assert.equal(registry.get("developer")?.worktree?.path, "/tree-2");
+	assert.equal((entries[1].data as any).patch.worktree.path, "/tree-2");
+
+	const artifact = { kind: "path" as const, value: "result.md", purpose: "review" };
+	const withArtifact = registry.addArtifact("developer", artifact)!;
+	artifact.value = "tampered.md";
+	withArtifact.artifacts[0].value = "tampered-again.md";
+	assert.equal(registry.get("developer")?.artifacts[0].value, "result.md");
+	assert.equal((entries[2].data as any).artifact.value, "result.md");
+});
+
+test("duplicate active Worker registration fails closed but release then reuse is valid", () => {
+	const worker = {
+		name: "dev", task: "t", requestedHarness: "pi", identity: "unknown", identityEvidence: "none",
+		status: "live", artifacts: [], createdAt: "x", updatedAt: "x",
+	};
+	const register = { type: "custom", customType: REGISTRY_ENTRY, data: { action: "register", worker } };
+	const duplicate = restoreWorkerRegistryState([register, register]);
+	assert.deepEqual(duplicate.workers, []);
+	assert.match(duplicate.failClosedReason ?? "", /duplicate/);
+	assert.deepEqual(restoreRegistry([register, register]), []);
+
+	const releasedAndReused = restoreWorkerRegistryState([
+		register,
+		{ type: "custom", customType: REGISTRY_ENTRY, data: { action: "release", name: "dev" } },
+		{ ...register, data: { action: "register", worker: { ...worker, task: "next" } } },
+	]);
+	assert.equal(releasedAndReused.failClosedReason, undefined);
+	assert.equal(releasedAndReused.workers[0].task, "next");
+
+	const { pi } = fakePi();
+	const registry = createWorkerRegistry(pi);
+	registry.restore([register, register]);
+	assert.match(registry.failClosedReason() ?? "", /duplicate/);
+	assert.deepEqual(registry.list(), []);
+	assert.throws(() => registry.register({ name: "new", task: "t", requestedHarness: "pi" }), /fail closed/);
 });
 
 test("ignores unrelated session entries and updates for unknown workers", () => {
@@ -266,14 +317,20 @@ test("keeps mandate, audit, and profile references in versioned session entries"
 	}, "2026-08-30T01:01:00.000Z");
 	assert.equal((audit.details as any).token, "[REDACTED]");
 	assert.ok(!JSON.stringify(audit).includes("never-store"));
+	(audit.details as any).token = "tampered";
+	assert.equal((registry.state().audit[0].details as any).token, "[REDACTED]");
+	assert.equal(((entries[1].data as any).event.details as any).token, "[REDACTED]");
 
-	registry.recordProfile({
+	const profile = registry.recordProfile({
 		profileId: "pi-agent-teams-docker-strong-v1",
 		profileVersion: "1",
 		backend: "pi-agent-teams",
 		digest: "a".repeat(64),
 		verified: true,
 	}, "2026-08-30T01:02:00.000Z");
+	profile.profileId = "tampered";
+	assert.equal(registry.state().profiles[0].profileId, "pi-agent-teams-docker-strong-v1");
+	assert.equal((entries[2].data as any).profile.profileId, "pi-agent-teams-docker-strong-v1");
 
 	const restored = restoreAuthorityRegistry(entries, { now: "2026-08-30T01:03:00.000Z" });
 	assert.equal(restored.failClosedReason, undefined);

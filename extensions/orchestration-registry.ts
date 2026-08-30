@@ -74,6 +74,18 @@ export type WorkerRecord = {
 	updatedAt: string;
 };
 
+function cloneArtifactRef(artifact: ArtifactRef): ArtifactRef {
+	return { ...artifact };
+}
+
+function cloneWorkerRecord(worker: WorkerRecord): WorkerRecord {
+	return {
+		...worker,
+		worktree: worker.worktree ? { ...worker.worktree } : undefined,
+		artifacts: worker.artifacts.map(cloneArtifactRef),
+	};
+}
+
 /** The fields of `herdr agent list` this registry depends on. */
 export type HerdrAgentSnapshot = {
 	name?: string;
@@ -174,8 +186,11 @@ function nowIso(): string {
  * Replay the session's registry entries. Pi keeps them in the session branch, so
  * the mapping survives compaction and resume without a file in the workspace.
  */
-export function restoreRegistry(entries: readonly unknown[]): WorkerRecord[] {
+export type WorkerRegistryRestore = { workers: WorkerRecord[]; failClosedReason?: string };
+
+export function restoreWorkerRegistryState(entries: readonly unknown[]): WorkerRegistryRestore {
 	const workers = new Map<string, WorkerRecord>();
+	let failClosedReason: string | undefined;
 	for (const rawEntry of entries) {
 		const entry = rawEntry as { type?: string; customType?: string; data?: RegistryEvent };
 		if (entry.type !== "custom" || entry.customType !== REGISTRY_ENTRY) continue;
@@ -184,24 +199,39 @@ export function restoreRegistry(entries: readonly unknown[]): WorkerRecord[] {
 
 		if (data.action === "assurance" || data.action === "verified") continue;
 		if (data.action === "register" && data.worker?.name) {
-			workers.set(data.worker.name, { ...data.worker, artifacts: [...(data.worker.artifacts ?? [])] });
+			if (workers.has(data.worker.name)) {
+				failClosedReason = `duplicate active Worker registration: ${data.worker.name}`;
+				break;
+			}
+			workers.set(data.worker.name, cloneWorkerRecord({ ...data.worker, artifacts: [...(data.worker.artifacts ?? [])] }));
 			continue;
 		}
 		const existing = "name" in data && data.name ? workers.get(data.name) : undefined;
 		if (!existing) continue;
 
 		if (data.action === "update") {
-			workers.set(existing.name, { ...existing, ...data.patch, name: existing.name });
+			const patch = { ...data.patch };
+			delete patch.name;
+			delete patch.task;
+			delete patch.requestedHarness;
+			delete patch.createdAt;
+			delete patch.artifacts;
+			workers.set(existing.name, cloneWorkerRecord({ ...existing, ...patch, name: existing.name }));
 		} else if (data.action === "artifact" && data.artifact) {
-			workers.set(existing.name, {
+			workers.set(existing.name, cloneWorkerRecord({
 				...existing,
-				artifacts: [...existing.artifacts, data.artifact],
-			});
+				artifacts: [...existing.artifacts, cloneArtifactRef(data.artifact)],
+			}));
 		} else if (data.action === "release") {
 			workers.delete(existing.name);
 		}
 	}
-	return [...workers.values()];
+	if (failClosedReason) return { workers: [], failClosedReason };
+	return { workers: [...workers.values()].map(cloneWorkerRecord) };
+}
+
+export function restoreRegistry(entries: readonly unknown[]): WorkerRecord[] {
+	return restoreWorkerRegistryState(entries).workers;
 }
 
 /**
@@ -279,11 +309,14 @@ export function assuranceMet(state: AssuranceState): boolean {
 	return state.verifiedBy.length > 0;
 }
 
+type WorkerPatch = Partial<Omit<WorkerRecord, "name" | "task" | "requestedHarness" | "createdAt" | "artifacts">>;
+
 export type WorkerRegistry = {
 	list(): WorkerRecord[];
 	get(name: string): WorkerRecord | undefined;
+	failClosedReason(): string | undefined;
 	register(input: RegisterWorkerInput): WorkerRecord;
-	update(name: string, patch: Partial<WorkerRecord>): WorkerRecord | undefined;
+	update(name: string, patch: WorkerPatch): WorkerRecord | undefined;
 	addArtifact(name: string, artifact: ArtifactRef): WorkerRecord | undefined;
 	release(name: string): void;
 	restore(entries: readonly unknown[]): void;
@@ -302,9 +335,19 @@ export type WorkerRegistry = {
 export function createWorkerRegistry(pi: Pick<ExtensionAPI, "appendEntry" | "exec">): WorkerRegistry {
 	let workers: WorkerRecord[] = [];
 	let assurance: AssuranceState = { ...DEFAULT_ASSURANCE, verifiedBy: [] };
+	let registryFailure: string | undefined;
 
-	const record = (event: RegistryEvent) => pi.appendEntry(REGISTRY_ENTRY, event);
+	const cloneRegistryEvent = (event: RegistryEvent): RegistryEvent => {
+		if (event.action === "register") return { action: "register", worker: cloneWorkerRecord(event.worker) };
+		if (event.action === "update") return { action: "update", name: event.name, patch: { ...event.patch, worktree: event.patch.worktree ? { ...event.patch.worktree } : undefined } };
+		if (event.action === "artifact") return { action: "artifact", name: event.name, artifact: cloneArtifactRef(event.artifact) };
+		return { ...event };
+	};
+	const record = (event: RegistryEvent) => pi.appendEntry(REGISTRY_ENTRY, cloneRegistryEvent(event));
 	const find = (name: string) => workers.find((worker) => worker.name === name);
+	const requireHealthy = () => {
+		if (registryFailure) throw new Error(`Worker registry is fail closed: ${registryFailure}`);
+	};
 
 	function replace(next: WorkerRecord): WorkerRecord {
 		workers = workers.map((worker) => (worker.name === next.name ? next : worker));
@@ -312,10 +355,12 @@ export function createWorkerRegistry(pi: Pick<ExtensionAPI, "appendEntry" | "exe
 	}
 
 	return {
-		list: () => [...workers],
-		get: (name) => find(name),
+		list: () => registryFailure ? [] : workers.map(cloneWorkerRecord),
+		get: (name) => registryFailure ? undefined : (find(name) ? cloneWorkerRecord(find(name) as WorkerRecord) : undefined),
+		failClosedReason: () => registryFailure,
 
 		register(input) {
+			requireHealthy();
 			if (!isValidWorkerName(input.name)) {
 				throw new Error(`Worker name "${input.name}" is not a valid Herdr agent name`);
 			}
@@ -337,45 +382,53 @@ export function createWorkerRegistry(pi: Pick<ExtensionAPI, "appendEntry" | "exe
 				createdAt: timestamp,
 				updatedAt: timestamp,
 			};
-			workers = [...workers, worker];
+			workers = [...workers, cloneWorkerRecord(worker)];
 			record({ action: "register", worker });
-			return worker;
+			return cloneWorkerRecord(worker);
 		},
 
 		update(name, patch) {
+			requireHealthy();
 			const existing = find(name);
 			if (!existing) return undefined;
-			const next = { ...existing, ...patch, name: existing.name, updatedAt: nowIso() };
+			const next = cloneWorkerRecord({ ...existing, ...patch, name: existing.name, updatedAt: nowIso() });
 			record({ action: "update", name, patch: { ...patch, updatedAt: next.updatedAt } });
-			return replace(next);
+			replace(next);
+			return cloneWorkerRecord(next);
 		},
 
 		addArtifact(name, artifact) {
+			requireHealthy();
 			const existing = find(name);
 			if (!existing) return undefined;
 			const next = {
 				...existing,
-				artifacts: [...existing.artifacts, artifact],
+				artifacts: [...existing.artifacts, cloneArtifactRef(artifact)],
 				updatedAt: nowIso(),
 			};
 			record({ action: "artifact", name, artifact });
-			return replace(next);
+			replace(cloneWorkerRecord(next));
+			return cloneWorkerRecord(next);
 		},
 
 		release(name) {
+			requireHealthy();
 			if (!find(name)) return;
 			workers = workers.filter((worker) => worker.name !== name);
 			record({ action: "release", name });
 		},
 
 		restore(entries) {
-			workers = restoreRegistry(entries);
+			const restored = restoreWorkerRegistryState(entries);
+			workers = restored.workers;
+			registryFailure = restored.failClosedReason;
 			assurance = restoreAssurance(entries);
 		},
 
 		assurance: () => ({ ...assurance, verifiedBy: [...assurance.verifiedBy] }),
 
 		setAssurance(level, reason, producedBy) {
+			requireHealthy();
 			const producer = producedBy?.trim() || COORDINATOR_PRODUCER;
 			assurance = { level, reason, producedBy: producer, verifiedBy: assurance.verifiedBy };
 			record({ action: "assurance", level, reason, producedBy: producer });
@@ -383,6 +436,7 @@ export function createWorkerRegistry(pi: Pick<ExtensionAPI, "appendEntry" | "exe
 		},
 
 		recordVerified(name) {
+			requireHealthy();
 			if (!assurance.verifiedBy.includes(name)) {
 				assurance = { ...assurance, verifiedBy: [...assurance.verifiedBy, name] };
 				record({ action: "verified", name });
@@ -391,11 +445,12 @@ export function createWorkerRegistry(pi: Pick<ExtensionAPI, "appendEntry" | "exe
 		},
 
 		async refresh() {
+			if (registryFailure) return [];
 			const result = await runHerdr(pi, ["agent", "list"]);
-			if (!result.ok) return [...workers];
+			if (!result.ok) return workers.map(cloneWorkerRecord);
 			const agents = (result.result as { agents?: HerdrAgentSnapshot[] } | undefined)?.agents ?? [];
-			workers = reconcileWorkers(workers, agents);
-			return [...workers];
+			workers = reconcileWorkers(workers, agents).map(cloneWorkerRecord);
+			return workers.map(cloneWorkerRecord);
 		},
 	};
 }
@@ -467,6 +522,14 @@ function cloneMandate(mandate: DelegationMandate): DelegationMandate {
 
 function cloneAuditEvent(event: AuthorityAuditEvent): AuthorityAuditEvent {
 	return { ...event, details: redactForAudit(event.details) };
+}
+
+function cloneAuthorityEvent(event: AuthorityEvent): AuthorityEvent {
+	if (event.action === "activate") return { ...event, mandate: cloneMandate(event.mandate) };
+	if (event.action === "replace") return { ...event, mandate: cloneMandate(event.mandate) };
+	if (event.action === "audit") return { ...event, event: cloneAuditEvent(event.event) };
+	if (event.action === "profile") return { ...event, profile: { ...event.profile } };
+	return { ...event };
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {
@@ -602,7 +665,7 @@ export type AuthorityRegistry = {
 
 export function createAuthorityRegistry(pi: Pick<ExtensionAPI, "appendEntry">): AuthorityRegistry {
 	let state: OrchestrationAuthorityState = { audit: [], profiles: [] };
-	const append = (data: AuthorityEvent) => pi.appendEntry(AUTHORITY_ENTRY, data);
+	const append = (data: AuthorityEvent) => pi.appendEntry(AUTHORITY_ENTRY, cloneAuthorityEvent(data));
 	const timestamp = (value?: string): string => {
 		const at = value ?? nowIso();
 		if (!validIso(at)) throw new Error("authority timestamp must be ISO");
@@ -669,8 +732,8 @@ export function createAuthorityRegistry(pi: Pick<ExtensionAPI, "appendEntry">): 
 			};
 			if (!validateAuditEvent(event)) throw new Error("audit event is invalid");
 			append({ schemaVersion: 1, action: "audit", event });
-			state = { ...state, audit: [...state.audit, event] };
-			return event;
+			state = { ...state, audit: [...state.audit, cloneAuditEvent(event)] };
+			return cloneAuditEvent(event);
 		},
 
 		recordProfile(input, now) {
@@ -678,8 +741,8 @@ export function createAuthorityRegistry(pi: Pick<ExtensionAPI, "appendEntry">): 
 			const profile: AuthorityProfileRef = { ...input, mandateId: active.id, observedAt: timestamp(now) };
 			if (!validateProfileRef(profile)) throw new Error("profile reference is invalid");
 			append({ schemaVersion: 1, action: "profile", profile });
-			state = { ...state, profiles: [...state.profiles, profile] };
-			return profile;
+			state = { ...state, profiles: [...state.profiles, { ...profile }] };
+			return { ...profile };
 		},
 
 		restore(entries, now) {
