@@ -141,6 +141,26 @@ test("registers Worker setup only as a secret-safe interactive command", async (
 	assert.ok(nonInteractive[0]?.includes("interactive TUI"));
 });
 
+test("registers generated-profile acceptance without accepting paths, digests, or credentials", async () => {
+	const runtime = fakePi();
+	orchestration(runtime.pi);
+	const command = runtime.commands.get("mypi-worker-acceptance");
+	assert.ok(command);
+	const notices: string[] = [];
+	await command.handler("/tmp/source deadbeef secret", {
+		mode: "tui",
+		ui: { notify: (message: string) => notices.push(message) },
+	});
+	assert.ok(notices.some((message) => message.includes("ไม่รับ arguments")));
+	assert.ok(notices.every((message) => !message.includes("deadbeef") && !message.includes("secret")));
+	const nonInteractive: string[] = [];
+	await command.handler("", {
+		mode: "print",
+		ui: { notify: (message: string) => nonInteractive.push(message) },
+	});
+	assert.ok(nonInteractive[0]?.includes("interactive Development Pi"));
+});
+
 test("keeps orchestration tools out of sessions that are not running under Herdr", () => {
 	const outside = fakePi({ activeTools: ["read", "mypi_spawn_worker"] });
 	withoutHerdrEnv(() => {

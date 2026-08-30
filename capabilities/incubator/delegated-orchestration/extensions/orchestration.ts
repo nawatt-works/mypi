@@ -1,6 +1,8 @@
+import { spawn } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Type } from "typebox";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { herdrCallerContext, isHerdrSession, runHerdr, withHerdrBlocked } from "@nawatt-works/mypi-herdr-integration/client";
@@ -42,6 +44,9 @@ const SHELL_SETTLE_MS = 1_500;
 const DEFAULT_PROMPT_TIMEOUT_MS = 600_000;
 const DEFAULT_WAIT_TIMEOUT_MS = 900_000;
 const MODE_ENTRY = "mypi-orchestrate-mode";
+const WORKER_MACHINE_ENTRY = "mypi-worker-machine-setup";
+const WORKER_ACCEPTANCE_ENTRY = "mypi-worker-generated-profile-acceptance";
+const WORKER_ACCEPTANCE_RUNNER = resolve(dirname(fileURLToPath(import.meta.url)), "..", "tests", "agent-teams-acceptance-runner.mjs");
 
 /**
  * Harness kinds come from the installed Herdr binary, never from a list kept
@@ -474,6 +479,97 @@ export default function orchestration(pi: ExtensionAPI): void {
 				ctx.ui.notify(`Worker machineพร้อมใช้งานใน incubator\nprovider: ${manifest.providerId} (${manifest.credentialType})\nrevision: ${manifest.credentialRevision}\nsetup: ${manifest.setupDigest}\nproduction activation: disabled`, "info");
 			} catch (error) {
 				ctx.ui.notify(`Worker machine setup ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`, "error");
+			}
+		},
+	});
+
+	pi.registerCommand("mypi-worker-acceptance", {
+		description: "รัน disposable real-provider acceptance ผ่าน generated Worker profile โดย production ยัง disabled",
+		handler: async (args, ctx) => {
+			if (ctx.mode !== "tui") {
+				ctx.ui.notify("/mypi-worker-acceptance ใช้ได้เฉพาะ interactive Development Pi session", "error");
+				return;
+			}
+			if ((typeof args === "string" ? args.trim() : "") !== "") {
+				ctx.ui.notify("/mypi-worker-acceptance ไม่รับ arguments, paths, digests หรือ credentials", "warning");
+				return;
+			}
+			const sourceAgentDir = process.env.PI_CODING_AGENT_DIR;
+			if (!sourceAgentDir || !isAbsolute(sourceAgentDir) || !ctx.model) {
+				ctx.ui.notify("ต้องรันจาก Development Pi profile ที่มี explicit PI_CODING_AGENT_DIR และ active model", "error");
+				return;
+			}
+			const runtimeRoot = defaultWorkerRuntimeRoot();
+			const receipt = [...ctx.sessionManager.getBranch()].reverse().find((entry) =>
+				entry.type === "custom" && entry.customType === WORKER_MACHINE_ENTRY &&
+				(entry.data as { runtimeRoot?: unknown }).runtimeRoot === runtimeRoot &&
+				(entry.data as { providerId?: unknown }).providerId === ctx.model?.provider
+			) as { data?: { setupDigest?: unknown; credentialRevision?: unknown; providerId?: unknown } } | undefined;
+			if (typeof receipt?.data?.setupDigest !== "string" || !Number.isSafeInteger(receipt.data.credentialRevision)) {
+				ctx.ui.notify("session นี้ไม่มี trusted setup receipt สำหรับ active provider; รัน /mypi-worker-setup setup หรือ verify ใน session เดิมก่อน", "error");
+				return;
+			}
+			const verification = await verifyWorkerMachine({
+				runtimeRoot,
+				sourceAgentDir,
+				providerId: ctx.model.provider,
+				expectedSetupDigest: receipt.data.setupDigest,
+			});
+			if (!verification.verified || !verification.manifest || verification.manifest.credentialRevision !== receipt.data.credentialRevision) {
+				ctx.ui.notify(`Worker machine receipt verification ไม่ผ่าน: ${verification.mismatches.join(",") || "credential-revision"}`, "error");
+				return;
+			}
+			const approved = await ctx.ui.confirm(
+				"รัน real-provider Worker acceptance?",
+				`provider/model: ${ctx.model.provider}/${ctx.model.id}\nthinking: low\nrevision: ${verification.manifest.credentialRevision}\n\nจะ clone pinned public source, เรียก provider 1 งาน, ทดสอบ stop/replacement/cleanup แล้วลบ disposable source; production ยัง disabled`,
+			);
+			if (!approved) return;
+			const environment: Record<string, string> = {};
+			for (const key of ["HOME", "PATH", "USER", "LOGNAME", "SHELL", "LANG", "TERM", "TMPDIR"] as const) {
+				const value = process.env[key];
+				if (value) environment[key] = value;
+			}
+			environment.MYPI_ACCEPTANCE_SETUP_DIGEST = verification.manifest.setupDigest;
+			environment.MYPI_ACCEPTANCE_SOURCE_AGENT_DIR = sourceAgentDir;
+			environment.MYPI_ACCEPTANCE_PROVIDER_ID = ctx.model.provider;
+			environment.MYPI_ACCEPTANCE_MODEL_ID = ctx.model.id;
+			environment.MYPI_ACCEPTANCE_THINKING_LEVEL = "low";
+			ctx.ui.notify("เริ่ม generated-profile acceptance; อาจใช้เวลาหลายนาที", "info");
+			try {
+				const result = await new Promise<{ code: number | null; stdout: string; stderr: string }>((resolvePromise, reject) => {
+					const child = spawn(process.execPath, [WORKER_ACCEPTANCE_RUNNER], { env: environment, stdio: ["ignore", "pipe", "pipe"] });
+					let stdout = "";
+					let stderr = "";
+					child.stdout.on("data", (chunk) => { stdout += chunk.toString(); });
+					child.stderr.on("data", (chunk) => { stderr += chunk.toString(); });
+					child.once("error", reject);
+					child.once("close", (code) => resolvePromise({ code, stdout, stderr }));
+				});
+				if (result.code !== 0) throw new Error(result.stderr.trim().slice(-2000) || `acceptance exited ${result.code}`);
+				const evidence = JSON.parse(result.stdout) as { status?: unknown; profileDigest?: unknown; teamId?: unknown; checks?: unknown };
+				if (evidence.status !== "PASS" || typeof evidence.profileDigest !== "string") throw new Error("acceptance evidence is malformed or not PASS");
+				pi.appendEntry(WORKER_ACCEPTANCE_ENTRY, {
+					status: "PASS",
+					providerId: ctx.model.provider,
+					modelId: ctx.model.id,
+					setupDigest: verification.manifest.setupDigest,
+					credentialRevision: verification.manifest.credentialRevision,
+					profileDigest: evidence.profileDigest,
+					teamId: evidence.teamId,
+					checks: evidence.checks,
+					productionActivated: false,
+				});
+				ctx.ui.notify(`Generated-profile acceptance PASS\nprofile: ${evidence.profileDigest}\nproduction activation: disabled`, "info");
+			} catch (error) {
+				pi.appendEntry(WORKER_ACCEPTANCE_ENTRY, {
+					status: "FAIL",
+					providerId: ctx.model.provider,
+					modelId: ctx.model.id,
+					setupDigest: verification.manifest.setupDigest,
+					credentialRevision: verification.manifest.credentialRevision,
+					productionActivated: false,
+				});
+				ctx.ui.notify(`Generated-profile acceptance ไม่ผ่าน: ${error instanceof Error ? error.message : String(error)}`, "error");
 			}
 		},
 	});
