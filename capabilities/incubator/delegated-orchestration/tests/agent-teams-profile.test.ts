@@ -53,6 +53,11 @@ test("verifies every Worker boundary artifact against the committed profile mani
 test("rejects drift in every Docker runtime hardening field", () => {
 	const profile = loadWorkerProfile();
 	for (const runtime of [
+		{ ...profile.runtime, pull: "always" },
+		{ ...profile.runtime, network: "bridge" },
+		{ ...profile.runtime, readOnlyRoot: false },
+		{ ...profile.runtime, user: "root" },
+		{ ...profile.runtime, workdir: "/host" },
 		{ ...profile.runtime, capDrop: [] },
 		{ ...profile.runtime, noNewPrivileges: false },
 		{ ...profile.runtime, pidsLimit: 65 },
