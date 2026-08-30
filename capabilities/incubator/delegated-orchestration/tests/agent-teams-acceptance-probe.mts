@@ -5,6 +5,10 @@ import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, writeFile } 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { buildAgentTeamsProfile } from "../extensions/agent-teams-profile.ts";
+import { analyzeCommand, type CommandPolicyRequest } from "../extensions/command-policy.ts";
+import { createCommandReviewRegistry } from "../extensions/command-review-registry.ts";
+import { registerDelegatedGuardrails } from "../extensions/delegated-guardrails.ts";
+import { createAuthorityRegistry } from "../extensions/orchestration-registry.ts";
 import { defaultWorkerRuntimeRoot, verifyWorkerMachine } from "../extensions/worker-machine-setup.ts";
 
 const checkout = resolve(process.argv[2] ?? "");
@@ -269,6 +273,71 @@ try {
 		leaseId: member.meta!.childProfile!.leaseId as string,
 	};
 	workerCwd = await realpath(member.cwd!);
+	const authorityEntries: Array<{ customType: string; data: unknown }> = [];
+	const authorityPi = { appendEntry(customType: string, data: unknown) { authorityEntries.push({ customType, data }); } };
+	const authority = createAuthorityRegistry(authorityPi as any);
+	const resolverNow = new Date();
+	const resolverNowIso = resolverNow.toISOString();
+	authority.activateMandate({
+		version: 1,
+		id: "acceptance-mandate",
+		cwd: await realpath(fixture),
+		goal: "verify delegated resolver production candidate",
+		definitionOfDone: ["exact review is consumed once", "human boundary remains blocked"],
+		allowedHarnesses: ["pi-agent-teams"],
+		maxConcurrentWorkers: 1,
+		maxAgentLaunches: 4,
+		writePolicy: "worktree-only",
+		shellNetwork: "deny",
+		secrets: "deny",
+		uploads: "deny",
+		humanOnly: ["push-deploy-publish", "external-destructive", "security-tradeoff"],
+		createdAt: new Date(resolverNow.getTime() - 1_000).toISOString(),
+		expiresAt: new Date(resolverNow.getTime() + 300_000).toISOString(),
+	}, resolverNowIso);
+	authority.recordProfile({
+		profileId: profile.profileId,
+		profileVersion: "2",
+		backend: "pi-agent-teams",
+		digest: profile.profileDigest,
+		policyDigest: profile.commandPolicySha256,
+		verified: true,
+	}, new Date(resolverNow.getTime() + 1).toISOString());
+	const reviews = createCommandReviewRegistry(authorityPi as any, authority);
+	const guardrailHandlers = new Map<string, (...args: any[]) => any>();
+	let delegatedUiRequests = 0;
+	const resolver = registerDelegatedGuardrails({
+		pi: { on(name: string, handler: (...args: any[]) => any) { guardrailHandlers.set(name, handler); }, events: { emit() {} } } as any,
+		authority,
+		reviews,
+		now: () => new Date(resolverNow.getTime() + 2_000).toISOString(),
+	});
+	const secretDecision = await guardrailHandlers.get("tool_call")?.(
+		{ toolName: "read", input: { path: ".env" } },
+		{ cwd: await realpath(fixture), hasUI: true, ui: { async select() { delegatedUiRequests += 1; return "Allow once"; } } },
+	);
+	if (!secretDecision?.block || delegatedUiRequests !== 0) throw new Error("delegated guardrail opened Worker UI or failed to hard-deny secret access");
+	const commandRequest: CommandPolicyRequest = {
+		workerId: workerName,
+		sessionId: teamId,
+		mandateId: "acceptance-mandate",
+		profileId: profile.profileId,
+		policyVersion: profile.commandPolicySha256,
+		workspaceRoot: workerCwd,
+		cwd: workerCwd,
+	};
+	const reviewAnalysis = analyzeCommand("rm -rf build/cache", { workspaceRoot: workerCwd, cwd: workerCwd });
+	const beforeGrant = resolver.resolveCommand(commandRequest, reviewAnalysis, new Date(resolverNow.getTime() + 3_000).toISOString());
+	if (beforeGrant.executionAllowed || beforeGrant.outcome !== "REVIEW") throw new Error("delegated REVIEW executed without trusted registry state");
+	reviews.issue(commandRequest, reviewAnalysis, { now: new Date(resolverNow.getTime() + 4_000).toISOString(), ttlMs: 60_000 });
+	const reviewed = resolver.resolveCommand(commandRequest, reviewAnalysis, new Date(resolverNow.getTime() + 5_000).toISOString());
+	const replay = resolver.resolveCommand(commandRequest, reviewAnalysis, new Date(resolverNow.getTime() + 6_000).toISOString());
+	if (!reviewed.executionAllowed || !reviewed.reviewed || replay.executionAllowed || replay.outcome !== "REVIEW") {
+		throw new Error("delegated exact REVIEW grant was not consume-once");
+	}
+	const humanAnalysis = analyzeCommand("git push origin main", { workspaceRoot: workerCwd, cwd: workerCwd });
+	const human = resolver.resolveCommand(commandRequest, humanAnalysis, new Date(resolverNow.getTime() + 7_000).toISOString());
+	if (human.executionAllowed || human.outcome !== "HUMAN") throw new Error("human-only remote mutation boundary was overridden");
 	const artifactPath = join(workerCwd, "generated-profile-acceptance.json");
 	const expectedArtifact = { schemaVersion: 1, kind: "mypi-generated-profile-real-provider", nonce: artifactNonce, result: "PASS" };
 	await leader.command(`/team send ${workerName} Create generated-profile-acceptance.json in the current worktree with exactly this JSON and no markdown: ${JSON.stringify(expectedArtifact)}. Use the write tool. Do not modify any other file.`);
@@ -325,6 +394,9 @@ try {
 	checks.realProviderArtifact = true;
 	checks.exactReadOnlyAdapter = true;
 	checks.exactWorktreeWriteAdapter = true;
+	checks.delegatedResolverNoWorkerUi = true;
+	checks.exactReviewConsumeOnce = true;
+	checks.humanBoundaryPreserved = true;
 	checks.generatedSpawnReadiness = true;
 	checks.boundedWorktreeMutation = true;
 	checks.noInteractiveRequests = true;

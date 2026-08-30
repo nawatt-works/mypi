@@ -13,6 +13,7 @@ const WORKER_PROFILE_RUNTIME_PATH = join(REPOSITORY_ROOT, "extensions", "worker-
 const WORKER_MACHINE_SETUP_PATH = join(REPOSITORY_ROOT, "extensions", "worker-machine-setup.ts");
 const AGENT_TEAMS_WORKER_PROFILE_PATH = join(REPOSITORY_ROOT, "extensions", "agent-teams-worker-profile.ts");
 const WORKER_EXECUTION_ADAPTER_PATH = join(REPOSITORY_ROOT, "extensions", "worker-execution-adapters.ts");
+const SAFETY_GUARDRAIL_DETECTOR_PATH = resolve(REPOSITORY_ROOT, "..", "..", "global", "safety-guardrails", "extensions", "detector.ts");
 const PINNED_UPSTREAM_COMMIT = "2c1776d2a68104aaadc1c622d8a704684c7c35d6";
 const EXACT_CHILD_BUILTIN_TOOLS = ["read", "bash", "edit", "write"] as const;
 const EXACT_CHILD_BACKEND_TOOLS = ["team_message"] as const;
@@ -104,6 +105,7 @@ export type AgentTeamsProfile = {
 	workerExecutionAdapterSha256: string;
 	commandPolicySha256: string;
 	scopedWorkerToolsSha256: string;
+	safetyGuardrailDetectorSha256: string;
 	patchedTeamsEntrySha256: string;
 	patchedTeamsSourceSha256: string;
 	boundaryContractDigest: string;
@@ -122,6 +124,7 @@ export type AgentTeamsObservedProfile = {
 	workerExecutionAdapterSha256: string;
 	commandPolicySha256: string;
 	scopedWorkerToolsSha256: string;
+	safetyGuardrailDetectorSha256: string;
 	patchedTeamsEntrySha256: string;
 	patchedTeamsSourceSha256: string;
 	boundaryContractDigest: string;
@@ -172,6 +175,7 @@ type ProfileArtifact = {
 		workerExecutionAdaptersSha256: string;
 		commandPolicySha256: string;
 		scopedWorkerToolsSha256: string;
+		safetyGuardrailDetectorSha256: string;
 	};
 	runtime: {
 		pull: "never";
@@ -321,13 +325,14 @@ export function buildAgentTeamsProfile(input: {
 	const patchedTeamsEntryPath = realpathSync(requestedTeamsEntryPath);
 	if (!existsSync(WORKER_BOUNDARY_PATH)) throw new Error(`Worker boundary is missing: ${WORKER_BOUNDARY_PATH}`);
 	const workerBoundaryPath = realpathSync(WORKER_BOUNDARY_PATH);
-	if (!existsSync(WORKER_PROFILE_RUNTIME_PATH) || !existsSync(WORKER_MACHINE_SETUP_PATH) || !existsSync(AGENT_TEAMS_WORKER_PROFILE_PATH) || !existsSync(WORKER_EXECUTION_ADAPTER_PATH)) {
+	if (!existsSync(WORKER_PROFILE_RUNTIME_PATH) || !existsSync(WORKER_MACHINE_SETUP_PATH) || !existsSync(AGENT_TEAMS_WORKER_PROFILE_PATH) || !existsSync(WORKER_EXECUTION_ADAPTER_PATH) || !existsSync(SAFETY_GUARDRAIL_DETECTOR_PATH)) {
 		throw new Error("Worker profile adapter modules are missing");
 	}
 	const workerProfileRuntimePath = realpathSync(WORKER_PROFILE_RUNTIME_PATH);
 	const workerMachineSetupPath = realpathSync(WORKER_MACHINE_SETUP_PATH);
 	const agentTeamsWorkerProfilePath = realpathSync(AGENT_TEAMS_WORKER_PROFILE_PATH);
 	const workerExecutionAdapterPath = realpathSync(WORKER_EXECUTION_ADAPTER_PATH);
+	const safetyGuardrailDetectorPath = realpathSync(SAFETY_GUARDRAIL_DETECTOR_PATH);
 	const { artifact, raw } = loadProfileArtifact();
 	verifyPatchedTeamsSource(patchedTeamsEntryPath, artifact);
 	if (sha256(readFileSync(workerProfileRuntimePath)) !== artifact.toolchain.workerProfileRuntimeSha256) {
@@ -341,6 +346,9 @@ export function buildAgentTeamsProfile(input: {
 	}
 	if (sha256(readFileSync(workerExecutionAdapterPath)) !== artifact.toolchain.workerExecutionAdaptersSha256) {
 		throw new Error("Worker execution adapter digest mismatch");
+	}
+	if (sha256(readFileSync(safetyGuardrailDetectorPath)) !== artifact.toolchain.safetyGuardrailDetectorSha256) {
+		throw new Error("safety guardrail detector digest mismatch");
 	}
 	const runtimeRoot = requirePrivateDirectory("runtimeRoot", input.runtimeRoot);
 	const defaultAgentDir = requirePrivateDirectory("defaultAgentDir", input.defaultAgentDir);
@@ -370,6 +378,7 @@ export function buildAgentTeamsProfile(input: {
 		agentTeamsWorkerProfileSha256: artifact.toolchain.agentTeamsWorkerProfileSha256,
 		commandPolicySha256: artifact.toolchain.commandPolicySha256,
 		scopedWorkerToolsSha256: artifact.toolchain.scopedWorkerToolsSha256,
+		safetyGuardrailDetectorSha256: artifact.toolchain.safetyGuardrailDetectorSha256,
 		workerExecutionAdaptersSha256: artifact.toolchain.workerExecutionAdaptersSha256,
 		imageDigest: artifact.toolchain.observedLocalImageDigest,
 		runtime: EXACT_DOCKER_RUNTIME,
@@ -469,6 +478,7 @@ export function buildAgentTeamsProfile(input: {
 		workerExecutionAdapterSha256: artifact.toolchain.workerExecutionAdaptersSha256,
 		commandPolicySha256: artifact.toolchain.commandPolicySha256,
 		scopedWorkerToolsSha256: artifact.toolchain.scopedWorkerToolsSha256,
+		safetyGuardrailDetectorSha256: artifact.toolchain.safetyGuardrailDetectorSha256,
 		patchedTeamsEntrySha256: artifact.integration.patchedTeamsEntrySha256,
 		patchedTeamsSourceSha256: artifact.integration.patchedTeamsSourceSha256,
 		boundaryContractDigest,
@@ -493,6 +503,7 @@ export function verifyAgentTeamsProfile(input: {
 	if (observed.workerExecutionAdapterSha256 !== requested.workerExecutionAdapterSha256) mismatches.push("worker-execution-adapter-digest");
 	if (observed.commandPolicySha256 !== requested.commandPolicySha256) mismatches.push("command-policy-digest");
 	if (observed.scopedWorkerToolsSha256 !== requested.scopedWorkerToolsSha256) mismatches.push("scoped-tools-digest");
+	if (observed.safetyGuardrailDetectorSha256 !== requested.safetyGuardrailDetectorSha256) mismatches.push("safety-guardrail-detector-digest");
 	if (observed.patchedTeamsEntrySha256 !== requested.patchedTeamsEntrySha256) mismatches.push("patched-entry-digest");
 	if (observed.patchedTeamsSourceSha256 !== requested.patchedTeamsSourceSha256) mismatches.push("patched-source-digest");
 	if (observed.boundaryContractDigest !== requested.boundaryContractDigest) mismatches.push("boundary-contract-digest");

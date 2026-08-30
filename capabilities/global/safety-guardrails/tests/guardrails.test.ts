@@ -4,6 +4,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 import guardrails, {
 	analyzeShellMutations,
+	registerGuardrails,
 	analyzeToolCall,
 	isHarnessTemporaryPath,
 	isNullDevicePath,
@@ -266,6 +267,45 @@ test("external mutation approval shows rm targets and dynamic execution context"
 	assert.equal(gitResult?.block, true);
 	assert.ok(prompt.includes("Git working directory (shell expression): $repo_dir"));
 	assert.ok(prompt.includes("Git command: git checkout main"));
+});
+
+test("delegated resolver decisions bypass manual UI without bypassing detection", async () => {
+	const handlers = new Map<string, (...args: any[]) => any>();
+	let uiCalls = 0;
+	const api = {
+		on(name: string, handler: (...args: any[]) => any) { handlers.set(name, handler); },
+		events: { emit() {} },
+	};
+	registerGuardrails(api as any, {
+		resolver: {
+			resolve(request) {
+				assert.equal(request.category, "external-mutation");
+				return { outcome: "DENY", reason: "delegated mandate denied external mutation" };
+			},
+		},
+	});
+	const result = await handlers.get("tool_call")?.(
+		{ toolName: "write", input: { path: outsidePath } },
+		{ cwd: workspace, hasUI: true, ui: { async select() { uiCalls += 1; return "Allow once"; } } },
+	);
+	assert.equal(result?.block, true);
+	assert.match(result?.reason ?? "", /delegated mandate denied/);
+	assert.equal(uiCalls, 0);
+});
+
+test("invalid or non-interactive HUMAN resolver output fails closed", async () => {
+	for (const resolver of [
+		{ resolve: () => ({ outcome: "HUMAN" as const, reason: "requires user" }) },
+		{ resolve: () => ({ outcome: "BROKEN" as any, reason: "invalid" }) },
+	]) {
+		const handlers = new Map<string, (...args: any[]) => any>();
+		registerGuardrails({ on(name: string, handler: (...args: any[]) => any) { handlers.set(name, handler); }, events: { emit() {} } } as any, { resolver });
+		const result = await handlers.get("tool_call")?.(
+			{ toolName: "read", input: { path: ".env" } },
+			{ cwd: workspace, hasUI: false },
+		);
+		assert.equal(result?.block, true);
+	}
 });
 
 test("discovers renamed fetch_content tools and blocks uploads without UI", async () => {

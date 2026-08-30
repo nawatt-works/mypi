@@ -12,14 +12,15 @@ Profile นี้เป็น versioned Phase 0 candidate ภายใน incuba
 - Dockerfile SHA-256: `a391813a89ea2dc8ff004f9ca80a06ada2fdce618ff5a5d06b9615fb17e6ba35`
 - SPDX 2.3 SBOM: [`sbom.spdx.json`](sbom.spdx.json), SHA-256 `7fc73a1a025052371f5f801e0dfff8a6304c6b21df0b1398a78c7be8e9240961`
 - upstream `tmustier/pi-agent-teams`: commit `2c1776d2a68104aaadc1c622d8a704684c7c35d6`
-- [`agent-teams-overlay.patch`](agent-teams-overlay.patch): SHA-256 `eb620bc97f6b63d59bcb9fd9b86a4a77fee95fbd0ecae0276d1e90d718fd688a`
-- [`worker-boundary.ts`](worker-boundary.ts): SHA-256 `397fdfa781d13cf7a06f1f80b2ed667d54b3fe15bd554483f20d7095d9cea39a`
+- [`agent-teams-overlay.patch`](agent-teams-overlay.patch): SHA-256 `600a23622a89474febaa9c4fe78686f002885a06082b9b0b9240bd3d6d3af426`
+- [`worker-boundary.ts`](worker-boundary.ts): SHA-256 `b9ab4465fc4755918dc22c0fa2c06cde3ee278451dabb8e1d4d3d1b8fe0568c8`
 - `extensions/worker-profile-runtime.ts`: SHA-256 `654cbeeb5b8525c4cf03feded21d20fae7c7a788aacd6de6c9098de8325d67eb`
 - `extensions/worker-machine-setup.ts`: SHA-256 `b19e344c889a93533da6afb0dcd89137a909600d84bace65c9f225eec4cedb16`
 - `extensions/agent-teams-worker-profile.ts`: SHA-256 `cebb9b81a5dccfed4248606c70f0a0fdaccbccfe0cde51147536596f7a75c191`
 - `extensions/worker-execution-adapters.ts`: SHA-256 `34f714bb9b520663bd16e2c682bc5e38e8e232fb1ece0f9adb79138f725435c9`
 - `extensions/command-policy.ts`: SHA-256 `d1696594a39fc8eba07ecea9f982abc1aaaaccc5e82abf1be6c8a250a923922f`
-- `extensions/scoped-worker-tools.ts`: SHA-256 `02c53880d1cf2e6aa518c9e5e93782f6ba06dd2d8a40593bb4a5823ef69eb903`
+- `extensions/scoped-worker-tools.ts`: SHA-256 `c432f62225da80ea553966f4613e453554cde67442a7c94613ef2068421301cb`
+- `capabilities/global/safety-guardrails/extensions/detector.ts`: SHA-256 `d08b3ffd251e8d0e3428c463d95698e62ee3b7330e2f3c1a4463297bf15f92ea`
 
 Observed local digestเป็นหลักฐานของ deterministic no-provenance manifest ที่ probe ไม่ใช่ cross-platform registry contract BuildKit provenance attestationทำ manifest-list digestเปลี่ยนต่อ build จึงปิดด้วย `--provenance=false`; provenanceที่ใช้คือ pinned base digest, exact Dockerfile และ committed SBOM หาก buildใหม่ได้ digestอื่น ห้ามเปลี่ยน `profile.json` อัตโนมัติ ต้องตรวจทุก artifactและ boundary probesใหม่ก่อน
 

@@ -17,7 +17,7 @@ import {
 	resolveCommandPolicy,
 	type CommandPolicyRequest,
 } from "../../../extensions/command-policy.ts";
-import { analyzeToolCall } from "@nawatt-works/mypi-safety-guardrails";
+import { analyzeToolCall } from "@nawatt-works/mypi-safety-guardrails/detector";
 import { createScopedToolOperations } from "../../../extensions/scoped-worker-tools.ts";
 import { resolveWorkerExecutionAdapter, WORKER_EXECUTION_ADAPTERS } from "../../../extensions/worker-execution-adapters.ts";
 import {
@@ -45,6 +45,7 @@ export type WorkerProfile = {
 		agentTeamsWorkerProfileSha256: string;
 		commandPolicySha256: string;
 		scopedWorkerToolsSha256: string;
+		safetyGuardrailDetectorSha256: string;
 		workerExecutionAdaptersSha256: string;
 	};
 	integration: {
@@ -139,6 +140,7 @@ function deriveBoundaryContractDigest(profile: WorkerProfile, boundaryPath: stri
 		agentTeamsWorkerProfileSha256: profile.toolchain.agentTeamsWorkerProfileSha256,
 		commandPolicySha256: profile.toolchain.commandPolicySha256,
 		scopedWorkerToolsSha256: profile.toolchain.scopedWorkerToolsSha256,
+		safetyGuardrailDetectorSha256: profile.toolchain.safetyGuardrailDetectorSha256,
 		workerExecutionAdaptersSha256: profile.toolchain.workerExecutionAdaptersSha256,
 		imageDigest: profile.toolchain.observedLocalImageDigest,
 		runtime: profile.runtime,
@@ -179,6 +181,7 @@ export function verifyWorkerProfileArtifacts(profile: WorkerProfile): void {
 	requireHash("agent-teams Worker profile adapter", join(REPOSITORY_ROOT, "extensions", "agent-teams-worker-profile.ts"), profile.toolchain.agentTeamsWorkerProfileSha256);
 	requireHash("command policy", join(REPOSITORY_ROOT, "extensions", "command-policy.ts"), profile.toolchain.commandPolicySha256);
 	requireHash("scoped Worker tools", join(REPOSITORY_ROOT, "extensions", "scoped-worker-tools.ts"), profile.toolchain.scopedWorkerToolsSha256);
+	requireHash("safety guardrail detector", resolve(REPOSITORY_ROOT, "..", "..", "global", "safety-guardrails", "extensions", "detector.ts"), profile.toolchain.safetyGuardrailDetectorSha256);
 	requireHash("Worker execution adapters", join(REPOSITORY_ROOT, "extensions", "worker-execution-adapters.ts"), profile.toolchain.workerExecutionAdaptersSha256);
 	requireHash("agent-teams overlay", join(PROFILE_DIR, "agent-teams-overlay.patch"), profile.integration.overlayPatchSha256);
 }

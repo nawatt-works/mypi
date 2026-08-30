@@ -8,7 +8,7 @@ import {
 	writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
-import { isSensitivePath } from "@nawatt-works/mypi-safety-guardrails";
+import { isSensitivePath } from "@nawatt-works/mypi-safety-guardrails/detector";
 
 export type ScopedPathAccess = "read" | "write";
 

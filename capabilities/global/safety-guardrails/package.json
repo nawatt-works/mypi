@@ -6,7 +6,10 @@
   "description": "Interactive safety guardrails for sensitive reads, uploads, and external filesystem mutations.",
   "keywords": ["pi-package"],
   "exports": {
-    ".": "./extensions/index.ts"
+    ".": "./extensions/index.ts",
+    "./detector": "./extensions/detector.ts",
+    "./resolution": "./extensions/resolution.ts",
+    "./ui": "./extensions/ui.ts"
   },
   "dependencies": {
     "@nawatt-works/mypi-herdr-integration": "0.1.0"
