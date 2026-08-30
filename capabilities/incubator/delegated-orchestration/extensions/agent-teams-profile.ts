@@ -339,6 +339,9 @@ export function buildAgentTeamsProfile(input: {
 	const safetyGuardrailDetectorPath = realpathSync(SAFETY_GUARDRAIL_DETECTOR_PATH);
 	const { artifact, raw } = loadProfileArtifact();
 	verifyPatchedTeamsSource(patchedTeamsEntryPath, artifact);
+	if (sha256(readFileSync(workerBoundaryPath)) !== artifact.toolchain.workerBoundarySha256) {
+		throw new Error("Worker boundary digest mismatch");
+	}
 	if (sha256(readFileSync(workerProfileRuntimePath)) !== artifact.toolchain.workerProfileRuntimeSha256) {
 		throw new Error("Worker profile runtime digest mismatch");
 	}
