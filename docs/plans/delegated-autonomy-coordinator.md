@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — Phase 2 patched agent-teams spawn/readiness binding; production wiring remains disabled<br>
+> **Status:** active — Phase 2 one-time machine setup + generated-path acceptance; production remains disabled<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 14:10<br>
+> **Updated:** 2026-08-30 16:10<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -870,18 +870,28 @@ Success metric หลัก:
 - auditอยู่ที่ [Agent-teams Worker Profile Adapter Independent Review](../notes/agent-teams-worker-profile-adapter-independent-review.md)
 - setup/brokerที่ออก leaseยังไม่ implement; adapterและ coreยังไม่มี production import
 
+## Patched spawn/readiness binding progress
+
+- producer `78e9db7` bind exact adapter/runtime hashes, machine runtime contract, signed lease provisioning, generated argv/environment, readiness identityและ lifecycle cleanupเข้า zero-context overlay
+- initial independent reviewให้ `FAIL` สอง Medium: ambient `LC_*` secret inheritanceและ cleanup generation race
+- correction `ae489b2`ใช้ exact generated environmentเท่านั้น, cleanup keyedด้วย profile digest + object identityและเพิ่ม ambient-secret runtime probe
+- independent correction reviewให้ **PASS**; follow-up `5e6ff5d`ปรับ negative testsให้ตรง current contract
+- legacy real-provider acceptance probeถูก blockด้วย exit `78`; historical Phase 0 chainไม่ใช่ acceptanceของ wiringใหม่
+- auditอยู่ที่ [Agent-teams Generated Profile Binding Independent Review](../notes/agent-teams-generated-profile-binding-independent-review.md)
+- runtime/fault probes `10/10`, patched upstream typecheck/lintผ่าน และ production importยังไม่มี
+
 ## Exact next action
 
-bind adapterเข้า patched agent-teams candidateโดยยังไม่ activate production:
+สร้าง one-time machine setupโดยยังไม่ activate production:
 
-1. เพิ่ม adapter module/source digestและ machine runtime authority refsเข้า `AgentTeamsProfile` contract
-2. patch leaderให้ขอ signed leaseจาก future broker seam, claim/materializeก่อน `TeammateRpc.start` และส่ง exact child args/environment
-3. bind generated profile digest, agent/home/session paths, environment keysและ lease IDเข้า requested/observed readiness
-4. cleanup generated profileเมื่อ startup/stop/replacement fail
-5. regenerate zero-context overlay, profile hashesและเพิ่ม missing/default-linked/stale/forged profile startup probes
-6. แยก read-only/worktree-write execution adaptersและทดสอบ cleanup/retry race
-7. หลัง profile adapterผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
+1. implement idempotent setup serviceสร้าง private runtime hierarchy, Ed25519 authorityและ provider credential sourceนอก worktree
+2. เพิ่ม `/mypi-worker-setup` เฉพาะ Development/incubator entrypoint พร้อม secret-safe interactive projection; ห้ามรับ secretผ่าน argv/environment/audit
+3. เพิ่ม setup verify/rotation/recovery contractและ missing/malformed/symlink/default-linked negative tests
+4. สร้าง real-provider generated-path acceptanceใหม่แทน blocker: spawn → readiness → work → stop/retry/replacement → no residual auth/profile
+5. แยก read-only/worktree-write execution adaptersและทดสอบ cleanup/retry/crash reconciliation
+6. ขอ independent reviewและ Phase 2–3 acceptanceก่อน production importหรือ Default release
+7. หลัง profile pathผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
 
-External pushไม่จำเป็นต่อ adapter developmentและจะขอ human decisionเมื่อถึง release checkpoint
+External push, release/tagและ Default Pi switchเป็น human-only mutationsและยังไม่ทำ
 
 ห้ามโหลด agent-teams candidate, production-wire delegated Workerหรือข้าม manual Herdr confirmationจน Phase 2–3 production-path acceptanceผ่าน
