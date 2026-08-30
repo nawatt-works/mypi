@@ -193,13 +193,30 @@ function withSetupDigest(manifest: Omit<WorkerMachineManifest, "setupDigest">): 
 }
 
 async function writePrivateJson(path: string, value: unknown): Promise<void> {
-	await writeFile(path, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600, flag: "wx" });
-	await chmod(path, 0o600);
+	const handle = await open(path, "wx", 0o600);
+	try {
+		await handle.writeFile(`${JSON.stringify(value, null, 2)}\n`, "utf8");
+		await handle.chmod(0o600);
+		await handle.sync();
+	} finally {
+		await handle.close();
+	}
 }
 
 async function writePrivateText(path: string, value: string | Buffer): Promise<void> {
-	await writeFile(path, value, { mode: 0o600, flag: "wx" });
-	await chmod(path, 0o600);
+	const handle = await open(path, "wx", 0o600);
+	try {
+		await handle.writeFile(value);
+		await handle.chmod(0o600);
+		await handle.sync();
+	} finally {
+		await handle.close();
+	}
+}
+
+async function syncDirectory(path: string): Promise<void> {
+	const handle = await open(path, "r");
+	try { await handle.sync(); } finally { await handle.close(); }
 }
 
 async function readManifest(runtimeRoot: string): Promise<WorkerMachineManifest> {
@@ -392,21 +409,23 @@ async function reapStaleAuthorityLock(lockPath: string): Promise<boolean> {
 	if (typeof process.getuid === "function" && info.uid !== process.getuid()) throw new Error("Worker machine authority lock has a different owner");
 	if (process.platform !== "win32" && (info.mode & 0o077) !== 0) throw new Error("Worker machine authority lock permissions are unsafe");
 	let pid: number | undefined;
+	let createdAt = info.mtimeMs;
 	try {
-		const value = JSON.parse(await readFile(lockPath, "utf8")) as { pid?: unknown };
+		const value = JSON.parse(await readFile(lockPath, "utf8")) as { pid?: unknown; createdAt?: unknown };
 		if (Number.isSafeInteger(value.pid) && Number(value.pid) > 0) pid = Number(value.pid);
+		if (Number.isSafeInteger(value.createdAt) && Number(value.createdAt) > 0) createdAt = Number(value.createdAt);
 	} catch {
 		// A crash between exclusive creation and the first write can leave an
 		// empty lock. Reap it only after a bounded grace period.
 	}
-	if (pid !== undefined) {
+	if (pid !== undefined && Date.now() - createdAt < 5 * 60_000) {
 		try {
 			process.kill(pid, 0);
 			return false;
 		} catch (error) {
 			if ((error as NodeJS.ErrnoException).code !== "ESRCH") return false;
 		}
-	} else if (Date.now() - info.mtimeMs < 30_000) {
+	} else if (pid === undefined && Date.now() - info.mtimeMs < 30_000) {
 		return false;
 	}
 	await rm(lockPath);
@@ -448,6 +467,7 @@ type RotationJournalPayload = {
 	previousSetupDigest: string;
 	nextSetupDigest: string;
 	nextCredentialRevision: number;
+	nextUpdatedAt: string;
 };
 
 type RotationJournal = { payload: RotationJournalPayload; signature: string; transactionRoot: string };
@@ -467,7 +487,8 @@ async function loadRotationJournal(runtimeRoot: string): Promise<RotationJournal
 	const payload = record.payload as RotationJournalPayload;
 	if (!payload || payload.schemaVersion !== 1 || payload.kind !== "mypi-worker-credential-rotation" ||
 		!IDENTIFIER.test(payload.providerId) || !DIGEST.test(payload.previousSetupDigest) || !DIGEST.test(payload.nextSetupDigest) ||
-		!Number.isSafeInteger(payload.nextCredentialRevision) || payload.nextCredentialRevision < 2 || typeof record.signature !== "string") {
+		!Number.isSafeInteger(payload.nextCredentialRevision) || payload.nextCredentialRevision < 2 || !Number.isFinite(Date.parse(payload.nextUpdatedAt)) ||
+		typeof record.signature !== "string") {
 		throw new Error("rotation journal payload is invalid");
 	}
 	const publicKey = (await requirePrivateFile("lease public key", join(runtimeRoot, "lease-authority", "public.pem"))).content;
@@ -539,9 +560,22 @@ async function recoverWorkerMachineUnlocked(input: {
 		if (journal.payload.previousSetupDigest !== manifest.setupDigest || journal.payload.nextCredentialRevision !== source.revision) {
 			throw new Error("rotation journal does not match the recoverable credential revision");
 		}
-		next = JSON.parse((await requirePrivateFile("next machine manifest", join(journal.transactionRoot, "machine.next.json"))).content.toString("utf8")) as WorkerMachineManifest;
+		const nextPath = join(journal.transactionRoot, "machine.next.json");
+		try {
+			next = JSON.parse((await requirePrivateFile("next machine manifest", nextPath)).content.toString("utf8")) as WorkerMachineManifest;
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+			next = withSetupDigest({
+				...payload,
+				credentialType: source.credential.type,
+				credentialRevision: source.revision,
+				updatedAt: journal.payload.nextUpdatedAt,
+			});
+			await writePrivateJson(nextPath, next);
+		}
 		if (next.setupDigest !== journal.payload.nextSetupDigest) throw new Error("next machine manifest does not match the signed rotation journal");
-		await rename(join(journal.transactionRoot, "machine.next.json"), manifestPath);
+		await rename(nextPath, manifestPath);
+		await syncDirectory(runtimeRoot);
 	} else {
 		next = withSetupDigest({
 			...payload,
@@ -615,14 +649,18 @@ async function rotateWorkerCredentialUnlocked(input: {
 			previousSetupDigest: manifest.setupDigest,
 			nextSetupDigest: next.setupDigest,
 			nextCredentialRevision: revision,
+			nextUpdatedAt: next.updatedAt,
 		};
 		const privateKey = (await requirePrivateFile("lease private key", join(manifest.runtimeRoot, "lease-authority", "private.pem"))).content;
 		await writePrivateJson(join(transactionRoot, "journal.json"), {
 			payload: journalPayload,
 			signature: sign(null, Buffer.from(canonicalJson(journalPayload)), privateKey).toString("base64"),
 		});
+		await syncDirectory(transactionRoot);
 		await rename(credentialTemp, credentialPath);
+		await syncDirectory(dirname(credentialPath));
 		await rename(manifestTemp, manifestPath);
+		await syncDirectory(manifest.runtimeRoot);
 	} catch (error) {
 		// Preserve a signed transaction after either live rename so recovery can
 		// deterministically finish or acknowledge the committed rotation.

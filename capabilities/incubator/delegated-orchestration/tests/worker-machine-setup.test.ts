@@ -155,7 +155,7 @@ test("serializes lease authority mutations and rejects rotation while the lock i
 		credential: FIRST,
 	}), /authority is busy/);
 	assert.equal((await readFile(join(f.runtimeRoot, "credential-source", `${PROVIDER}.auth.json`), "utf8")).includes(SECRET_ONE), true);
-	await writeFile(join(f.runtimeRoot, "locks", "authority.lock"), `${JSON.stringify({ schemaVersion: 1, pid: 999_999_999, createdAt: 0, nonce: "stale" })}\n`, { mode: 0o600 });
+	await writeFile(join(f.runtimeRoot, "locks", "authority.lock"), `${JSON.stringify({ schemaVersion: 1, pid: process.pid, createdAt: 1, nonce: "stale-reused-pid" })}\n`, { mode: 0o600 });
 	const rotated = await rotateWorkerCredential({
 		runtimeRoot: f.runtimeRoot,
 		sourceAgentDir: f.sourceAgentDir,

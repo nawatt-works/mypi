@@ -22,6 +22,6 @@ Real child-Pi sentinelยืนยันว่า generated profileเห็น�
 
 `extensions/agent-teams-worker-profile.ts` สร้าง exact child args/environmentจาก core, บังคับ trusted extensionsอยู่นอก worktreeและรับ credentialผ่าน signed single-use per-run/per-Worker lease Leaseถูก claimก่อน materializationและถูกทำลายก่อน Workerพร้อม
 
-`extensions/worker-machine-setup.ts` เป็น idempotent setup/verify/rotate/recover service สร้าง private runtime hierarchy, Ed25519 lease authorityและ provider credential sourceนอก worktreeจาก credentialของ profileที่เรียกอย่าง explicit โดยไม่เก็บ secretใน manifest/digest/argv/environment/audit `/mypi-worker-setup`อยู่เฉพาะ incubator entrypoint, ใช้ TUI confirmationและรับเฉพาะ action `setup|verify|rotate` ไม่รับ pathหรือ secretเป็น argument
+`extensions/worker-machine-setup.ts` เป็น idempotent setup/verify/rotate/recover service สร้าง private runtime hierarchy, Ed25519 lease authorityและ provider credential sourceนอก worktreeจาก credentialของ profileที่เรียกอย่าง explicit โดยไม่เก็บ secretใน manifest/digest/argv/environment/audit `/mypi-worker-setup`อยู่เฉพาะ incubator entrypoint, ใช้ TUI confirmationและรับเฉพาะ action `setup|verify|rotate|recover` ไม่รับ pathหรือ secretเป็น argument
 
 Patched candidate bind generated profileเข้ากับ spawn/readinessแล้ว แต่ real-provider acceptanceของ pathใหม่ยังถูก blockด้วย exit `78` และ production activationยัง disabled

@@ -8,11 +8,10 @@ const blocker = {
 	schemaVersion: 1,
 	kind: "mypi-agent-teams-generated-profile-acceptance-blocker",
 	status: "BLOCKED",
-	reason: "generated-profile production acceptance requires the one-time machine setup and credential projection command",
+	reason: "generated-profile production acceptance requires a new real-provider setup/spawn/cleanup acceptance harness",
 	checkout,
 	productionActivated: false,
 	nextRequiredEvidence: [
-		"machine setup creates and verifies the private runtime/key/credential-source hierarchy",
 		"real provider spawn uses provisionAgentTeamsWorkerProfile and exact generated argv/environment",
 		"readiness binds runtime contract, generated profile digest, lease ID, nonce, Worker, team, tools and source",
 		"startup, stop, crash, replacement and retry cleanup leave no reusable Worker auth state",
