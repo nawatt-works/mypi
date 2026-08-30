@@ -269,7 +269,8 @@ try {
 	evidence.teamId = teamId || undefined;
 	evidence.noticeCount = leader.notices.length;
 	await writeFile(join(outputRoot, "acceptance.json"), `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
-	throw new Error("generated-profile acceptance failed; inspect the private redacted evidence status");
+	process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
+	throw new Error("generated-profile acceptance failed; redacted evidence was emitted for the Coordinator audit");
 } finally {
 	if (teamId) await leader.command("/team done --force").catch(() => undefined);
 	await leader.stop().catch(() => undefined);

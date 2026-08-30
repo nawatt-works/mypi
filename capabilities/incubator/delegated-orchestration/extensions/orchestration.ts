@@ -440,6 +440,14 @@ export default function orchestration(pi: ExtensionAPI): void {
 					ctx.ui.notify(`Worker machine ที่ ${runtimeRoot} ไม่มี verified authority state`, "error");
 					return;
 				}
+				pi.appendEntry(WORKER_MACHINE_ENTRY, {
+					action,
+					providerId: verifiedExisting.providerId,
+					credentialType: verifiedExisting.credentialType,
+					credentialRevision: verifiedExisting.credentialRevision,
+					runtimeRoot: verifiedExisting.runtimeRoot,
+					setupDigest: verifiedExisting.setupDigest,
+				});
 				ctx.ui.notify(`Worker machine verified\nprovider: ${verifiedExisting.providerId} (${verifiedExisting.credentialType})\nrevision: ${verifiedExisting.credentialRevision}\nsetup: ${verifiedExisting.setupDigest}`, "info");
 				return;
 			}
@@ -535,6 +543,7 @@ export default function orchestration(pi: ExtensionAPI): void {
 			environment.MYPI_ACCEPTANCE_MODEL_ID = ctx.model.id;
 			environment.MYPI_ACCEPTANCE_THINKING_LEVEL = "low";
 			ctx.ui.notify("เริ่ม generated-profile acceptance; อาจใช้เวลาหลายนาที", "info");
+			let safeFailureEvidence: Record<string, unknown> = {};
 			try {
 				const result = await new Promise<{ code: number | null; stdout: string }>((resolvePromise, reject) => {
 					const child = spawn(process.execPath, [WORKER_ACCEPTANCE_RUNNER], { env: environment, stdio: ["ignore", "pipe", "pipe"] });
@@ -544,9 +553,25 @@ export default function orchestration(pi: ExtensionAPI): void {
 					child.once("error", reject);
 					child.once("close", (code) => resolvePromise({ code, stdout }));
 				});
-				if (result.code !== 0) throw new Error(`acceptance subprocess exited ${result.code ?? "without a status"}; diagnostics were not copied into session audit`);
-				const evidence = JSON.parse(result.stdout) as { status?: unknown; profileDigest?: unknown; teamId?: unknown; checks?: unknown };
-				if (evidence.status !== "PASS" || typeof evidence.profileDigest !== "string") throw new Error("acceptance evidence is malformed or not PASS");
+				let evidence: { status?: unknown; profileDigest?: unknown; teamId?: unknown; checks?: unknown; errorDigest?: unknown; noticeCount?: unknown } = {};
+				try { evidence = JSON.parse(result.stdout); } catch { /* malformed output is handled below */ }
+				if (evidence.status === "FAIL") {
+					safeFailureEvidence = {
+						errorDigest: typeof evidence.errorDigest === "string" && /^[a-f0-9]{64}$/.test(evidence.errorDigest) ? evidence.errorDigest : undefined,
+						teamId: typeof evidence.teamId === "string" && /^[A-Za-z0-9._-]{1,128}$/.test(evidence.teamId) ? evidence.teamId : undefined,
+						noticeCount: Number.isSafeInteger(evidence.noticeCount) && Number(evidence.noticeCount) >= 0 ? evidence.noticeCount : undefined,
+					};
+				}
+				if (result.code !== 0) throw new Error(`acceptance subprocess exited ${result.code ?? "without a status"}; redacted failure evidence was appended to session audit`);
+				const expectedChecks = ["generatedSpawnReadiness", "noReusableCredentialState", "realProviderArtifact", "sameNameReplacement", "stopCleanup"];
+				const checks = evidence.checks && typeof evidence.checks === "object" && !Array.isArray(evidence.checks)
+					? evidence.checks as Record<string, unknown>
+					: {};
+				if (evidence.status !== "PASS" || typeof evidence.profileDigest !== "string" || !/^[a-f0-9]{64}$/.test(evidence.profileDigest) ||
+					typeof evidence.teamId !== "string" || !/^[A-Za-z0-9._-]{1,128}$/.test(evidence.teamId) ||
+					JSON.stringify(Object.keys(checks).sort()) !== JSON.stringify(expectedChecks) || expectedChecks.some((key) => checks[key] !== true)) {
+					throw new Error("acceptance evidence is malformed or not PASS");
+				}
 				pi.appendEntry(WORKER_ACCEPTANCE_ENTRY, {
 					status: "PASS",
 					providerId: ctx.model.provider,
@@ -555,7 +580,7 @@ export default function orchestration(pi: ExtensionAPI): void {
 					credentialRevision: verification.manifest.credentialRevision,
 					profileDigest: evidence.profileDigest,
 					teamId: evidence.teamId,
-					checks: evidence.checks,
+					checks,
 					productionActivated: false,
 				});
 				ctx.ui.notify(`Generated-profile acceptance PASS\nprofile: ${evidence.profileDigest}\nproduction activation: disabled`, "info");
@@ -566,6 +591,7 @@ export default function orchestration(pi: ExtensionAPI): void {
 					modelId: ctx.model.id,
 					setupDigest: verification.manifest.setupDigest,
 					credentialRevision: verification.manifest.credentialRevision,
+					...safeFailureEvidence,
 					productionActivated: false,
 				});
 				ctx.ui.notify(`Generated-profile acceptance ไม่ผ่าน: ${error instanceof Error ? error.message : String(error)}`, "error");
