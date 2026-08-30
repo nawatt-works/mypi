@@ -8,7 +8,8 @@
   "exports": {
     "./command-policy": "./extensions/command-policy.ts",
     "./orchestration-policy": "./extensions/orchestration-policy.ts",
-    "./worker-profile-runtime": "./extensions/worker-profile-runtime.ts"
+    "./worker-profile-runtime": "./extensions/worker-profile-runtime.ts",
+    "./agent-teams-worker-profile": "./extensions/agent-teams-worker-profile.ts"
   },
   "dependencies": {
     "@nawatt-works/mypi-herdr-integration": "0.1.0",

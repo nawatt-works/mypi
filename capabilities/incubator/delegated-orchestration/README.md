@@ -18,4 +18,8 @@ My Piเป็นผู้ materialize profileแยกต่อ Workerจาก
 
 Verifier bindกับ Coordinator-held profile digestก่อน follow pathใด ๆ, ตรวจ canonical/private paths, exact resources/settings/trust/credential projection, strip ambient secret environmentและปฏิเสธ Default/worktree overlap, symlink, unexpected artifactsหรือ missing state Cleanupต้อง match manifest identity
 
-Real child-Pi sentinelยืนยันว่า generated profileเห็นเฉพาะ explicit extension/providerและไม่โหลด Default/project canaries ขั้นนี้ยังเป็น pure/incubator checkpoint: ยังไม่ bindเข้า agent-teams spawn, ไม่มี `/mypi-worker-setup` และ production activationยัง disabled
+Real child-Pi sentinelยืนยันว่า generated profileเห็นเฉพาะ explicit extension/providerและไม่โหลด Default/project canaries
+
+`extensions/agent-teams-worker-profile.ts` เพิ่ม adapter checkpointที่สร้าง exact child args/environmentจาก core, บังคับ trusted extensionsอยู่นอก worktree, coordination rootเฉพาะ, และรับ credentialผ่าน single-use per-run/per-Worker leaseใต้ private runtime root Leaseถูกลบหลัง auth projectionผ่าน verificationเพื่อไม่ให้ replay; setup/brokerที่ออก leaseยังไม่ implement
+
+ขั้นนี้ยังเป็น pure/incubator checkpoint: adapterยังไม่ bindเข้า patched agent-teams spawn, ไม่มี `/mypi-worker-setup` และ production activationยัง disabled

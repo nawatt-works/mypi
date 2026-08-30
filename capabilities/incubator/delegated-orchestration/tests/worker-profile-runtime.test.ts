@@ -131,6 +131,59 @@ test("materializes a private per-Worker Pi profile without ambient Default state
 	});
 });
 
+test("binds exact adapter runtime environment without allowing secret or managed-key overrides", async (t) => {
+	const f = await fixture(t);
+	const profile = await materializeWorkerProfile({
+		runtimeRoot: f.runtimeRoot,
+		defaultAgentDir: f.defaultAgentDir,
+		runId: "run-runtime-env",
+		workerId: "worker-a",
+		worktree: f.worktree,
+		template: f.template,
+		credential: CREDENTIAL,
+		environment: { PATH: "/bin" },
+		runtimeEnvironment: {
+			MYPI_AGENT_TEAMS_PROFILE_DIGEST: "a".repeat(64),
+			PI_TEAMS_TEAM_ID: "team-1",
+		},
+	});
+	assert.equal(profile.environment.MYPI_AGENT_TEAMS_PROFILE_DIGEST, "a".repeat(64));
+	assert.equal(profile.environment.PI_TEAMS_TEAM_ID, "team-1");
+	assert.deepEqual(await verifyMaterializedWorkerProfile({
+		profile,
+		expectedProfileDigest: profile.manifest.profileDigest,
+		defaultAgentDir: f.defaultAgentDir,
+		expectedCredential: CREDENTIAL,
+	}), { verified: true, mismatches: [] });
+	const tampered = { ...profile, environment: { ...profile.environment, PI_TEAMS_TEAM_ID: "team-forged" } };
+	const result = await verifyMaterializedWorkerProfile({
+		profile: tampered,
+		expectedProfileDigest: profile.manifest.profileDigest,
+		defaultAgentDir: f.defaultAgentDir,
+		expectedCredential: CREDENTIAL,
+	});
+	assert.equal(result.verified, false);
+	assert.ok(result.mismatches.includes("runtime-environment-digest"));
+
+	for (const runtimeEnvironment of [
+		{ MYPI_AGENT_TEAMS_API_KEY: "secret" },
+		{ HOME: "/forged" },
+		{ UNOWNED_RUNTIME_KEY: "value" },
+	]) {
+		await assert.rejects(() => materializeWorkerProfile({
+			runtimeRoot: f.runtimeRoot,
+			defaultAgentDir: f.defaultAgentDir,
+			runId: `run-reject-${Object.keys(runtimeEnvironment)[0].toLowerCase().replaceAll("_", "-")}`,
+			workerId: "worker-a",
+			worktree: f.worktree,
+			template: f.template,
+			credential: CREDENTIAL,
+			environment: { PATH: "/bin" },
+			runtimeEnvironment,
+		}), /forbidden|unsupported|cannot override/);
+	}
+});
+
 test("writes only one provider credential and never copies its value into manifest, args, or environment", async (t) => {
 	const { profile } = await materialize(t);
 	const auth = JSON.parse(await readFile(join(profile.manifest.paths.agent, "auth.json"), "utf8"));

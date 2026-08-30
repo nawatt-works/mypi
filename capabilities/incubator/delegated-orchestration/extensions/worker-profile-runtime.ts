@@ -65,6 +65,7 @@ export type MaterializedWorkerProfileManifest = {
 	};
 	launchArgs: string[];
 	environmentKeys: string[];
+	runtimeEnvironmentSha256: string;
 	settingsSha256: string;
 	trustSha256: string;
 };
@@ -258,8 +259,27 @@ function profileDigestPayload(manifest: Omit<MaterializedWorkerProfileManifest, 
 	return manifest;
 }
 
+function normalizeRuntimeEnvironment(input: Readonly<Record<string, string>> | undefined): Record<string, string> {
+	const normalized: Record<string, string> = {};
+	for (const [key, value] of Object.entries(input ?? {}).sort(([a], [b]) => a.localeCompare(b))) {
+		if (!/^(?:MYPI_AGENT_TEAMS_|PI_TEAMS_)[A-Z0-9_]+$/.test(key)) {
+			throw new Error(`unsupported Worker runtime environment key: ${key}`);
+		}
+		if (FORBIDDEN_AMBIENT_ENVIRONMENT.test(key)) throw new Error(`secret-bearing Worker runtime environment key is forbidden: ${key}`);
+		if (SAFE_ENVIRONMENT_KEYS.includes(key as never) || GENERATED_ENVIRONMENT_KEY_SET.has(key)) {
+			throw new Error(`Worker runtime environment cannot override managed key: ${key}`);
+		}
+		if (typeof value !== "string" || value.length === 0 || value.length > 4096 || value.includes("\0")) {
+			throw new Error(`Worker runtime environment value is invalid: ${key}`);
+		}
+		normalized[key] = value;
+	}
+	return normalized;
+}
+
 function environmentFor(input: {
 	base: NodeJS.ProcessEnv;
+	runtime: Readonly<Record<string, string>>;
 	home: string;
 	agent: string;
 	sessions: string;
@@ -279,6 +299,7 @@ function environmentFor(input: {
 			continue;
 		}
 	}
+	Object.assign(environment, input.runtime);
 	Object.assign(environment, {
 		HOME: input.home,
 		MYPI_WORKER: "1",
@@ -302,6 +323,7 @@ export async function materializeWorkerProfile(input: {
 	template: PiWorkerProfileTemplate;
 	credential: WorkerCredentialProjection;
 	environment?: NodeJS.ProcessEnv;
+	runtimeEnvironment?: Readonly<Record<string, string>>;
 }): Promise<MaterializedWorkerProfile> {
 	const runtimeRoot = requireAbsolute("runtimeRoot", input.runtimeRoot);
 	const defaultAgentDir = await canonicalExistingDirectory("defaultAgentDir", input.defaultAgentDir);
@@ -318,6 +340,7 @@ export async function materializeWorkerProfile(input: {
 	requireIdentifier("template.modelId", input.template.modelId);
 	const tools = requireUnique("template.tools", input.template.tools);
 	const credential = validateCredential(input.credential, providerId);
+	const runtimeEnvironment = normalizeRuntimeEnvironment(input.runtimeEnvironment);
 	const worktree = await canonicalExistingDirectory("worktree", input.worktree);
 
 	// Machine setup owns creation of this private root. Per-Worker materialization
@@ -397,9 +420,10 @@ export async function materializeWorkerProfile(input: {
 			},
 			resources: { tools, extensions: extensionArtifacts },
 			launchArgs,
-			environmentKeys: [...SAFE_ENVIRONMENT_KEYS, ...GENERATED_ENVIRONMENT_KEYS]
-				.filter((key) => GENERATED_ENVIRONMENT_KEY_SET.has(key) || Boolean((input.environment ?? process.env)[key]))
+			environmentKeys: [...SAFE_ENVIRONMENT_KEYS, ...GENERATED_ENVIRONMENT_KEYS, ...Object.keys(runtimeEnvironment)]
+				.filter((key) => GENERATED_ENVIRONMENT_KEY_SET.has(key) || key in runtimeEnvironment || Boolean((input.environment ?? process.env)[key]))
 				.sort(),
+			runtimeEnvironmentSha256: sha256(canonicalJson(runtimeEnvironment)),
 			settingsSha256,
 			trustSha256,
 		};
@@ -408,6 +432,7 @@ export async function materializeWorkerProfile(input: {
 		await writePrivateJson(manifestPath, manifest);
 		const environment = environmentFor({
 			base: input.environment ?? process.env,
+			runtime: runtimeEnvironment,
 			home,
 			agent,
 			sessions,
@@ -494,8 +519,18 @@ export async function verifyMaterializedWorkerProfile(input: {
 	} catch {
 		mismatches.push("worktree-access");
 	}
+	let runtimeEnvironment: Record<string, string> = {};
+	try {
+		runtimeEnvironment = normalizeRuntimeEnvironment(Object.fromEntries(
+			Object.entries(environment).filter(([key]) => !SAFE_ENVIRONMENT_KEYS.includes(key as never) && !GENERATED_ENVIRONMENT_KEY_SET.has(key)),
+		));
+		if (sha256(canonicalJson(runtimeEnvironment)) !== manifest.runtimeEnvironmentSha256) mismatches.push("runtime-environment-digest");
+	} catch {
+		mismatches.push("runtime-environment");
+	}
 	const expectedEnvironment = environmentFor({
 		base: environment,
+		runtime: runtimeEnvironment,
 		home: manifest.paths.home,
 		agent: manifest.paths.agent,
 		sessions: manifest.paths.sessions,
