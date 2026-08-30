@@ -174,6 +174,18 @@ function verifyExactWorkerPid(workerPid: number, leaderPid: number): number {
 	return workerPid;
 }
 
+async function waitUntilProcessAbsent(pid: number, timeout = 15_000): Promise<void> {
+	const started = Date.now();
+	for (;;) {
+		try { process.kill(pid, 0); } catch (error) {
+			if ((error as NodeJS.ErrnoException).code === "ESRCH") return;
+			throw error;
+		}
+		if (Date.now() - started >= timeout) throw new Error("forced-crash Worker process did not exit");
+		await new Promise((resolvePromise) => setTimeout(resolvePromise, 25));
+	}
+}
+
 async function waitUntilAbsent(path: string, timeout = 15_000): Promise<void> {
 	const started = Date.now();
 	for (;;) {
@@ -251,7 +263,7 @@ try {
 	const firstWorkerRoot = join(runtimeRoot, "runs", teamId, "workers", workerName);
 	const workerPid = verifyExactWorkerPid(member.meta!.childProfile!.processId as number, leader.child.pid!);
 	process.kill(workerPid, "SIGKILL");
-	await waitUntilAbsent(firstWorkerRoot);
+	await waitUntilProcessAbsent(workerPid);
 	await leader.command(`/team spawn ${workerName} fresh worktree`);
 	const replacement = await readPersistedMember();
 	const secondGeneration = {

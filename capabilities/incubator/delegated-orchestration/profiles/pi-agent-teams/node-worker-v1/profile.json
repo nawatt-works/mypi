@@ -21,9 +21,9 @@
   "integration": {
     "upstreamRepository": "https://github.com/tmustier/pi-agent-teams.git",
     "upstreamCommit": "2c1776d2a68104aaadc1c622d8a704684c7c35d6",
-    "overlayPatchSha256": "e8396b9880fd24cd2e2490f4dd0a522385f895f52a55bcdabe2c7d0d507b6e93",
+    "overlayPatchSha256": "93dd38f160fbe152c2f0a4c8ff9aec61639484fb6857f909127effd93f007160",
     "patchedTeamsEntrySha256": "4f7715812ac0529a5243c5044138510f9c88b8e070910ee3e00b9f465438756b",
-    "patchedTeamsSourceSha256": "f8f1aed8e6a47f347a3af829b8f33d69e050abfa91fda20dda6333a8a44a1688"
+    "patchedTeamsSourceSha256": "03b1ce62031004c7ea4dc496f28e8ec37ced32de8b8d4ca2f67744b12fba4d35"
   },
   "runtime": {
     "pull": "never",
