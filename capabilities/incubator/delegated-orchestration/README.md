@@ -4,7 +4,7 @@
 
 รวม manual Herdr orchestrationเดิมกับ delegated-autonomy mandate/policy/REVIEW registries, harness profiles, scoped tools, patched agent-teams profile, probesและ `herdr-orchestration` Skillไว้เป็น capabilityเดียวตาม whole-capability promotion policy
 
-Root stable manifestห้ามโหลด packageนี้จน Worker profile, credential isolation, production wiringและ acceptance gatesผ่านครบ
+Root stable manifestยังไม่โหลด packageนี้ Production opt-inใช้ explicit isolated-profile entryเพื่อคง stable-only boundaryและ manual behaviorเดิม
 
 - Pi entry candidate: `extensions/orchestration.ts`
 - Skill: `skills/herdr-orchestration/SKILL.md`
@@ -24,4 +24,14 @@ Real child-Pi sentinelยืนยันว่า generated profileเห็น�
 
 `extensions/worker-machine-setup.ts` เป็น idempotent setup/verify/rotate/recover service สร้าง private runtime hierarchy, Ed25519 lease authorityและ provider credential sourceนอก worktreeจาก credentialของ profileที่เรียกอย่าง explicit โดยไม่เก็บ secretใน manifest/digest/argv/environment/audit `/mypi-worker-setup`อยู่เฉพาะ incubator entrypoint, ใช้ TUI confirmationและรับเฉพาะ action `setup|verify|rotate|recover` ไม่รับ pathหรือ secretเป็น argument
 
-`/mypi-worker-acceptance` เป็น Development/incubator-only harnessที่ clone pinned source, ใช้ exact acceptance dependency lock, วิ่ง patched leader → generated Worker → real-provider artifact → stop/replacement/cleanup และ appendเฉพาะ redacted evidence Operator setupและ production-candidate runผ่าน 16/16 checksรวม exact read-only/worktree-write adapters, delegated resolver no-UI, generation-bound REVIEW consume-once, HUMAN ceiling, Worker crash, immediate same-name retry, orderly stopและ leader-loss exact self-clean + retained recovery worktree โดย observed interactive requests `0`; resolver correction reviewและ Final Phase 2–3 reviewผ่าน แต่ production activationยัง disabledรอ human-only decision
+`/mypi-worker-acceptance` เป็น Development/incubator-only harnessที่ clone pinned source, ใช้ exact acceptance dependency lock, วิ่ง patched leader → generated Worker → real-provider artifact → stop/replacement/cleanup และ appendเฉพาะ redacted evidence Operator setupและ production-candidate runผ่าน 16/16 checksรวม exact read-only/worktree-write adapters, delegated resolver no-UI, generation-bound REVIEW consume-once, HUMAN ceiling, Worker crash, immediate same-name retry, orderly stopและ leader-loss exact self-clean + retained recovery worktree โดย observed interactive requests `0`; resolver correction reviewและ Final Phase 2–3 reviewผ่าน
+
+## Disabled production opt-in
+
+`extensions/production.ts` เป็น programmatic composition seamสำหรับ isolated profile loaderเท่านั้น:
+
+- absent/`0`: no-op และไม่ inspect authority
+- `1`: require active mandate, verified profile, healthy review registry, Coordinator-owned workspace authority และยืนยันว่า manual guardrail entryไม่ได้โหลดซ้ำ
+- package/root Pi resourcesไม่ auto-load entrypointนี้
+
+Production activationยัง disabled

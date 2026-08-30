@@ -7,7 +7,7 @@ import { dirname, join, resolve } from "node:path";
 import { buildAgentTeamsProfile } from "../extensions/agent-teams-profile.ts";
 import { analyzeCommand, type CommandPolicyRequest } from "../extensions/command-policy.ts";
 import { createCommandReviewRegistry } from "../extensions/command-review-registry.ts";
-import { registerDelegatedGuardrails } from "../extensions/delegated-guardrails.ts";
+import { DELEGATED_PRODUCTION_ENV, registerDelegatedProductionCandidate } from "../extensions/production.ts";
 import { createAuthorityRegistry } from "../extensions/orchestration-registry.ts";
 import { createDelegatedWorkspaceAuthority } from "../extensions/delegated-workspace-authority.ts";
 import { defaultWorkerRuntimeRoot, verifyWorkerMachine } from "../extensions/worker-machine-setup.ts";
@@ -320,13 +320,32 @@ try {
 	});
 	const guardrailHandlers = new Map<string, (...args: any[]) => any>();
 	let delegatedUiRequests = 0;
-	const resolver = registerDelegatedGuardrails({
-		pi: { on(name: string, handler: (...args: any[]) => any) { guardrailHandlers.set(name, handler); }, events: { emit() {} } } as any,
+	let productionOrchestrationRegistrations = 0;
+	const productionPi = { on(name: string, handler: (...args: any[]) => any) { guardrailHandlers.set(name, handler); }, events: { emit() {} } } as any;
+	const disabledProduction = registerDelegatedProductionCandidate({
+		pi: productionPi,
 		authority,
 		reviews,
 		workspaces,
-		now: () => new Date(resolverNow.getTime() + 2_000).toISOString(),
+		manualGuardrailsLoaded: false,
+		environment: {},
+		registerOrchestration() { productionOrchestrationRegistrations += 1; },
 	});
+	if (disabledProduction.activated || guardrailHandlers.size !== 0 || productionOrchestrationRegistrations !== 0) {
+		throw new Error("disabled production entry registered runtime behavior");
+	}
+	const production = registerDelegatedProductionCandidate({
+		pi: productionPi,
+		authority,
+		reviews,
+		workspaces,
+		manualGuardrailsLoaded: false,
+		environment: { [DELEGATED_PRODUCTION_ENV]: "1" },
+		now: () => new Date(resolverNow.getTime() + 2_000).toISOString(),
+		registerOrchestration() { productionOrchestrationRegistrations += 1; },
+	});
+	if (!production.activated || !production.resolver || productionOrchestrationRegistrations !== 1) throw new Error("explicit production entry did not compose exactly once");
+	const resolver = production.resolver;
 	const secretDecision = await guardrailHandlers.get("tool_call")?.(
 		{ toolName: "read", input: { path: ".env" } },
 		{ cwd: await realpath(fixture), hasUI: true, ui: { async select() { delegatedUiRequests += 1; return "Allow once"; } } },
@@ -413,6 +432,8 @@ try {
 	checks.delegatedResolverNoWorkerUi = true;
 	checks.exactReviewConsumeOnce = true;
 	checks.humanBoundaryPreserved = true;
+	checks.productionOptInDisabled = true;
+	checks.productionEntryComposed = true;
 	checks.generatedSpawnReadiness = true;
 	checks.boundedWorktreeMutation = true;
 	checks.noInteractiveRequests = true;

@@ -10,7 +10,8 @@
     "./orchestration-policy": "./extensions/orchestration-policy.ts",
     "./worker-profile-runtime": "./extensions/worker-profile-runtime.ts",
     "./worker-machine-setup": "./extensions/worker-machine-setup.ts",
-    "./agent-teams-worker-profile": "./extensions/agent-teams-worker-profile.ts"
+    "./agent-teams-worker-profile": "./extensions/agent-teams-worker-profile.ts",
+    "./production": "./extensions/production.ts"
   },
   "dependencies": {
     "@nawatt-works/mypi-herdr-integration": "0.1.0",
