@@ -553,10 +553,14 @@ export default function orchestration(pi: ExtensionAPI): void {
 					child.once("error", reject);
 					child.once("close", (code) => resolvePromise({ code, stdout }));
 				});
-				let evidence: { status?: unknown; profileDigest?: unknown; teamId?: unknown; checks?: unknown; errorDigest?: unknown; noticeCount?: unknown } = {};
+				let evidence: { status?: unknown; profileDigest?: unknown; teamId?: unknown; checks?: unknown; errorDigest?: unknown; noticeCount?: unknown; stage?: unknown; exitCode?: unknown } = {};
 				try { evidence = JSON.parse(result.stdout); } catch { /* malformed output is handled below */ }
-				if (evidence.status === "FAIL") {
+				if (evidence.status === "FAIL" || evidence.status === "BLOCKED") {
+					const allowedStages = new Set(["clone", "checkout", "overlay", "install", "probe"]);
 					safeFailureEvidence = {
+						outcome: evidence.status,
+						stage: typeof evidence.stage === "string" && allowedStages.has(evidence.stage) ? evidence.stage : undefined,
+						exitCode: Number.isSafeInteger(evidence.exitCode) ? evidence.exitCode : result.code,
 						errorDigest: typeof evidence.errorDigest === "string" && /^[a-f0-9]{64}$/.test(evidence.errorDigest) ? evidence.errorDigest : undefined,
 						teamId: typeof evidence.teamId === "string" && /^[A-Za-z0-9._-]{1,128}$/.test(evidence.teamId) ? evidence.teamId : undefined,
 						noticeCount: Number.isSafeInteger(evidence.noticeCount) && Number(evidence.noticeCount) >= 0 ? evidence.noticeCount : undefined,
@@ -586,7 +590,7 @@ export default function orchestration(pi: ExtensionAPI): void {
 				ctx.ui.notify(`Generated-profile acceptance PASS\nprofile: ${evidence.profileDigest}\nproduction activation: disabled`, "info");
 			} catch (error) {
 				pi.appendEntry(WORKER_ACCEPTANCE_ENTRY, {
-					status: "FAIL",
+					status: safeFailureEvidence.outcome === "BLOCKED" ? "BLOCKED" : "FAIL",
 					providerId: ctx.model.provider,
 					modelId: ctx.model.id,
 					setupDigest: verification.manifest.setupDigest,

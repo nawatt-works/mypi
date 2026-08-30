@@ -20,7 +20,7 @@ const DIGEST = /^[a-f0-9]{64}$/;
 const ID = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$/;
 
 function blocked(reason: string): never {
-	process.stderr.write(`${JSON.stringify({
+	process.stdout.write(`${JSON.stringify({
 		schemaVersion: 1,
 		kind: "mypi-agent-teams-generated-profile-acceptance-blocker",
 		status: "BLOCKED",
