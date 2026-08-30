@@ -1,7 +1,17 @@
+import { randomUUID } from "node:crypto";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { runHerdr } from "./herdr-client.ts";
+import {
+	mandateDigest,
+	mandateNarrows,
+	redactForAudit,
+	validateMandate,
+	type DelegationMandate,
+	type PolicyOutcome,
+} from "./orchestration-policy.ts";
 
 export const REGISTRY_ENTRY = "mypi-worker-registry";
+export const AUTHORITY_ENTRY = "mypi-orchestration-authority";
 
 /** Herdr's own constraint on agent names, enforced before spawning. */
 const NAME_PATTERN = /^[a-z][a-z0-9_-]{0,31}$/;
@@ -386,6 +396,295 @@ export function createWorkerRegistry(pi: Pick<ExtensionAPI, "appendEntry" | "exe
 			const agents = (result.result as { agents?: HerdrAgentSnapshot[] } | undefined)?.agents ?? [];
 			workers = reconcileWorkers(workers, agents);
 			return [...workers];
+		},
+	};
+}
+
+
+export type AuthorityAuditType =
+	| "mandate-activated"
+	| "mandate-replaced"
+	| "mandate-finished"
+	| "spawn-proposed"
+	| "spawn-allowed"
+	| "spawn-denied"
+	| "spawn-escalated"
+	| "worker-ready"
+	| "worker-blocked"
+	| "handoff"
+	| "correction"
+	| "worker-stopped"
+	| "artifact-collected"
+	| "verification"
+	| "profile-defect";
+
+export type AuthorityAuditEvent = {
+	id: string;
+	mandateId: string;
+	type: AuthorityAuditType;
+	at: string;
+	actor: "coordinator" | "worker" | "system";
+	workerId?: string;
+	outcome?: PolicyOutcome;
+	actionDigest?: string;
+	details?: unknown;
+};
+
+export type AuthorityProfileRef = {
+	mandateId: string;
+	profileId: string;
+	profileVersion: string;
+	backend: "herdr" | "pi-agent-teams" | "piewf";
+	digest: string;
+	verified: boolean;
+	observedAt: string;
+};
+
+type AuthorityEvent =
+	| { schemaVersion: 1; action: "activate"; at: string; mandate: DelegationMandate; digest: string }
+	| { schemaVersion: 1; action: "replace"; at: string; previousMandateId: string; mandate: DelegationMandate; digest: string }
+	| { schemaVersion: 1; action: "finish"; at: string; mandateId: string; outcome: "complete" | "cancelled" }
+	| { schemaVersion: 1; action: "audit"; event: AuthorityAuditEvent }
+	| { schemaVersion: 1; action: "profile"; profile: AuthorityProfileRef };
+
+export type OrchestrationAuthorityState = {
+	activeMandate?: DelegationMandate;
+	activeMandateDigest?: string;
+	audit: AuthorityAuditEvent[];
+	profiles: AuthorityProfileRef[];
+	failClosedReason?: string;
+};
+
+function cloneMandate(mandate: DelegationMandate): DelegationMandate {
+	return {
+		...mandate,
+		definitionOfDone: [...mandate.definitionOfDone],
+		allowedHarnesses: [...mandate.allowedHarnesses],
+		shellNetwork: mandate.shellNetwork === "deny" ? "deny" : { allowDomains: [...mandate.shellNetwork.allowDomains] },
+		humanOnly: [...mandate.humanOnly],
+	};
+}
+
+function cloneAuditEvent(event: AuthorityAuditEvent): AuthorityAuditEvent {
+	return { ...event, details: redactForAudit(event.details) };
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function validIso(value: unknown): value is string {
+	return typeof value === "string" && Number.isFinite(Date.parse(value));
+}
+
+function validHash(value: unknown): value is string {
+	return typeof value === "string" && /^[a-f0-9]{64}$/.test(value);
+}
+
+function validAuditType(value: unknown): value is AuthorityAuditType {
+	return typeof value === "string" && [
+		"mandate-activated", "mandate-replaced", "mandate-finished", "spawn-proposed", "spawn-allowed",
+		"spawn-denied", "spawn-escalated", "worker-ready", "worker-blocked", "handoff", "correction",
+		"worker-stopped", "artifact-collected", "verification", "profile-defect",
+	].includes(value);
+}
+
+function validateAuditEvent(value: unknown): value is AuthorityAuditEvent {
+	if (!isObject(value)) return false;
+	if (typeof value.id !== "string" || !/^[a-z0-9-]{1,80}$/.test(value.id)) return false;
+	if (typeof value.mandateId !== "string" || !value.mandateId) return false;
+	if (!validAuditType(value.type) || !validIso(value.at)) return false;
+	if (value.actor !== "coordinator" && value.actor !== "worker" && value.actor !== "system") return false;
+	if (value.workerId !== undefined && typeof value.workerId !== "string") return false;
+	if (value.outcome !== undefined && !["ALLOW", "REVIEW", "HUMAN", "DENY"].includes(String(value.outcome))) return false;
+	if (value.actionDigest !== undefined && !validHash(value.actionDigest)) return false;
+	return true;
+}
+
+function validateProfileRef(value: unknown): value is AuthorityProfileRef {
+	if (!isObject(value)) return false;
+	return typeof value.mandateId === "string" && value.mandateId.length > 0 &&
+		typeof value.profileId === "string" && /^[a-z][a-z0-9._-]{0,127}$/.test(value.profileId) &&
+		typeof value.profileVersion === "string" && value.profileVersion.length > 0 && value.profileVersion.length <= 128 &&
+		(value.backend === "herdr" || value.backend === "pi-agent-teams" || value.backend === "piewf") &&
+		validHash(value.digest) && typeof value.verified === "boolean" && validIso(value.observedAt);
+}
+
+export function restoreAuthorityRegistry(
+	entries: readonly unknown[],
+	options: { now?: string } = {},
+): OrchestrationAuthorityState {
+	let activeMandate: DelegationMandate | undefined;
+	let activeMandateDigest: string | undefined;
+	const audit: AuthorityAuditEvent[] = [];
+	const profiles: AuthorityProfileRef[] = [];
+	const errors: string[] = [];
+
+	for (const rawEntry of entries) {
+		const entry = rawEntry as { type?: string; customType?: string; data?: unknown };
+		if (entry.type !== "custom" || entry.customType !== AUTHORITY_ENTRY) continue;
+		if (!isObject(entry.data) || entry.data.schemaVersion !== 1 || typeof entry.data.action !== "string") {
+			errors.push("malformed authority entry");
+			continue;
+		}
+		const data = entry.data as unknown as AuthorityEvent;
+		if (data.action === "activate" || data.action === "replace") {
+			if (!validIso(data.at) || !validHash(data.digest)) {
+				errors.push(`${data.action} entry metadata is invalid`);
+				continue;
+			}
+			const validated = validateMandate(data.mandate, { now: data.at });
+			if (!validated.ok || mandateDigest(validated.ok ? validated.value : data.mandate) !== data.digest) {
+				errors.push(`${data.action} mandate is invalid or its digest does not match`);
+				continue;
+			}
+			if (data.action === "activate") {
+				if (activeMandate) {
+					errors.push("activate entry overlaps an active mandate");
+					continue;
+				}
+			} else {
+				if (!activeMandate || data.previousMandateId !== activeMandate.id) {
+					errors.push("replace entry does not match the active mandate");
+					continue;
+				}
+				const narrowing = mandateNarrows(activeMandate, validated.value);
+				if (!narrowing.narrows) {
+					errors.push(`replace entry expands authority: ${narrowing.expansions.join(",")}`);
+					continue;
+				}
+			}
+			activeMandate = validated.value;
+			activeMandateDigest = data.digest;
+		} else if (data.action === "finish") {
+			if (!validIso(data.at) || (data.outcome !== "complete" && data.outcome !== "cancelled") || !activeMandate || data.mandateId !== activeMandate.id) {
+				errors.push("finish entry does not match the active mandate");
+				continue;
+			}
+			activeMandate = undefined;
+			activeMandateDigest = undefined;
+		} else if (data.action === "audit") {
+			if (!validateAuditEvent(data.event)) {
+				errors.push("audit entry is invalid");
+				continue;
+			}
+			audit.push({ ...data.event, details: redactForAudit(data.event.details) });
+		} else if (data.action === "profile") {
+			if (!validateProfileRef(data.profile)) {
+				errors.push("profile entry is invalid");
+				continue;
+			}
+			profiles.push({ ...data.profile });
+		} else {
+			errors.push("authority entry action is unknown");
+		}
+	}
+
+	if (activeMandate) {
+		const current = validateMandate(activeMandate, { now: options.now });
+		if (!current.ok) errors.push(`active mandate is invalid or stale: ${current.errors.join(";")}`);
+	}
+	if (errors.length > 0) {
+		return { audit, profiles, failClosedReason: errors.join(" | ") };
+	}
+	return { activeMandate, activeMandateDigest, audit, profiles };
+}
+
+export type AuthorityRegistry = {
+	state(): OrchestrationAuthorityState;
+	activateMandate(input: unknown, now?: string): DelegationMandate;
+	replaceMandate(input: unknown, now?: string): DelegationMandate;
+	finishMandate(outcome: "complete" | "cancelled", now?: string): void;
+	recordAudit(input: Omit<AuthorityAuditEvent, "id" | "mandateId" | "at" | "details"> & { details?: unknown }, now?: string): AuthorityAuditEvent;
+	recordProfile(input: Omit<AuthorityProfileRef, "mandateId" | "observedAt">, now?: string): AuthorityProfileRef;
+	restore(entries: readonly unknown[], now?: string): OrchestrationAuthorityState;
+};
+
+export function createAuthorityRegistry(pi: Pick<ExtensionAPI, "appendEntry">): AuthorityRegistry {
+	let state: OrchestrationAuthorityState = { audit: [], profiles: [] };
+	const append = (data: AuthorityEvent) => pi.appendEntry(AUTHORITY_ENTRY, data);
+	const timestamp = (value?: string): string => {
+		const at = value ?? nowIso();
+		if (!validIso(at)) throw new Error("authority timestamp must be ISO");
+		return new Date(at).toISOString();
+	};
+	const requireActive = (): DelegationMandate => {
+		if (state.failClosedReason) throw new Error(`authority registry is fail closed: ${state.failClosedReason}`);
+		if (!state.activeMandate) throw new Error("no active mandate");
+		return state.activeMandate;
+	};
+
+	return {
+		state: () => ({
+			...state,
+			activeMandate: state.activeMandate ? cloneMandate(state.activeMandate) : undefined,
+			audit: state.audit.map(cloneAuditEvent),
+			profiles: state.profiles.map((profile) => ({ ...profile })),
+		}),
+
+		activateMandate(input, now) {
+			if (state.failClosedReason) throw new Error(`authority registry is fail closed: ${state.failClosedReason}`);
+			if (state.activeMandate) throw new Error("a mandate is already active; replace it explicitly");
+			const at = timestamp(now);
+			const validated = validateMandate(input, { now: at });
+			if (!validated.ok) throw new Error(`invalid mandate: ${validated.errors.join("; ")}`);
+			const digest = mandateDigest(validated.value);
+			append({ schemaVersion: 1, action: "activate", at, mandate: cloneMandate(validated.value), digest });
+			state = { ...state, activeMandate: cloneMandate(validated.value), activeMandateDigest: digest };
+			return cloneMandate(validated.value);
+		},
+
+		replaceMandate(input, now) {
+			const previous = requireActive();
+			const at = timestamp(now);
+			const validated = validateMandate(input, { now: at });
+			if (!validated.ok) throw new Error(`invalid replacement mandate: ${validated.errors.join("; ")}`);
+			const narrowing = mandateNarrows(previous, validated.value);
+			if (!narrowing.narrows) throw new Error(`replacement expands authority: ${narrowing.expansions.join(",")}`);
+			const digest = mandateDigest(validated.value);
+			append({ schemaVersion: 1, action: "replace", at, previousMandateId: previous.id, mandate: cloneMandate(validated.value), digest });
+			state = { ...state, activeMandate: cloneMandate(validated.value), activeMandateDigest: digest };
+			return cloneMandate(validated.value);
+		},
+
+		finishMandate(outcome, now) {
+			const active = requireActive();
+			const at = timestamp(now);
+			append({ schemaVersion: 1, action: "finish", at, mandateId: active.id, outcome });
+			state = { ...state, activeMandate: undefined, activeMandateDigest: undefined };
+		},
+
+		recordAudit(input, now) {
+			const active = requireActive();
+			const event: AuthorityAuditEvent = {
+				id: `evt-${randomUUID()}`,
+				mandateId: active.id,
+				type: input.type,
+				at: timestamp(now),
+				actor: input.actor,
+				...(input.workerId ? { workerId: input.workerId } : {}),
+				...(input.outcome ? { outcome: input.outcome } : {}),
+				...(input.actionDigest ? { actionDigest: input.actionDigest } : {}),
+				...(input.details === undefined ? {} : { details: redactForAudit(input.details) }),
+			};
+			if (!validateAuditEvent(event)) throw new Error("audit event is invalid");
+			append({ schemaVersion: 1, action: "audit", event });
+			state = { ...state, audit: [...state.audit, event] };
+			return event;
+		},
+
+		recordProfile(input, now) {
+			const active = requireActive();
+			const profile: AuthorityProfileRef = { ...input, mandateId: active.id, observedAt: timestamp(now) };
+			if (!validateProfileRef(profile)) throw new Error("profile reference is invalid");
+			append({ schemaVersion: 1, action: "profile", profile });
+			state = { ...state, profiles: [...state.profiles, profile] };
+			return profile;
+		},
+
+		restore(entries, now) {
+			state = restoreAuthorityRegistry(entries, { now });
+			return this.state();
 		},
 	};
 }

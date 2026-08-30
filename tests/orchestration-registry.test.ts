@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+	AUTHORITY_ENTRY,
 	REGISTRY_ENTRY,
+	createAuthorityRegistry,
 	createWorkerRegistry,
 	isValidWorkerName,
 	normalizeWorkerName,
@@ -10,8 +12,10 @@ import {
 	restoreRegistry,
 	assuranceMet,
 	restoreAssurance,
+	restoreAuthorityRegistry,
 	type WorkerRecord,
 } from "../extensions/orchestration-registry.ts";
+import type { DelegationMandate } from "../extensions/orchestration-policy.ts";
 
 function fakePi(agentListStdout?: string) {
 	const entries: Array<{ type: "custom"; customType: string; data: unknown }> = [];
@@ -220,4 +224,132 @@ test("assurance entries never leak into the worker mapping", () => {
 	registry.setAssurance("independent-review", "r");
 	registry.recordVerified("ghost");
 	assert.deepEqual(restoreRegistry(entries), []);
+});
+
+
+const AUTH_NOW = "2026-08-30T01:00:00.000Z";
+
+function authorityMandate(overrides: Partial<DelegationMandate> = {}): DelegationMandate {
+	return {
+		version: 1,
+		id: "mandate-a",
+		cwd: "/repo",
+		goal: "bounded registry test",
+		definitionOfDone: ["evidence verified"],
+		allowedHarnesses: ["pi"],
+		maxConcurrentWorkers: 2,
+		maxAgentLaunches: 5,
+		writePolicy: "worktree-only",
+		shellNetwork: "deny",
+		secrets: "deny",
+		uploads: "deny",
+		humanOnly: ["architecture-change", "push-deploy-publish"],
+		createdAt: "2026-08-30T00:00:00.000Z",
+		expiresAt: "2026-08-30T02:00:00.000Z",
+		...overrides,
+	};
+}
+
+test("keeps mandate, audit, and profile references in versioned session entries", () => {
+	const { pi, entries } = fakePi();
+	const registry = createAuthorityRegistry(pi);
+	const active = registry.activateMandate(authorityMandate(), AUTH_NOW);
+	assert.equal(active.id, "mandate-a");
+	active.allowedHarnesses.push("codex");
+	assert.deepEqual(registry.state().activeMandate?.allowedHarnesses, ["pi"], "callers cannot mutate stored authority through a returned object");
+	assert.match(registry.state().activeMandateDigest ?? "", /^[a-f0-9]{64}$/);
+
+	const audit = registry.recordAudit({
+		type: "spawn-proposed",
+		actor: "coordinator",
+		details: { launchArgs: ["--api-key", "never-store", "--model", "m"], token: "also-secret" },
+	}, "2026-08-30T01:01:00.000Z");
+	assert.equal((audit.details as any).token, "[REDACTED]");
+	assert.ok(!JSON.stringify(audit).includes("never-store"));
+
+	registry.recordProfile({
+		profileId: "pi-agent-teams-docker-strong-v1",
+		profileVersion: "1",
+		backend: "pi-agent-teams",
+		digest: "a".repeat(64),
+		verified: true,
+	}, "2026-08-30T01:02:00.000Z");
+
+	const restored = restoreAuthorityRegistry(entries, { now: "2026-08-30T01:03:00.000Z" });
+	assert.equal(restored.failClosedReason, undefined);
+	assert.equal(restored.activeMandate?.id, "mandate-a");
+	assert.equal(restored.audit.length, 1);
+	assert.equal(restored.profiles.length, 1);
+	assert.ok(entries.every((entry) => entry.customType === AUTHORITY_ENTRY));
+});
+
+test("replacement is explicit and can only narrow active authority", () => {
+	const { pi, entries } = fakePi();
+	const registry = createAuthorityRegistry(pi);
+	registry.activateMandate(authorityMandate(), AUTH_NOW);
+
+	assert.throws(() => registry.activateMandate(authorityMandate({ id: "another" }), AUTH_NOW), /already active/);
+	assert.throws(() => registry.replaceMandate(authorityMandate({
+		id: "mandate-expanded",
+		allowedHarnesses: ["pi", "codex"],
+	}), "2026-08-30T01:05:00.000Z"), /expands authority/);
+
+	const narrowed = registry.replaceMandate(authorityMandate({
+		id: "mandate-narrow",
+		maxConcurrentWorkers: 1,
+		maxAgentLaunches: 2,
+		writePolicy: "read-only",
+		humanOnly: ["architecture-change"],
+		expiresAt: "2026-08-30T01:30:00.000Z",
+	}), "2026-08-30T01:05:00.000Z");
+	assert.equal(narrowed.id, "mandate-narrow");
+
+	const restored = restoreAuthorityRegistry(entries, { now: "2026-08-30T01:10:00.000Z" });
+	assert.equal(restored.activeMandate?.id, "mandate-narrow");
+	assert.equal(restored.activeMandate?.writePolicy, "read-only");
+});
+
+test("finishing a mandate clears authority without deleting its audit history", () => {
+	const { pi, entries } = fakePi();
+	const registry = createAuthorityRegistry(pi);
+	registry.activateMandate(authorityMandate(), AUTH_NOW);
+	registry.recordAudit({ type: "verification", actor: "coordinator", outcome: "ALLOW" }, "2026-08-30T01:05:00.000Z");
+	registry.finishMandate("complete", "2026-08-30T01:06:00.000Z");
+	assert.equal(registry.state().activeMandate, undefined);
+	assert.throws(() => registry.recordAudit({ type: "verification", actor: "coordinator" }), /no active mandate/);
+
+	const restored = restoreAuthorityRegistry(entries, { now: "2026-08-31T00:00:00.000Z" });
+	assert.equal(restored.failClosedReason, undefined, "a finished historical mandate may expire without poisoning restore");
+	assert.equal(restored.activeMandate, undefined);
+	assert.equal(restored.audit.length, 1);
+});
+
+test("malformed, tampered, overlapping, or stale authority history fails closed", () => {
+	const { pi, entries } = fakePi();
+	createAuthorityRegistry(pi).activateMandate(authorityMandate(), AUTH_NOW);
+	const clean = entries[0] as any;
+	const cases = [
+		[{ type: "custom", customType: AUTHORITY_ENTRY, data: { schemaVersion: 99, action: "activate" } }],
+		[{ ...clean, data: { ...clean.data, digest: "0".repeat(64) } }],
+		[clean, clean],
+	] as unknown[][];
+	for (const history of cases) {
+		const state = restoreAuthorityRegistry(history, { now: "2026-08-30T01:10:00.000Z" });
+		assert.equal(state.activeMandate, undefined);
+		assert.ok(state.failClosedReason);
+	}
+	const stale = restoreAuthorityRegistry(entries, { now: "2026-08-30T03:00:00.000Z" });
+	assert.equal(stale.activeMandate, undefined);
+	assert.match(stale.failClosedReason ?? "", /stale/);
+});
+
+test("registry restore remains fail closed after a bad authority entry", () => {
+	const { pi, entries } = fakePi();
+	const registry = createAuthorityRegistry(pi);
+	registry.restore([
+		{ type: "custom", customType: AUTHORITY_ENTRY, data: { schemaVersion: 1, action: "unknown" } },
+	], AUTH_NOW);
+	assert.ok(registry.state().failClosedReason);
+	assert.throws(() => registry.activateMandate(authorityMandate(), AUTH_NOW), /fail closed/);
+	assert.equal(entries.length, 0, "a blocked registry must not append a replacement authority event");
 });
