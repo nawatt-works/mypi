@@ -158,6 +158,16 @@ test("binds signed leases to run, Worker, provider, nonce, TTL, and authority ke
 			raw: issueLease({ privateKey: f.privateKey, leaseId: "lease-expired", runId: "run-1", workerId: "worker-a", issuedAt: NOW - 120_000, expiresAt: NOW - 60_000 }),
 			error: /expired, future-dated, or exceeds/,
 		},
+		{
+			name: "future",
+			raw: issueLease({ privateKey: f.privateKey, leaseId: "lease-future", runId: "run-1", workerId: "worker-a", issuedAt: NOW + 60_000, expiresAt: NOW + 120_000 }),
+			error: /expired, future-dated, or exceeds/,
+		},
+		{
+			name: "ttl",
+			raw: issueLease({ privateKey: f.privateKey, leaseId: "lease-long-ttl", runId: "run-1", workerId: "worker-a", issuedAt: NOW - 1_000, expiresAt: NOW + 600_000 }),
+			error: /expired, future-dated, or exceeds/,
+		},
 	];
 	for (const scenario of cases) {
 		await writeFile(f.credentialLeasePath, scenario.raw, { mode: 0o600 });
@@ -177,6 +187,31 @@ test("binds signed leases to run, Worker, provider, nonce, TTL, and authority ke
 		environment: { PATH: "/bin" },
 		now: NOW,
 	}), /signature verification failed/);
+
+	const wrongKey = generateKeyPairSync("ed25519").privateKey;
+	await writeFile(f.credentialLeasePath, issueLease({
+		privateKey: wrongKey,
+		leaseId: "lease-wrong-key",
+		runId: "run-1",
+		workerId: "worker-a",
+	}), { mode: 0o600 });
+	await assert.rejects(() => materializeAgentTeamsWorkerProfile({
+		configuration: f.configuration,
+		spawn: f.spawn,
+		environment: { PATH: "/bin" },
+		now: NOW,
+	}), /signature verification failed/);
+
+	const run2Root = join(f.runtimeRoot, "credential-leases", "run-2");
+	await mkdir(run2Root, { mode: 0o700 });
+	const run2Lease = join(run2Root, "worker-a.auth.json");
+	await writeFile(run2Lease, f.leaseRaw, { mode: 0o600 });
+	await assert.rejects(() => materializeAgentTeamsWorkerProfile({
+		configuration: f.configuration,
+		spawn: { ...f.spawn, runId: "run-2", credentialLeasePath: run2Lease },
+		environment: { PATH: "/bin" },
+		now: NOW,
+	}), /identity does not match/);
 });
 
 test("rejects copied leases across Workers and persistent replay after cleanup", async (t) => {
@@ -199,6 +234,20 @@ test("rejects copied leases across Workers and persistent replay after cleanup",
 		environment: { PATH: "/bin" },
 		now: NOW,
 	}), /identity does not match/);
+});
+
+test("a failure after atomic claim leaves no usable profile or replayable lease", async (t) => {
+	const f = await fixture(t);
+	await assert.rejects(() => materializeAgentTeamsWorkerProfile({
+		configuration: f.configuration,
+		spawn: f.spawn,
+		environment: {},
+		now: NOW,
+	}), /Worker environment requires PATH/);
+	await assert.rejects(() => lstat(f.credentialLeasePath), /ENOENT/);
+	await assert.rejects(() => lstat(join(f.claimedLeasesRoot, "lease-worker-a-1.lease.json")), /ENOENT/);
+	await assert.rejects(() => lstat(join(f.runtimeRoot, "runs", "run-1", "workers", "worker-a")), /ENOENT/);
+	assert.ok(await lstat(join(f.consumedLeasesRoot, "lease-worker-a-1.json")));
 });
 
 test("keeps mutable state disjoint when the authority issues distinct Worker leases", async (t) => {
