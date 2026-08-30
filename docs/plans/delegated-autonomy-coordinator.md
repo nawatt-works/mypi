@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — Phase 2 operator-run real-provider acceptance; production remains disabled<br>
+> **Status:** active — Phase 2 crash/rotation reconciliation acceptance; production remains disabled<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 19:15<br>
+> **Updated:** 2026-08-30 20:10<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -895,16 +895,19 @@ Success metric หลัก:
 - corrections `df78477`, `48f9edd`, `51c6006`ยืนยัน same-name replacement generation, fresh-session verify receiptและ redacted inspectable failure envelopesทุก runner stage
 - independent correction reviewสุดท้าย **PASS**; auditอยู่ที่ [Agent-teams Generated-path Acceptance Harness Review](../notes/agent-teams-generated-path-acceptance-harness-review.md)
 - full suite `193/193`, runtime/fault probes `10/10`, absent-machine blocker exit `78`
-- real-provider runยัง BLOCKEDเพราะเครื่องยังไม่มี Worker machine setup; productionยัง disabled
+- operator setupสำเร็จ; initial acceptance expose missing upstream lock, worktree/runtime overlapและ backend-tool readiness mismatch
+- corrections `cb05e2f`, `5340500`เพิ่ม exact acceptance dependency lock, sibling private worktree root, full tool readinessและ measured evidence
+- generated-path real-provider runสุดท้าย **PASS**: 7/7 checks, interactive requests `0`, generated profile removed, no reusable credential state
+- evidenceอยู่ที่ [Agent-teams Generated-path Real-provider Acceptance](../notes/agent-teams-generated-path-real-provider-acceptance.md)
+- productionยัง disabled
 
 ## Exact next action
 
-1. Operatorรัน `/mypi-worker-setup setup`ใน Development Pi profileเพื่อสร้าง trusted machine receiptโดยไม่ส่ง credentialผ่าน chat/argv/environment
-2. Operatorรัน `/mypi-worker-acceptance`ใน sessionเดียวกัน; เก็บ PASS/FAIL/BLOCKED receiptจาก generated-path run
-3. ถ้า PASS ให้เพิ่ม forced-crash/retry reconciliationและ credential rotation acceptance
-4. แยก read-only/worktree-write execution adapters
-5. ขอ independent Phase 2–3 evidence reviewก่อน production importหรือ Default release
-6. หลัง profile pathผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
+1. เพิ่ม forced-crash/leader-loss/retry reconciliationโดย bind cleanupกับ exact generationและไม่ลบ replacement
+2. เพิ่ม credential rotation acceptance: active lease block, idle rotate, stale revision reject, new revision spawn
+3. แยก read-only/worktree-write execution adapters
+4. ขอ independent Phase 2–3 evidence reviewก่อน production importหรือ Default release
+5. หลัง profile pathผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
 
 External push, release/tagและ Default Pi switchเป็น human-only mutationsและยังไม่ทำ
 

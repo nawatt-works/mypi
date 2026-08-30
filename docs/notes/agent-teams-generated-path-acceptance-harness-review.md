@@ -1,6 +1,6 @@
 # Independent Review — Agent-teams Generated-path Acceptance Harness
 
-> **Status:** harness correction review PASS; real-provider executionยัง BLOCKED by missing machine setup<br>
+> **Status:** harness correction review PASS; real-provider executionภายหลัง PASS<br>
 > **Created:** 2026-08-30 18:30<br>
 > **Updated:** 2026-08-30 19:10<br>
 > **Scope:** `82ac9d2..51c6006`<br>
@@ -57,4 +57,4 @@ Productionยัง disabledจาก root stable manifest
 - synthetic runner early-failure envelope: `BLOCKED`, stage `clone`, error digest only
 - `git diff --check` PASS
 
-Real-provider executionยังไม่ได้รันเพราะเครื่องนี้ยังไม่มี verified Worker machineที่ `~/.local/state/mypi/worker-runtime-v1`; operatorต้องรัน `/mypi-worker-setup setup` แล้ว `/mypi-worker-acceptance`ใน Development Pi profileก่อนนับ Phase 2–3 acceptanceจริง
+หลัง reviewนี้ operator setupและรัน acceptanceจริง Initial runพบ dependency/worktree/readiness defectsซึ่งแก้ใน `cb05e2f`, `5340500`; final real-provider evidenceอยู่ที่ [Agent-teams Generated-path Real-provider Acceptance](agent-teams-generated-path-real-provider-acceptance.md) และได้ PASS โดย productionยัง disabled

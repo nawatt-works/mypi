@@ -62,8 +62,9 @@ git -C <pi-agent-teams-checkout> apply --unidiff-zero \
 
 npm run test:agent-teams-runtime -- <pi-agent-teams-checkout>
 
-# หลังติดตั้ง dependencies ของ pinned checkout แล้วเท่านั้น; เรียก provider/modelจริง
-npm run test:agent-teams-acceptance -- <pi-agent-teams-checkout> [fresh-output-root]
+# clone/apply sourceและติดตั้ง exact lockfileใน disposable rootsเอง; เรียก provider/modelจริง
+# ต้องรับ trusted setup receiptผ่าน /mypi-worker-acceptance ไม่รับ path/digest/credential arguments
+npm run test:agent-teams-acceptance
 ```
 
 Opt-in runtime probeสร้าง clean worktreeเพื่อ `git apply --check` แล้ว execute missing managed env, valid-wrong digest, replaced boundary, forged/replayed marker, missing marker และ post-marker startup-race negative cases โดยไม่เรียก provider/model Probeส่ง `--session-dir` ไป temporary rootทุก childเพื่อไม่พึ่งหรือเขียน global Pi session store
@@ -122,7 +123,8 @@ Runtime ต้องเรียก imageด้วย immutable digestและ 
 - committed opt-in runtime probeผ่าน apply-check + negative/startup cases `10/10`: missing env, wrong contract, missing/stale adapter, Default-linked runtime, replaced boundary, exact environmentไม่รับ ambient `LC_*` secret, forged/replayed marker, missing marker และ post-marker process exit
 - additional fault probes: provider/model unavailableไม่ register Worker; missing SBOM fail; Docker daemon/image unavailableออก code `78`
 - clean pinned checkoutผ่าน provenance verifier; source driftที่ pathเดิม fail closed; `git push`ได้ `HUMAN/remote-mutation` blockerโดยไม่มี dialog
-- real Pi-native acceptance chainผ่าน: implement/review/correction/acceptance tasks `5/5`, artifacts `7/7`, user approvals `0`, routine dialogs `0`, HUMAN side effects `0`; Worker readinessทั้ง implementer/reviewer/verifier bind exact profile/session/worktree
+- historical Phase 0 Pi-native chainผ่าน tasks `5/5`, artifacts `7/7`, user approvals `0`, routine dialogs `0`, HUMAN side effects `0`; หลักฐานนี้ไม่ใช้แทน generated-path acceptance
+- generated-path real-provider acceptanceวัด artifact/readiness/bounded worktree mutation, observed interactive requests `0`, stop/replacement cleanupและ no reusable credential stateครบ 7 checks
 
 ## Boundaries และข้อจำกัด
 
@@ -131,4 +133,4 @@ Runtime ต้องเรียก imageด้วย immutable digestและ 
 - `task completed` จาก agent-teamsไม่เท่ากับ accepted; My Pi ต้อง collect artifact/diff/testsเอง
 - Docker daemonและ exact local imageเป็น trusted fail-closed dependencies หาก preflightไม่ผ่านต้องไม่ register Worker
 - Scoped direct operations canonicalizeและ reject symlink escapeก่อน filesystem callแต่ไม่ใช่ OS sandboxและยังมี TOCTOU limitation; strong direct-tool isolationต้องใช้ VM/container filesystem backendในอนาคต
-- Profile package/overlay/generated-profile adapterถูก bindใน candidateแล้ว แต่ one-time machine setup/credential provisioning commandและ real provider production-path acceptanceยังไม่เสร็จ จึงยัง disabled by defaultและไม่มี production import
+- Profile package/overlay/generated-profile adapter, one-time machine setupและ generated-path real-provider acceptanceผ่านแล้ว แต่ productionยัง disabledและไม่มี root production importจน forced-crash/rotation acceptanceกับ Phase 2–3 evidence reviewครบ

@@ -16,7 +16,7 @@
     "test": "node scripts/run-tests.mjs",
     "test:capability-install": "node scripts/smoke-capability-install.mjs",
     "test:agent-teams-runtime": "node --experimental-strip-types capabilities/incubator/delegated-orchestration/tests/agent-teams-runtime-probe.mjs",
-    "test:agent-teams-acceptance": "node capabilities/incubator/delegated-orchestration/tests/agent-teams-acceptance-probe.mjs"
+    "test:agent-teams-acceptance": "node capabilities/incubator/delegated-orchestration/tests/agent-teams-acceptance-runner.mjs"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"

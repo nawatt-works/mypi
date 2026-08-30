@@ -2,7 +2,7 @@
 
 > **Status:** reference<br>
 > **Created:** 2026-08-05 12:04<br>
-> **Updated:** 2026-08-30 19:15<br>
+> **Updated:** 2026-08-30 20:10<br>
 > **Purpose:** เก็บแผน implementation ที่เป็นเอกสารของ repository `my-pi` และมีประโยชน์สำหรับอ้างอิงย้อนหลัง
 
 ไฟล์ใน directory นี้เป็น project documentation ที่ย้ายมาจาก `.workbench/plans/` เพื่อให้มองเห็นได้จากเครื่องมือทั่วไป ไม่ใช่ default plan directory และไม่สร้างข้อกำหนดให้ AI tool, skill, workflow หรือ harness อื่น
@@ -12,7 +12,7 @@
 ## Current plans
 
 - [จัด My Pi เป็น Capability Packages และ Pinned Releases](capability-packages-and-pinned-releases.md) — completed; `v0.2.0` pinned releaseและ Worker-profile handoffเสร็จ
-- [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](delegated-autonomy-coordinator.md) — active Phase 2; generated-path harnessผ่าน review รอ operator setup + real-provider run, productionยัง disabled
+- [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](delegated-autonomy-coordinator.md) — active Phase 2; real-provider generated path 7/7 PASS ถัดไป crash/retry + credential rotation, productionยัง disabled
 
 ## Decisions
 
@@ -24,6 +24,7 @@
 
 ## Change log
 
+- 2026-08-30 20:10 — generated spawn/readiness/work/stop/replacement/cleanup real-provider acceptance PASS
 - 2026-08-30 19:15 — real-provider generated-path acceptance harnessผ่าน final review; actual runรอ trusted machine setup
 - 2026-08-30 18:15 — Worker machine setup + signed crash recoveryผ่าน final independent review
 - 2026-08-30 16:10 — generated-profile spawn/readiness correction `ae489b2`ผ่าน independent review; legacy acceptanceถูก blockจน setupใหม่พร้อม
