@@ -9,7 +9,8 @@
   ],
   "scripts": {
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "test:agent-teams-runtime": "node --experimental-strip-types tests/agent-teams-runtime-probe.mjs"
+    "test:agent-teams-runtime": "node --experimental-strip-types tests/agent-teams-runtime-probe.mjs",
+    "test:agent-teams-acceptance": "node tests/agent-teams-acceptance-probe.mjs"
   },
   "dependencies": {
     "@juicesharp/rpiv-ask-user-question": "^2.7.0",

@@ -58,9 +58,14 @@ git -C <pi-agent-teams-checkout> apply --unidiff-zero \
   "$PWD/profiles/pi-agent-teams/node-worker-v1/agent-teams-overlay.patch"
 
 npm run test:agent-teams-runtime -- <pi-agent-teams-checkout>
+
+# หลังติดตั้ง dependencies ของ pinned checkout แล้วเท่านั้น; เรียก provider/modelจริง
+npm run test:agent-teams-acceptance -- <pi-agent-teams-checkout> [fresh-output-root]
 ```
 
 Opt-in runtime probeสร้าง clean worktreeเพื่อ `git apply --check` แล้ว execute missing managed env, valid-wrong digest, replaced boundary, forged/replayed marker, missing marker และ post-marker startup-race negative cases โดยไม่เรียก provider/model Probeส่ง `--session-dir` ไป temporary rootทุก childเพื่อไม่พึ่งหรือเขียน global Pi session store
+
+Opt-in acceptance probeใช้ pinned checkoutที่ลง dependenciesไว้แล้วและเรียก `openai-codex/gpt-5.4-mini:low` จริง สร้าง disposable Git fixture/worktreesแล้วรัน implement → independent review → correctionใน Workerเดิม → independent acceptance → HUMAN remote-mutation blocker เก็บ audit/artifactsใต้ fresh output rootและไม่ activate production adapter
 
 `extensions/agent-teams-profile.ts` ตรวจ Git `HEAD`, exact entry digest และ deterministic digestของ source tree `extensions/teams/` ทั้งชุดก่อนสร้าง leader environmentแบบ allowlistและ injectพร้อมกัน:
 
@@ -112,6 +117,7 @@ Runtime ต้องเรียก imageด้วย immutable digestและ 
 - committed opt-in runtime probeผ่าน apply-check + negative startup cases `6/6`: missing env, valid-wrong contract, replaced boundary, forged/replayed marker, missing marker และ post-marker process exit
 - additional fault probes: provider/model unavailableไม่ register Worker; missing SBOM fail; Docker daemon/image unavailableออก code `78`
 - clean pinned checkoutผ่าน provenance verifier; source driftที่ pathเดิม fail closed; `git push`ได้ `HUMAN/remote-mutation` blockerโดยไม่มี dialog
+- real Pi-native acceptance chainผ่าน: implement/review/correction/acceptance tasks `5/5`, artifacts `7/7`, user approvals `0`, routine dialogs `0`, HUMAN side effects `0`; Worker readinessทั้ง implementer/reviewer/verifier bind exact profile/session/worktree
 
 ## Boundaries และข้อจำกัด
 
@@ -120,4 +126,4 @@ Runtime ต้องเรียก imageด้วย immutable digestและ 
 - `task completed` จาก agent-teamsไม่เท่ากับ accepted; My Pi ต้อง collect artifact/diff/testsเอง
 - Docker daemonและ exact local imageเป็น trusted fail-closed dependencies หาก preflightไม่ผ่านต้องไม่ register Worker
 - Scoped direct operations canonicalizeและ reject symlink escapeก่อน filesystem callแต่ไม่ใช่ OS sandboxและยังมี TOCTOU limitation; strong direct-tool isolationต้องใช้ VM/container filesystem backendในอนาคต
-- Profile package/overlay/atomic builderถูก wireและ runtime/fault-probeแล้ว; correction v5ผ่าน independent re-review `PASS` แต่ยัง disabled by defaultและไม่ production-readyจน artifact acceptance + implement→review→correction chainผ่านครบ
+- Profile package/overlay/atomic builderถูก wireและ Phase 0 runtime/fault/acceptance probesผ่านแล้ว แต่ยัง disabled by defaultและไม่ production-readyจน Phase 1 mandate/policy/audit registry + production adapter wiringผ่าน acceptanceแยก

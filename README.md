@@ -79,7 +79,8 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
 - [`profiles/pi-agent-teams/node-worker-v1/`](profiles/pi-agent-teams/node-worker-v1/)
   - pinned Node `24.15.0` Dockerfile, runtime contract, SPDX SBOM, minimal upstream overlay และ exact Worker boundaryสำหรับ patched agent-teams
   - atomic builder/runtime/fault probesผ่านแล้ว; ใช้ `npm run test:agent-teams-runtime -- <patched-checkout>` เพื่อ reproduce clean apply-checkและ negative startup cases
-  - correction v5ผ่าน independent reviewแล้ว แต่ยังเป็น Phase 0 candidate รอ implement→review→correction acceptance chainและไม่ถูกโหลดใน production spawn
+  - opt-in real-model acceptanceใช้ `npm run test:agent-teams-acceptance -- <patched-checkout> [fresh-output-root]`; ต้องลง dependenciesของ pinned checkoutก่อนและมี provider auth + exact Docker image
+  - Phase 0 implement→review→correction→acceptance ผ่านด้วย artifacts `7/7`, zero routine approval และ HUMAN remote-mutation side effects `0`; candidateยังไม่ถูกโหลดใน production spawn
 
 ### Third-party packages
 

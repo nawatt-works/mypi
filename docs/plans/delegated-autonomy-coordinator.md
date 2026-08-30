@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — Phase 0 runtime probes<br>
+> **Status:** active — Phase 1 pure mandate/policy model<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-29 21:23<br>
+> **Updated:** 2026-08-30 08:10<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -183,7 +183,7 @@ hard deny / managed ceiling
 
 ห้าม install production แบบ as-is เพราะ child spawn inherit `process.env`, ใช้ `--no-extensions -e teams` ซึ่งตัด My Pi guardrails/sandbox, default writing workspace เป็น shared และไม่มี deterministic secret/network/upload policy Phase 0 runtime บน explicit worktree ยืนยันว่า fake `.env`, fake parent env, external `/tmp` write และ shell network ผ่านทั้งหมด แม้ routine RPC/worktree lifecycle ทำงานดี
 
-Disposable child-profile patch ยืนยัน env allowlist, exact tools/extensions, worktree ceiling, deterministic no-UI policy และ fail-closed boundary ต่อมาถูก packageเป็น minimal overlayบน exact upstream commit, atomic profile builder/verifier, scoped direct operations และ single Worker boundaryที่รวม immutable Docker Bash + command/data policy Final overlay apply-check, single/direct/ceiling-2 replacement runtime และ observed verifierผ่าน Independent reviewของ `ead8778` พบ provenanceกับ missing-env fail-open gaps; correction `43967a8` เพิ่ม Git/entry/whole-source-tree verificationและ required managed env แต่ re-reviewให้ `FAIL` เพราะ boundary/digest/markerยัง forge/replayได้ Correction v2จึง bind exact boundary content hash, derive contractทั้ง leader/Worker และใช้ structured readinessที่ bind per-spawn nonce/session/source/tools/env/resources พร้อม provider/image/daemon/missing-marker/missing-artifact/human-only fault probes Re-review v2ยืนยัน security wiringแต่ให้ `FAIL` เพราะ evidenceยังไม่เป็น committed executableและไม่ได้ independently reproduce apply-check Correction v3เพิ่ม opt-in runtime probeที่ execute clean apply-check + negative startup `6/6`; re-reviewยัง `FAIL` เพราะรันจาก reviewer checkoutเก่าและพบ whitespace-bearing contextใน patch Correction v4 regenerate overlayเป็น `--unified=0`, require `git apply --unidiff-zero`, probeรันจาก producer checkoutผ่านและ patchไม่มี whitespace context Re-reviewใน sandboxพบ probe childเขียน global Pi sessions จึงได้ EPERMที่ไม่ใช่ boundary outcome Correction v5ส่ง temporary `--session-dir`ให้ childทุกตัวเพื่อ isolated reproduction Independent reviewerรันจาก self-contained fixturesแล้วได้ apply-check/profile build/negative `6/6`, full suite `115/115`, diff-clean และ verdict `PASS` Candidateยัง disabled by defaultและรอ acceptance chain
+Disposable child-profile patch ยืนยัน env allowlist, exact tools/extensions, worktree ceiling, deterministic no-UI policy และ fail-closed boundary ต่อมาถูก packageเป็น minimal overlayบน exact upstream commit, atomic profile builder/verifier, scoped direct operations และ single Worker boundaryที่รวม immutable Docker Bash + command/data policy Final overlay apply-check, single/direct/ceiling-2 replacement runtime และ observed verifierผ่าน Independent reviewของ `ead8778` พบ provenanceกับ missing-env fail-open gaps; correction `43967a8` เพิ่ม Git/entry/whole-source-tree verificationและ required managed env แต่ re-reviewให้ `FAIL` เพราะ boundary/digest/markerยัง forge/replayได้ Correction v2จึง bind exact boundary content hash, derive contractทั้ง leader/Worker และใช้ structured readinessที่ bind per-spawn nonce/session/source/tools/env/resources พร้อม provider/image/daemon/missing-marker/missing-artifact/human-only fault probes Re-review v2ยืนยัน security wiringแต่ให้ `FAIL` เพราะ evidenceยังไม่เป็น committed executableและไม่ได้ independently reproduce apply-check Correction v3เพิ่ม opt-in runtime probeที่ execute clean apply-check + negative startup `6/6`; re-reviewยัง `FAIL` เพราะรันจาก reviewer checkoutเก่าและพบ whitespace-bearing contextใน patch Correction v4 regenerate overlayเป็น `--unified=0`, require `git apply --unidiff-zero`, probeรันจาก producer checkoutผ่านและ patchไม่มี whitespace context Re-reviewใน sandboxพบ probe childเขียน global Pi sessions จึงได้ EPERMที่ไม่ใช่ boundary outcome Correction v5ส่ง temporary `--session-dir`ให้ childทุกตัวเพื่อ isolated reproduction Independent reviewerรันจาก self-contained fixturesแล้วได้ apply-check/profile build/negative `6/6`, full suite `115/115`, diff-clean และ verdict `PASS` Real Pi-native chainต่อมาผ่าน implement/review/correction/acceptance tasks `5/5`, artifacts `7/7`, approvals/dialogs `0` และ HUMAN side effects `0` Candidateยัง disabled by defaultและรอ Phase 1–3 authority/adapter wiring
 
 ถ้านำมาใช้ My Pi ยังเป็นเจ้าของ mandate/policy/audit/final verification; agent-teams เป็นเจ้าของ Pi task transport/RPC team lifecycle เท่านั้น และ Herdr ยังดูแล external harnesses
 
@@ -476,9 +476,9 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
 ไม่เปลี่ยน production behavior
 
 - [x] สร้าง fixture repository ใน OS/harness temporary location
-- [ ] probe Pi read-only และ worktree-write worker profiles โดยไม่มี dialog
+- [x] probe Pi read-only และ worktree-write worker profiles โดยไม่มี dialog
   - [x] non-interactive resource profiles + guardrail + sandboxed Bash
-  - [ ] Herdr interactive lifecycle profile
+  - [x] real Pi-native RPC/task lifecycleผ่าน atomic agent-teams profile; Herdr external laneยัง manual-only
 - [x] gate Codex auto-review + custom permission profile → manual-only
   - shorthand baselineถูก reject; isolated direct declared boundariesและ requested/effective modelผ่าน
   - warm Herdr lifecycleผ่าน แต่ generic host read fail D5; ไม่ fresh-spawnจนมี whole-process isolation
@@ -489,11 +489,12 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
   - direct isolated config ใช้ได้ แต่ Bash redirection ข้าม external-directory deny; delegated profile เป็น no-go
 - [x] ตรวจว่า Herdr lifecycle integrations ของ target harness เป็น `current`
   - Pi/Claude/Codex current; OpenCode not installed และไม่ใช่ delegated initial target
-- [ ] ทดสอบ human-only action, hard deny, provider error, timeout และ missing artifact
+- [x] ทดสอบ human-only action, hard deny, provider error, timeout และ missing artifact
   - fake secret, external write และ network hard-deny probes ผ่านใน provisional Pi/Codex/Claude profiles
-- [ ] ทดสอบว่าผู้ใช้ไม่ต้องกด routine permissions ในหนึ่ง implement-review chain
-  - Codex implement ผ่านและ Coordinator commit หลัง collect; warm readiness timing re-probeผ่าน
-  - Claude direct `dontAsk` profileผ่าน แต่ chainยังไม่ได้ rerunบน fresh Herdr profile
+  - agent-teams provider/image/daemon/readiness/artifact faults fail closed; `git push`เป็น HUMANและ side effects `0`
+- [x] ทดสอบว่าผู้ใช้ไม่ต้องกด routine permissions ในหนึ่ง implement-review chain
+  - Pi-native implement → review → correction → acceptanceผ่าน tasks `5/5`, artifacts `7/7`, routine approvals/dialogs `0`
+  - Codex/Claude external harnessesยัง manual-onlyเพราะ D5 generic host-read gap; ผลนี้ไม่เปิด delegated laneให้สอง harness
 - [ ] `pi-agent-teams` gate:
   - [x] ตรวจ full Git lineage, license, source architecture และ source smoke tests
   - [x] เลือก `tmustier` เป็น base candidate; ใช้ `codexstar69` เป็น hardening comparator
@@ -531,8 +532,9 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
     - re-review v3ยัง `FAIL` เพราะ reviewerรันใน stale checkoutและ patchมี upstream whitespace context; correction v4ใช้ zero-context overlay + explicit `--unidiff-zero`
     - re-review v4 expose test-harness EPERMจาก global Pi session store; correction v5 isolate child sessionsใน temporary root
     - final independent re-review reproduce self-contained apply-check/profile/negative `6/6` + full suite `115/115` และให้ `PASS`
+    - real Pi-native implement→review→correction→acceptanceผ่าน artifacts `7/7`, zero routine approval/dialog และ HUMAN side effects `0`
     - candidateยัง disabled by defaultและ scoped host operationsยังมี TOCTOU limitation
-- [ ] `pi-extensible-workflows` gate:
+- [x] `pi-extensible-workflows` gate → immediate adoption no-go; เก็บ architecture fitไว้ประเมินใหม่หลัง upstreamแก้ blockers:
   - [ ] ขอ license clarification หรือยืนยัน license artifact ที่มีผลผูกพัน
     - npm/source metadata ระบุ MIT แต่ source และ tarball ไม่มี license text
   - [x] probe pin `5.8.0` ใน isolated `PI_CODING_AGENT_DIR`
@@ -544,14 +546,18 @@ Coordinator ห้ามจบ turn เพียงเพราะ spawn สำ�
     - `reviewLoop` และ Herdr mode ยังไม่ผ่าน gate
   - [x] บันทึก API churn/migration cost
     - 5.9.0 publish ระหว่าง probe, แก้ packaging แต่เพิ่ม Trajectory gist sharing capability
-- [ ] สรุป go/no-go แยกสำหรับแต่ละ harness และ piewf backend
+- [x] สรุป go/no-go แยกสำหรับแต่ละ harness และ piewf backend
+  - patched agent-teams: Phase 0 GO สำหรับ Pi-native adapter development; productionยัง disabled
+  - Herdr: GO เป็น manual external control plane; delegated external profiles no-goใน initial release
+  - Codex/Claude/OpenCode: manual-only/no-go delegatedตาม D5/policy gaps
   - piewf: no-go สำหรับ immediate dependency; architecture fit ยังเป็นบวกหลังแก้ blockers
 
-Exit criteria:
+Exit criteria observed:
 
-- มี verified profile อย่างน้อย Pi หนึ่งแบบและ external harness หนึ่งแบบ
-- routine flow จบได้โดยไม่ต้องเฝ้า
-- hard boundary ถูกบังคับจริงตามระดับที่อ้าง
+- verified Pi-native profileผ่าน full chain; external delegated profile criterion **ไม่ผ่านโดยตั้งใจ** และถูกตัดเป็น manual-only/no-go แทนการลด boundary
+- routine Pi-native flowจบได้โดยไม่ต้องเฝ้า: approvals/dialogs/screen polling `0`
+- hard boundaryถูกบังคับตามระดับที่อ้าง: HUMAN remote mutation side effects `0`, artifacts verified `7/7`
+- Phase 1 เริ่มได้เฉพาะ pure model/registryที่ไม่เปลี่ยน production behavior; external delegated activationยังห้าม
 
 ### Phase 1 — Pure mandate และ policy model
 
@@ -800,11 +806,11 @@ Success metric หลัก:
 
 ## Exact next action
 
-ดำเนิน Phase 0 ส่วนที่เหลือตามลำดับ:
+ดำเนิน Phase 1 pure mandate/policy modelโดยยังไม่เปลี่ยน production behavior:
 
-1. collect artifact/diff/test acceptanceจริงผ่าน implement → review → correction chain
-2. บันทึก zero-routine-approval metric และ HUMAN remote-mutation blockerจาก atomic profile
-3. รัน Pi writing profile ผ่าน lifecycleจริง แล้วรัน implement → review → correction chainผ่าน Pi-native laneให้ศูนย์ routine approval
-4. สรุป go/no-go แยก Herdr manual-only, patched agent-teams และ piewf แล้วจึงเริ่ม Phase 1 pure mandate/policy model
+1. เพิ่ม `extensions/orchestration-policy.ts` สำหรับ versioned mandate validation, narrow-only precedence และ `ALLOW|REVIEW|DENY|HUMAN`
+2. เพิ่ม session-entry schema/audit/profile referencesใน `orchestration-registry.ts` พร้อม malformed/stale fail-closed migration
+3. เพิ่ม table/property testsสำหรับ hard-deny invariants, lower-layer narrowing, redactionและ restore
+4. หลัง pure modelผ่าน independent review จึงเริ่ม Phase 2 wiringกับ guardrails/REVIEW registry
 
-ห้ามแก้ production behavior ก่อนสรุปผล probe และอัปเดต decisions/profile verification ในแผนนี้
+ห้ามโหลด agent-teams candidateหรือข้าม manual Herdr confirmationใน production pathระหว่าง Phase 1
