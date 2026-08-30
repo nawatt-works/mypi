@@ -1,0 +1,18 @@
+{
+  "name": "@nawatt-works/mypi-planning-continuity",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Session and workspace plan continuity with optional Plannotator review handoff.",
+  "keywords": ["pi-package"],
+  "dependencies": {
+    "@nawatt-works/mypi-runtime-mode": "0.1.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/index.ts"]
+  }
+}

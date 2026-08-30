@@ -1,0 +1,550 @@
+diff --git a/extensions/teams/leader-lifecycle-commands.ts b/extensions/teams/leader-lifecycle-commands.ts
+index ae24ec1..1e9f897 100644
+--- a/extensions/teams/leader-lifecycle-commands.ts
++++ b/extensions/teams/leader-lifecycle-commands.ts
+@@ -160,0 +161 @@ export async function handleTeamCleanupCommand(opts: {
++	suppressConfigBootstrap: (teamId: string) => void;
+@@ -162 +163 @@ export async function handleTeamCleanupCommand(opts: {
+-	const { ctx, rest, teamId, teammates, refreshTasks, getTasks, renderWidget, style } = opts;
++	const { ctx, rest, teamId, teammates, refreshTasks, getTasks, renderWidget, style, suppressConfigBootstrap } = opts;
+@@ -233,0 +235 @@ export async function handleTeamCleanupCommand(opts: {
++		suppressConfigBootstrap(teamId);
+diff --git a/extensions/teams/leader-team-command.ts b/extensions/teams/leader-team-command.ts
+index 2e6beda..0cd1522 100644
+--- a/extensions/teams/leader-team-command.ts
++++ b/extensions/teams/leader-team-command.ts
+@@ -107,0 +108 @@ export async function handleTeamCommand(opts: {
++	suppressConfigBootstrap: (teamId: string) => void;
+@@ -134,0 +136 @@ export async function handleTeamCommand(opts: {
++		suppressConfigBootstrap,
+@@ -241,0 +244 @@ export async function handleTeamCommand(opts: {
++				suppressConfigBootstrap,
+diff --git a/extensions/teams/leader.ts b/extensions/teams/leader.ts
+index a3bc5c1..9278b38 100644
+--- a/extensions/teams/leader.ts
++++ b/extensions/teams/leader.ts
+@@ -0,0 +1 @@
++import { createHash, randomBytes } from "node:crypto";
+@@ -20,0 +22 @@ import { resolveTeammateModelSelection, formatProviderModel } from "./model-poli
++import { evaluateMaxWorkersPolicy } from "./max-workers-policy.js";
+@@ -140,0 +143,78 @@ async function teamDirHasAnyTasks(teamDir: string): Promise<boolean> {
++const MANAGED_PROFILE_ID = "pi-agent-teams-docker-strong-v1";
++const MANAGED_UPSTREAM_COMMIT = "2c1776d2a68104aaadc1c622d8a704684c7c35d6";
++const MANAGED_ENTRY_SHA256 = "4f7715812ac0529a5243c5044138510f9c88b8e070910ee3e00b9f465438756b";
++const MANAGED_BOUNDARY_SHA256 = "32c1e6e271188936c233b99946eb65f835c7e0a04624bba7500debab1ace8ed6";
++const MANAGED_COMMAND_POLICY_SHA256 = "d1696594a39fc8eba07ecea9f982abc1aaaaccc5e82abf1be6c8a250a923922f";
++const MANAGED_SCOPED_TOOLS_SHA256 = "7941dcb47cf3c789096c9644f1df663e1c3612b429600ca6db2f0563b9606b72";
++const MANAGED_IMAGE_DIGEST = "sha256:8b50f94e47e5085446081411ed152f84ebe0a146a575bba1720b56821db15ff8";
++const MANAGED_BUILTIN_TOOLS = ["read", "bash", "edit", "write"] as const;
++
++function sha256(value: string | Buffer): string {
++	return createHash("sha256").update(value).digest("hex");
++}
++
++type ManagedChildProfile = Readonly<{
++	forceWorktree: true;
++	tools: ["read", "bash", "edit", "write"];
++	extensions: [string];
++	maxWorkers: string;
++	profileDigest: string;
++	patchedTeamsEntryPath: string;
++	patchedTeamsSourceSha256: string;
++	boundaryPath: string;
++}>;
++
++function requireManagedChildProfile(): ManagedChildProfile {
++	if (process.env.PI_TEAMS_MANAGED_PROFILE_ID !== MANAGED_PROFILE_ID) {
++		throw new Error("Managed agent-teams profile id is missing or invalid");
++	}
++	const profileDigest = process.env.PI_TEAMS_MANAGED_PROFILE_DIGEST;
++	if (!profileDigest || !/^[a-f0-9]{64}$/.test(profileDigest)) throw new Error("Managed agent-teams profile digest is missing or malformed");
++	if (process.env.PI_TEAMS_FORCE_WORKTREE !== "1") throw new Error("Managed agent-teams profile must force worktree mode");
++	const tools = (process.env.PI_TEAMS_CHILD_TOOLS ?? "").split(",").map((tool) => tool.trim()).filter(Boolean);
++	if (JSON.stringify(tools) !== JSON.stringify(MANAGED_BUILTIN_TOOLS)) {
++		throw new Error("Managed agent-teams child tool set is missing or invalid");
++	}
++	const extensions = (process.env.PI_TEAMS_CHILD_EXTENSIONS ?? "").split(path.delimiter).map((entry) => entry.trim()).filter(Boolean);
++	if (extensions.length !== 1 || !path.isAbsolute(extensions[0]) || !fs.existsSync(extensions[0])) {
++		throw new Error("Managed agent-teams boundary extension is missing or invalid");
++	}
++	const boundaryPath = fs.realpathSync(extensions[0]);
++	if (sha256(fs.readFileSync(boundaryPath)) !== MANAGED_BOUNDARY_SHA256) {
++		throw new Error("Managed agent-teams boundary extension digest mismatch");
++	}
++	const maxWorkers = process.env.PI_TEAMS_MAX_WORKERS;
++	if (!maxWorkers || !/^[1-3]$/.test(maxWorkers)) throw new Error("Managed agent-teams Worker ceiling is missing or invalid");
++	const requestedEntry = process.env.PI_TEAMS_PATCHED_ENTRY_PATH;
++	const patchedTeamsSourceSha256 = process.env.PI_TEAMS_PATCHED_SOURCE_SHA256;
++	if (!patchedTeamsSourceSha256 || !/^[a-f0-9]{64}$/.test(patchedTeamsSourceSha256)) throw new Error("Managed patched agent-teams source digest is missing or malformed");
++	const actualEntry = getTeamsExtensionEntryPath();
++	if (!requestedEntry || !actualEntry || fs.realpathSync(requestedEntry) !== fs.realpathSync(actualEntry)) {
++		throw new Error("Managed patched agent-teams entry path is missing or invalid");
++	}
++	const expectedContractDigest = sha256(JSON.stringify({
++		profileId: MANAGED_PROFILE_ID,
++		upstreamCommit: MANAGED_UPSTREAM_COMMIT,
++		patchedTeamsEntrySha256: MANAGED_ENTRY_SHA256,
++		workerBoundarySha256: MANAGED_BOUNDARY_SHA256,
++		commandPolicySha256: MANAGED_COMMAND_POLICY_SHA256,
++		scopedWorkerToolsSha256: MANAGED_SCOPED_TOOLS_SHA256,
++		imageDigest: MANAGED_IMAGE_DIGEST,
++		childTools: MANAGED_BUILTIN_TOOLS,
++		childExtensions: [boundaryPath],
++		maxWorkers: Number(maxWorkers),
++		forceWorktree: true,
++	}));
++	if (profileDigest !== expectedContractDigest) throw new Error("Managed agent-teams profile digest does not match the derived boundary contract");
++	return Object.freeze({
++		forceWorktree: true,
++		tools: ["read", "bash", "edit", "write"],
++		extensions: [boundaryPath],
++		maxWorkers,
++		profileDigest: expectedContractDigest,
++		patchedTeamsEntryPath: fs.realpathSync(actualEntry),
++		patchedTeamsSourceSha256,
++		boundaryPath,
++	});
++}
++
+@@ -150,0 +231,2 @@ export function runLeader(pi: ExtensionAPI): void {
++	const suppressedConfigBootstrapTeams = new Set<string>();
++	const childProfile = requireManagedChildProfile();
+@@ -472,0 +555,5 @@ export function runLeader(pi: ExtensionAPI): void {
++		if (suppressedConfigBootstrapTeams.has(currentTeamId) && !fs.existsSync(teamDir)) {
++			tasks = [];
++			teamConfig = null;
++			return;
++		}
+@@ -475,2 +562,6 @@ export function runLeader(pi: ExtensionAPI): void {
+-		tasks = nextTasks;
+-		teamConfig =
++		const hasActiveTeammates = [...teammates.values()].some(
++			(teammate) => teammate.status !== "stopped" && teammate.status !== "error",
++		);
++		const bootstrapSuppressed = suppressedConfigBootstrapTeams.has(currentTeamId);
++		const shouldBootstrap = !bootstrapSuppressed || nextTasks.length > 0 || hasActiveTeammates;
++		const nextConfig =
+@@ -478,7 +569,12 @@ export function runLeader(pi: ExtensionAPI): void {
+-			(await ensureTeamConfig(teamDir, {
+-				teamId: currentTeamId,
+-				taskListId: effectiveTaskListId,
+-				leadName: "team-lead",
+-				style,
+-			}));
+-		style = teamConfig.style ?? style;
++			(shouldBootstrap
++				? await ensureTeamConfig(teamDir, {
++						teamId: currentTeamId,
++						taskListId: effectiveTaskListId,
++						leadName: "team-lead",
++						style,
++					})
++				: null);
++		if (nextConfig) suppressedConfigBootstrapTeams.delete(currentTeamId);
++		tasks = nextTasks;
++		teamConfig = nextConfig;
++		style = nextConfig?.style ?? style;
+@@ -519,0 +616 @@ export function runLeader(pi: ExtensionAPI): void {
++		if (childProfile.forceWorktree) workspaceMode = "worktree";
+@@ -527,0 +625,11 @@ export function runLeader(pi: ExtensionAPI): void {
++		const teamId = currentTeamId ?? ctx.sessionManager.getSessionId();
++		const teamDir = getTeamDir(teamId);
++		const configForCeiling = teamConfig ?? (await loadTeamConfig(teamDir));
++		const workerCeiling = evaluateMaxWorkersPolicy({
++			name,
++			teammates,
++			teamConfig: configForCeiling,
++			env: { PI_TEAMS_MAX_WORKERS: childProfile.maxWorkers },
++		});
++		if (!workerCeiling.ok) return { ok: false, error: workerCeiling.error ?? "Worker ceiling reached" };
++
+@@ -540,2 +647,0 @@ export function runLeader(pi: ExtensionAPI): void {
+-		const teamId = currentTeamId ?? ctx.sessionManager.getSessionId();
+-		const teamDir = getTeamDir(teamId);
+@@ -594,2 +700,11 @@ export function runLeader(pi: ExtensionAPI): void {
+-		const tools = (pi.getActiveTools() ?? []).filter((t) => builtInToolSet.has(t));
+-		const argsForChild: string[] = [];
++		const tools = childProfile.tools.filter((tool) => builtInToolSet.has(tool));
++		if (tools.length === 0) return { ok: false, error: "Verified child profile resolved to no active tools" };
++
++		const argsForChild: string[] = [
++			"--name",
++			`mypi-worker:agent-teams-${name}`,
++			"--no-skills",
++			"--no-prompt-templates",
++			"--no-themes",
++			"--no-context-files",
++		];
+@@ -597,2 +712 @@ export function runLeader(pi: ExtensionAPI): void {
+-		argsForChild.push("--session-dir", teamSessionsDir);
+-		if (tools.length) argsForChild.push("--tools", tools.join(","));
++		argsForChild.push("--session-dir", teamSessionsDir, "--tools", tools.join(","));
+@@ -607,4 +721,5 @@ export function runLeader(pi: ExtensionAPI): void {
+-		const teamsEntry = getTeamsExtensionEntryPath();
+-		if (teamsEntry) {
+-			argsForChild.push("--no-extensions", "-e", teamsEntry);
+-		}
++		const teamsEntry = childProfile.patchedTeamsEntryPath;
++		const extraExtensions = childProfile.extensions;
++		argsForChild.push("--no-extensions");
++		// Boundary extensions initialize before the teams worker registers itself online.
++		for (const entry of [...extraExtensions, teamsEntry]) argsForChild.push("-e", entry);
+@@ -625,0 +741,2 @@ export function runLeader(pi: ExtensionAPI): void {
++		const sessionName = `pi agent teams - ${strings.memberTitle.toLowerCase()} ${name}`;
++		const readinessNonce = randomBytes(32).toString("hex");
+@@ -628,0 +746,14 @@ export function runLeader(pi: ExtensionAPI): void {
++				expectedReadiness: {
++					contractDigest: childProfile.profileDigest,
++					nonceDigest: sha256(readinessNonce),
++					teamId,
++					workerName: name,
++					boundaryPath: childProfile.boundaryPath,
++					boundarySha256: MANAGED_BOUNDARY_SHA256,
++					entryPath: teamsEntry,
++					entrySha256: MANAGED_ENTRY_SHA256,
++					sourceSha256: childProfile.patchedTeamsSourceSha256,
++					tools: [...tools].sort(),
++					workspaceMode: "worktree",
++					maxWorkers: Number(childProfile.maxWorkers),
++				},
+@@ -629,0 +761,6 @@ export function runLeader(pi: ExtensionAPI): void {
++					MYPI_AGENT_TEAMS_BOUNDARY_PATH: childProfile.boundaryPath,
++					MYPI_AGENT_TEAMS_ENTRY_PATH: teamsEntry,
++					MYPI_AGENT_TEAMS_MAX_WORKERS: childProfile.maxWorkers,
++					MYPI_AGENT_TEAMS_PROFILE_DIGEST: childProfile.profileDigest,
++					MYPI_AGENT_TEAMS_READY_NONCE: readinessNonce,
++					MYPI_AGENT_TEAMS_WORKSPACE_MODE: "worktree",
+@@ -636,0 +774,2 @@ export function runLeader(pi: ExtensionAPI): void {
++					PI_TEAMS_ROOT_DIR: getTeamsRootDir(),
++					MYPI_WORKER: "1",
+@@ -641,9 +780,2 @@ export function runLeader(pi: ExtensionAPI): void {
+-		} catch (err) {
+-			teammates.delete(name);
+-			return { ok: false, error: err instanceof Error ? err.message : String(err) };
+-		}
+-
+-		const sessionName = `pi agent teams - ${strings.memberTitle.toLowerCase()} ${name}`;
+-
+-		// Leader-driven session naming (so teammates are easy to spot in /resume).
+-		try {
++			// A second RPC round-trip closes the race where startup hooks fail immediately
++			// after get_state but before the Worker is recorded as online.
+@@ -652 +784,7 @@ export function runLeader(pi: ExtensionAPI): void {
+-			warnings.push(`Failed to set session name for ${name}: ${err instanceof Error ? err.message : String(err)}`);
++			teammates.delete(name);
++			await t.stop().catch(() => undefined);
++			if (workspaceMode === "worktree") {
++				const cleanup = await cleanupWorktrees({ teamDir, teamId, repoCwd: ctx.cwd });
++				warnings.push(...cleanup.warnings);
++			}
++			return { ok: false, error: `Worker profile startup verification failed: ${err instanceof Error ? err.message : String(err)}` };
+@@ -678,0 +817,11 @@ export function runLeader(pi: ExtensionAPI): void {
++				childProfile: {
++					environment: "allowlist",
++					environmentKeys: t.getEnvironmentKeys(),
++					tools,
++					extensionTools: ["team_message"],
++					extensions: [...extraExtensions, teamsEntry],
++					boundaryProfileDigest: t.getBoundaryProfileDigest(),
++					boundaryReadiness: t.getBoundaryReadiness(),
++					forceWorktree: childProfile.forceWorktree,
++					maxWorkers: workerCeiling.limit,
++				},
+@@ -702,0 +852 @@ export function runLeader(pi: ExtensionAPI): void {
++		if (suppressedConfigBootstrapTeams.has(currentTeamId) && !fs.existsSync(teamDir)) return;
+@@ -1041,0 +1192,7 @@ export function runLeader(pi: ExtensionAPI): void {
++				suppressConfigBootstrap: (teamId) => {
++					suppressedConfigBootstrapTeams.add(teamId);
++					if (currentTeamId === teamId) {
++						tasks = [];
++						teamConfig = null;
++					}
++				},
+diff --git a/extensions/teams/teammate-rpc.ts b/extensions/teams/teammate-rpc.ts
+index 8c00c49..543ff7f 100644
+--- a/extensions/teams/teammate-rpc.ts
++++ b/extensions/teams/teammate-rpc.ts
+@@ -3,0 +4,41 @@ import type { AgentEvent } from "@earendil-works/pi-agent-core";
++const PI_RUNTIME_ENVIRONMENT_KEYS = ["AI_AGENT", "PI_CODING_AGENT", "__CF_USER_TEXT_ENCODING"] as const;
++const CHILD_ENV_ALLOWLIST = new Set([
++	"PATH",
++	"HOME",
++	"USER",
++	"LOGNAME",
++	"SHELL",
++	"TMPDIR",
++	"TMP",
++	"TEMP",
++	"LANG",
++	"TERM",
++	"COLORTERM",
++	"NO_COLOR",
++	"FORCE_COLOR",
++	"CI",
++]);
++
++export function buildTeammateEnvironment(
++	parent: NodeJS.ProcessEnv,
++	overrides: Record<string, string>,
++): NodeJS.ProcessEnv {
++	const child: NodeJS.ProcessEnv = {};
++	for (const [key, value] of Object.entries(parent)) {
++		if (value === undefined) continue;
++		if (CHILD_ENV_ALLOWLIST.has(key) || key.startsWith("LC_")) child[key] = value;
++	}
++	for (const [key, value] of Object.entries(overrides)) child[key] = value;
++	return child;
++}
++
++function sleep(ms: number): Promise<void> {
++	return new Promise((resolve) => setTimeout(resolve, ms));
++}
++
++function redactDiagnostic(value: string): string {
++	return value
++		.replace(/((?:authorization|api[_-]?key|token|secret|password)["']?\s*[:=]\s*["']?)[^\s,"'}]+/gi, "$1[REDACTED]")
++		.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]");
++}
++
+@@ -77,0 +119,44 @@ function isAgentEvent(v: unknown): v is AgentEvent {
++export type WorkerBoundaryReadiness = {
++	contractDigest: string;
++	nonceDigest: string;
++	teamId: string;
++	workerName: string;
++	boundaryPath: string;
++	boundarySha256: string;
++	entryPath: string;
++	entrySha256: string;
++	sourceSha256: string;
++	tools: string[];
++	environmentKeys: string[];
++	workspaceMode: "worktree";
++	maxWorkers: number;
++};
++
++type ExpectedWorkerBoundaryReadiness = Omit<WorkerBoundaryReadiness, "environmentKeys" | "sourceSha256"> & {
++	sourceSha256: string;
++};
++
++const READINESS_FIELDS = [
++	"contractDigest", "nonceDigest", "teamId", "workerName", "boundaryPath", "boundarySha256",
++	"entryPath", "entrySha256", "sourceSha256", "tools", "environmentKeys", "workspaceMode", "maxWorkers",
++].sort();
++
++function parseWorkerBoundaryReadiness(line: string): WorkerBoundaryReadiness | null {
++	const prefix = "MYPI_WORKER_BOUNDARY_READY ";
++	if (!line.startsWith(prefix)) return null;
++	if (line.length > 16_384) throw new Error("Worker boundary readiness marker exceeds the size limit");
++	const value = safeParseJsonLine(line.slice(prefix.length));
++	if (!isRecord(value) || JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(READINESS_FIELDS)) {
++		throw new Error("Worker boundary readiness marker has an invalid shape");
++	}
++	for (const field of ["contractDigest", "nonceDigest", "teamId", "workerName", "boundaryPath", "boundarySha256", "entryPath", "entrySha256", "sourceSha256"] as const) {
++		if (typeof value[field] !== "string") throw new Error(`Worker boundary readiness field ${field} is invalid`);
++	}
++	if (value.workspaceMode !== "worktree" || !Number.isSafeInteger(value.maxWorkers)) throw new Error("Worker boundary readiness resources are invalid");
++	if (!Array.isArray(value.tools) || !value.tools.every((item) => typeof item === "string") ||
++		!Array.isArray(value.environmentKeys) || !value.environmentKeys.every((item) => typeof item === "string")) {
++		throw new Error("Worker boundary readiness arrays are invalid");
++	}
++	return value as WorkerBoundaryReadiness;
++}
++
+@@ -99,0 +185,3 @@ export class TeammateRpc {
++	private environmentKeys: string[] = [];
++	private boundaryProfileDigest: string | null = null;
++	private boundaryReadiness: WorkerBoundaryReadiness | null = null;
+@@ -128 +216,47 @@ export class TeammateRpc {
+-	async start(opts: { cwd: string; env: Record<string, string>; args: string[] }): Promise<void> {
++	getEnvironmentKeys(): string[] {
++		return [...this.environmentKeys];
++	}
++
++	getBoundaryProfileDigest(): string | null {
++		return this.boundaryProfileDigest;
++	}
++
++	getBoundaryReadiness(): WorkerBoundaryReadiness | null {
++		return this.boundaryReadiness ? { ...this.boundaryReadiness, tools: [...this.boundaryReadiness.tools], environmentKeys: [...this.boundaryReadiness.environmentKeys] } : null;
++	}
++
++	private async waitForBoundaryReady(expected: ExpectedWorkerBoundaryReadiness, timeoutMs = 5_000): Promise<void> {
++		const deadline = Date.now() + timeoutMs;
++		while (Date.now() < deadline) {
++			const markerLines = this.stderr.split(/\r?\n/).filter((line) => line.startsWith("MYPI_WORKER_BOUNDARY_READY "));
++			if (markerLines.length > 1) throw new Error("Worker emitted multiple boundary readiness markers");
++			const observed = markerLines.length === 1 ? parseWorkerBoundaryReadiness(markerLines[0]) : null;
++			if (observed) {
++				const expectedWithEnvironment: WorkerBoundaryReadiness = {
++					...expected,
++					tools: [...expected.tools].sort(),
++					environmentKeys: [...new Set([...this.environmentKeys, ...PI_RUNTIME_ENVIRONMENT_KEYS])].sort(),
++				};
++				const normalizedObserved = {
++					...observed,
++					tools: [...observed.tools].sort(),
++					environmentKeys: [...observed.environmentKeys].sort(),
++				};
++				const canonical = (value: WorkerBoundaryReadiness) => JSON.stringify(
++					READINESS_FIELDS.map((field) => [field, value[field as keyof WorkerBoundaryReadiness]]),
++				);
++				if (canonical(normalizedObserved) !== canonical(expectedWithEnvironment)) {
++					throw new Error("Worker boundary structured readiness does not match the requested session contract");
++				}
++				this.boundaryReadiness = normalizedObserved;
++				this.boundaryProfileDigest = observed.contractDigest;
++				this.environmentKeys = [...normalizedObserved.environmentKeys];
++				return;
++			}
++			if (!this.proc) throw new Error("Worker exited before boundary readiness marker");
++			await sleep(25);
++		}
++		throw new Error("Timed out waiting for Worker boundary readiness marker");
++	}
++
++	async start(opts: { cwd: string; env: Record<string, string>; args: string[]; expectedReadiness: ExpectedWorkerBoundaryReadiness }): Promise<void> {
+@@ -130,0 +265,2 @@ export class TeammateRpc {
++		const environment = buildTeammateEnvironment(process.env, opts.env);
++		this.environmentKeys = Object.keys(environment).sort();
+@@ -133 +269 @@ export class TeammateRpc {
+-			env: { ...process.env, ...opts.env },
++			env: environment,
+@@ -160,0 +297 @@ export class TeammateRpc {
++			this.proc = null;
+@@ -170,6 +307,17 @@ export class TeammateRpc {
+-		// Give the child a moment to boot.
+-		await new Promise((r) => setTimeout(r, 120));
+-		this.status = "idle";
+-		const bootNow = Date.now();
+-		this.lastStatusChangeAt = bootNow;
+-		this.lastEventAt = bootNow;
++		try {
++			await this.send({ type: "get_state" }, 10_000);
++			await this.waitForBoundaryReady(opts.expectedReadiness);
++			this.status = "idle";
++			const bootNow = Date.now();
++			this.lastStatusChangeAt = bootNow;
++			this.lastEventAt = bootNow;
++		} catch (error) {
++			const proc = this.proc;
++			this.proc = null;
++			this.status = "error";
++			const reason = error instanceof Error ? error.message : String(error);
++			const stderrTail = redactDiagnostic(this.stderr.trim().slice(-2_000));
++			this.lastError = stderrTail ? `${reason}; stderr=${stderrTail}` : reason;
++			proc?.kill("SIGTERM");
++			throw new Error(`Teammate RPC ready handshake failed for ${this.name}: ${this.lastError}`, { cause: error });
++		}
+@@ -179 +327,2 @@ export class TeammateRpc {
+-		if (!this.proc) return;
++		const proc = this.proc;
++		if (!proc) return;
+@@ -181 +330 @@ export class TeammateRpc {
+-			await this.abort();
++			await Promise.race([this.abort().catch(() => undefined), sleep(500)]);
+@@ -185 +334 @@ export class TeammateRpc {
+-		this.proc.kill("SIGTERM");
++		proc.kill("SIGTERM");
+@@ -187 +336 @@ export class TeammateRpc {
+-			if (this.proc && !this.proc.killed) this.proc.kill("SIGKILL");
++			if (!proc.killed) proc.kill("SIGKILL");
+@@ -258 +407 @@ export class TeammateRpc {
+-	private async send(cmd: RpcCommandWithoutId): Promise<RpcResponse> {
++	private async send(cmd: RpcCommandWithoutId, timeoutMs = 60_000): Promise<RpcResponse> {
+@@ -272 +421 @@ export class TeammateRpc {
+-			}, 60_000);
++			}, timeoutMs);
+diff --git a/extensions/teams/worker.ts b/extensions/teams/worker.ts
+index 78b8b47..e791a44 100644
+--- a/extensions/teams/worker.ts
++++ b/extensions/teams/worker.ts
+@@ -272,0 +273,3 @@ export function runWorker(pi: ExtensionAPI): void {
++							await setMemberStatus(teamDir, agentName, "offline", {
++								meta: { offlineReason: "shutdown-approved", shutdownRequestId: shutdown.requestId },
++							});
+@@ -276,0 +280 @@ export function runWorker(pi: ExtensionAPI): void {
++						setTimeout(() => process.exit(0), 25);
+diff --git a/extensions/teams/max-workers-policy.ts b/extensions/teams/max-workers-policy.ts
+new file mode 100644
+index 0000000..3447fa5
+--- /dev/null
++++ b/extensions/teams/max-workers-policy.ts
+@@ -0,0 +1,77 @@
++import { sanitizeName } from "./names.js";
++import type { TeamConfig } from "./team-config.js";
++
++export interface MaxWorkersPolicyResult {
++	ok: boolean;
++	limit: number | null;
++	activeWorkers: string[];
++	error?: string;
++}
++
++export function getMaxWorkersLimit(env: NodeJS.ProcessEnv = process.env): number | null {
++	const raw = env.PI_TEAMS_MAX_WORKERS?.trim();
++	if (!raw) return null;
++	const parsed = Number.parseInt(raw, 10);
++	if (!Number.isFinite(parsed) || parsed <= 0) return null;
++	return Math.floor(parsed);
++}
++
++export function getOnlineWorkerNames(opts: {
++	teammates: ReadonlyMap<string, unknown>;
++	teamConfig: TeamConfig | null;
++}): string[] {
++	const names = new Set<string>();
++	for (const [name, worker] of opts.teammates.entries()) {
++		const status = typeof worker === "object" && worker !== null && "status" in worker
++			? (worker as { status?: unknown }).status
++			: undefined;
++		if (status === "stopped" || status === "error") continue;
++		const safeName = sanitizeName(name);
++		if (safeName) names.add(safeName);
++	}
++
++	for (const member of opts.teamConfig?.members ?? []) {
++		if (member.role !== "worker") continue;
++		if (member.status !== "online") continue;
++		const safeName = sanitizeName(member.name);
++		if (safeName) names.add(safeName);
++	}
++
++	return Array.from(names).sort((a, b) => a.localeCompare(b));
++}
++
++export function evaluateMaxWorkersPolicy(opts: {
++	name: string;
++	teammates: ReadonlyMap<string, unknown>;
++	teamConfig: TeamConfig | null;
++	env?: NodeJS.ProcessEnv;
++}): MaxWorkersPolicyResult {
++	const limit = getMaxWorkersLimit(opts.env);
++	const activeWorkers = getOnlineWorkerNames({ teammates: opts.teammates, teamConfig: opts.teamConfig });
++	if (limit === null) return { ok: true, limit, activeWorkers };
++
++	const safeName = sanitizeName(opts.name);
++	if (!safeName) {
++		return {
++			ok: false,
++			limit,
++			activeWorkers,
++			error: "Missing worker name",
++		};
++	}
++
++	if (activeWorkers.includes(safeName)) {
++		return { ok: true, limit, activeWorkers };
++	}
++
++	if (activeWorkers.length < limit) {
++		return { ok: true, limit, activeWorkers };
++	}
++
++	return {
++		ok: false,
++		limit,
++		activeWorkers,
++		error: `Max workers limit reached (${activeWorkers.length}/${limit}). Set PI_TEAMS_MAX_WORKERS=0 to disable or raise the limit.`,
++	};
++}

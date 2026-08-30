@@ -1,201 +1,72 @@
-# My Pi Setup
+# My Pi
 
-ชุดตั้งค่า Pi ส่วนตัวสำหรับใช้งานแบบ global จากทุก workspace โดยเก็บ source code และเวอร์ชันของ package ทั้งหมดไว้ใน repository นี้
+ชุด capability packages สำหรับ Pi ที่แยก stable global resources, project opt-ins และ incubator ออกจากกันอย่างชัดเจน Root package `0.2.0` เป็น stable global aggregate ส่วน releaseจริงจะติดตั้งจาก exact Git tag/commit ไม่อ้าง development working tree
 
-Pi จะอ้างอิง repository นี้จากตำแหน่งปัจจุบันโดยตรง ไม่คัดลอกไฟล์ไปไว้ใน `~/.pi/agent` ดังนั้นเมื่อแก้ extension สามารถใช้ `/reload` เพื่อโหลดการเปลี่ยนแปลงได้ทันที
-
-## สิ่งที่รวมอยู่
-
-### Extensions ที่เขียนเอง
-
-- `guardrails.ts`
-  - อนุญาตให้อ่านไฟล์ทั่วไปได้โดยไม่ถาม
-  - ถามก่อนอ่านไฟล์ที่อาจเป็น secret เช่น `.env`, credentials และ private keys
-  - ถามก่อนเขียน แก้ไข ลบ หรือเพิ่มไฟล์นอก workspace
-  - ตรวจ nested MCP/custom filesystem tools รวมถึง path ที่ส่งผ่านตัวแปร shell เมื่อวิเคราะห์ได้
-  - ตัวเลือกอนุญาตราย directory ระบุ path ที่ให้สิทธิ์จริง ซึ่งสำหรับ target ที่เป็นไฟล์คือ directory แม่
-  - ถามก่อนอัปโหลด local file, อ่าน sensitive environment variables และเขียนไปยัง output path ภายนอกที่รู้ล่วงหน้า
-- `steering-choice.ts`
-  - เมื่อ AI กำลังทำงาน การกด Enter จะแสดงตัวเลือก `Steer`, `Wait` หรือ `Cancel`
-  - ขณะมีข้อความ `Wait` กด Enter ตอนช่องข้อความว่างเพื่อเลือกแก้ไข ยกเลิก หรือรอต่อได้ โดยไม่หยุดงานปัจจุบันของ AI
-  - เมื่อ AI ว่าง การกด Enter ยังส่งข้อความตามปกติ
-- `dependency-update-notifier.ts`
-  - ตรวจ dependency ภายใน `my-pi` แบบ background ไม่ขวางการเปิด Pi
-  - ตรวจอัตโนมัติไม่เกินวันละครั้งและใช้ timeout 10 วินาที
-  - แจ้งเฉพาะเมื่อพบเวอร์ชันใหม่ และข้ามเงียบเมื่อ startup check ล้มเหลว
-  - ใช้ `/mypi-updates` เมื่อต้องการบังคับตรวจทันที
-- `herdr-integration.ts`
-  - ตรวจ official Herdr Pi integration แบบ background ไม่เกินวันละครั้งเมื่อ Pi รันอยู่ใต้ Herdr
-  - แจ้งเมื่อ integration ยังไม่ติดตั้งหรือล้าสมัย โดยไม่คัดลอก reporter ของ Herdr มา maintain เอง
-  - ใช้ `/mypi-herdr-status` เพื่อตรวจทันที และ `/mypi-herdr-setup` เพื่อติดตั้งหรืออัปเดตผ่าน official installer หลังยืนยัน
-  - bridge `rpiv:ask-user:blocked` และ permission dialogs ของ `my-pi` ไปยัง `herdr:blocked` เพื่อให้ Herdr แสดงสถานะและเล่นเสียง request
-- `worker-mode.ts`
-  - แยก session ที่ Coordinator สร้างออกจาก session ปกติของผู้ใช้ โดยดูจากชื่อ session ที่ขึ้นต้นด้วย `mypi-worker:` ซึ่งตั้งผ่าน `--name` ตอนเปิด และตั้งเองด้วย `MYPI_WORKER=1` ได้
-  - ปิด steering choice, Plannotator review และ startup dependency check ใน worker เพราะไม่มีผู้ใช้เฝ้า pane
-  - guardrails ยังถามอนุมัติเหมือนเดิม และสถานะถูก bridge ไป Herdr ให้ Coordinator เห็นและส่งต่อผู้ใช้
-  - ใช้ `/mypi-worker-status` เพื่อดูว่า session ปัจจุบันเป็น worker หรือไม่
-- `orchestration.ts`
-  - ให้ Pi เป็น Coordinator ที่สร้างและควบคุม Worker ผ่าน Herdr โดยเปิด tools เฉพาะเมื่อรันอยู่ใต้ Herdr
-  - `mypi_preview_worker` แสดงสิ่งที่จะเกิดขึ้นโดยไม่สร้างอะไร รวมถึง model และ effort ที่จะใช้ และบังคับให้ระบุเหตุผลของการ delegate
-  - `mypi_spawn_worker` ขออนุมัติจากผู้ใช้ทุกครั้งก่อนสร้าง pane และ agent พร้อมตรวจ kind กับ Herdr จริง
-  - `mypi_handoff` ส่งงานหรือ correction กลับ session เดิม แล้วยืนยันการส่งถึงจาก `state_change_seq`
-  - `mypi_collect` รับผลงานเมื่อ artifact ที่ตกลงไว้ผ่านครบเท่านั้น สถานะ lifecycle เป็นได้แค่หลักฐานประกอบ
-  - `mypi_wait_worker` รอ Worker ผ่าน `herdr agent wait` แทนการวนอ่านหน้าจอ
-  - `mypi_set_assurance` บันทึกระดับหลักฐานที่ต้องมีก่อนรายงานว่าเสร็จ แยกจากการตัดสินใจว่าจะใช้ Worker กี่ตัว
-  - spawn ขอ Git worktree ต่อ Worker ได้ และ worktree จะไม่ถูกลบอัตโนมัติ
-  - ใช้ `/mypi-orchestrate-status` เพื่อดู Worker, identity และ artifact references ที่บันทึกไว้
-  - ใช้ `/mypi-orchestrate-cleanup` เพื่อลบ worktree ทีละรายการหลังยืนยัน โดยข้ามตัวที่ Worker ยังทำงานอยู่หรือมีงานค้างไม่ commit
-  - ประกาศอำนาจสามชั้นและกระตุ้นให้ประเมินการแตกทีมตอนเริ่มงาน เฉพาะเมื่อรันอยู่ใต้ Herdr
-  - ใช้ `/mypi-orchestrate automatic|off|status` เพื่อเปิดหรือปิดการเสนอทีมอัตโนมัติราย session
-- `harness-profiles.ts`
-  - pure builders/verifiers สำหรับ pinned Codex/Claude delegated profiles, environment allowlist และ requested/effective checks
-  - ยังไม่ถูก wire เข้า spawn path จึงยังไม่เปลี่ยน behavior ของ Worker production
-- `command-policy.ts`
-  - pure Phase 0 analyzer/resolver สำหรับ dangerous commands, hardline deny, HUMAN/REVIEW routing และ exact short-lived review grants
-  - normalize shell syntaxแบบ bounded/fail-closed แต่เป็น defense-in-depth ไม่ใช่ sandbox และยังไม่ถูกโหลดใน production path
-- `orchestration-policy.ts`
-  - pure Phase 1 bounded-mandate validator/evaluator, narrow-only policy precedence, combined policy digestและ audit redaction
-  - `orchestration-registry.ts` เก็บ versioned mandate/audit/profile referencesใน Pi session, reject stale/tampered/duplicate-active replayและไม่คืน mutable state aliases
-  - independent correction reviewผ่าน แต่ยังไม่ถูก wireเข้า `orchestration.ts` หรือ production spawn
-- `command-review-registry.ts`
-  - Coordinator-owned exact REVIEW grantsใน trusted Pi session state; lookupจาก contextไม่รับ bearer idจาก Worker, consume-once, short TTL, revokeและ fail-closed replay/tamper
-  - bind verified profileกับ authoritative combined policy digestและห้าม grantสำหรับ HUMAN/DENY
-  - independent correction reviewผ่าน; registryยัง pureและยังไม่ intercept production execution
-- `scoped-worker-tools.ts`
-  - scoped Read/Write/Edit operationsสำหรับ Worker; canonicalize existing ancestor/targetและ deny external, sensitive, `.git` และ symlink escape
-  - เป็น host-operation guardที่มี TOCTOU limitation ไม่ใช่ OS sandbox
-- `agent-teams-profile.ts`
-  - สร้าง/verify atomic profileสำหรับ exact patched `tmustier/pi-agent-teams` Git/entry/source-tree state, trusted boundary hash, derived contract, Worker ceiling, tools/env และ nonce/session-bound structured readiness
-  - profile candidateยัง disabled by defaultและไม่ติดตั้ง agent-teamsเข้า Pi profileหลัก
-- `local/extensions/azure-devops/`
-  - maintain source ไว้ใน repository นี้ แต่ไม่โหลดจาก global package
-  - แต่ละ trusted project ต้องชี้ path นี้ผ่าน `.pi/settings.json` และมี `.pi/azure-devops.json`
-  - รองรับ Azure Boards/Repos read tools โดย config เดิมยังเป็น read-only
-  - เปิด Work Item Create/Update/soft-delete ได้ราย project เมื่อใช้ PAT และ permission แบบ opt-in
-  - บังคับ preview และ confirmation ทุก write; non-interactive mode ถูก block
-  - ใช้ `/mypi-azure-devops-config` เพื่อตรวจ effective configuration โดยไม่แสดง credential
-- `planning-workflow.ts`
-  - ให้ AI ประเมินว่าเมื่อใดงานใหญ่ควรมี continuity state
-  - เก็บ AI-only plan เป็น compact snapshot ใน Pi session โดยไม่สร้างไฟล์ใน workspace
-  - ลงทะเบียน exact path เมื่อผู้ใช้, skill, workflow หรือ harness ต้องการ workspace plan โดยไม่สร้างหรือแก้ plan file
-  - แยกการใช้ Plannotator สำหรับ human review ออกจากการติดตาม continuity ของงาน
-  - inject session snapshot หรือ workspace pointer กลับหลัง compaction/resume
-  - ใช้ `/mypi-continuity automatic|off|status` เพื่อควบคุม automatic continuity planning ราย session
-
-### Delegated worker profiles
-
-- [`profiles/pi-agent-teams/node-worker-v1/`](profiles/pi-agent-teams/node-worker-v1/)
-  - pinned Node `24.15.0` Dockerfile, runtime contract, SPDX SBOM, minimal upstream overlay และ exact Worker boundaryสำหรับ patched agent-teams
-  - atomic builder/runtime/fault probesผ่านแล้ว; ใช้ `npm run test:agent-teams-runtime -- <patched-checkout>` เพื่อ reproduce clean apply-checkและ negative startup cases
-  - opt-in real-model acceptanceใช้ `npm run test:agent-teams-acceptance -- <patched-checkout> [fresh-output-root]`; ต้องลง dependenciesของ pinned checkoutก่อนและมี provider auth + exact Docker image
-  - Phase 0 implement→review→correction→acceptance ผ่านด้วย artifacts `7/7`, zero routine approval และ HUMAN remote-mutation side effects `0`; candidateยังไม่ถูกโหลดใน production spawn
-
-### Third-party packages
-
-- [`@juicesharp/rpiv-ask-user-question`](https://github.com/juicesharp/rpiv-mono/tree/main/packages/rpiv-ask-user-question)
-  - เพิ่ม structured question tool และ UI สำหรับให้ model ถามคำถามแบบเลือกตอบ
-- [`@plannotator/pi-extension`](https://github.com/backnotprop/plannotator)
-  - เปิด browser สำหรับตรวจ แก้ และอนุมัติแผนก่อนลงมือ
-  - แสดง phase และ checklist progress ใน terminal ระหว่าง execution
-  - เปิดด้วย `pi --plan` หรือสลับระหว่าง session ด้วย `/plannotator-plan-mode`
-  - ใช้ `/plannotator-review` เพื่อตรวจ diff และส่ง feedback กลับเข้า session
-
-### Skills
-
-- `herdr-orchestration`
-  - แนวทางตัดสินใจว่าจะ delegate หรือทำเอง แยก execution ออกจาก assurance และเริ่มจากทีมที่เล็กที่สุด
-  - รูปแบบ task-local handoff contract โดยไม่บังคับ schema กลางให้ทุก Worker
-  - วินัยการตรวจผลงาน: ข้อความสรุปของ Worker และสถานะ lifecycle ไม่ใช่หลักฐาน
-  - การส่ง correction กลับ session เดิม การจัดการ Worker ที่ blocked และเงื่อนไขของงานขนาน
-
-### Themes
-
-- `modern-dark`
-
-## ติดตั้งครั้งแรก
-
-ต้องมี Pi และ Node.js พร้อมใช้งานก่อน จาก root ของ repository นี้ให้ติดตั้ง dependencies:
-
-```sh
-npm install
-```
-
-จากนั้นเพิ่ม repository นี้ลง Pi แบบ global โดยใช้ absolute path:
-
-```sh
-pi install /Users/developer/my-project/my-pi
-```
-
-อย่าใส่ `-l` เพราะ option นั้นจะติดตั้งเฉพาะ project ปัจจุบัน หลังติดตั้งแล้วให้เปิด Pi ใหม่ หรือใช้ `/reload`
-
-หากใช้ Herdr ให้ติดตั้ง official lifecycle reporter ผ่าน command ของ package หลังเปิด Pi:
+## Repository model
 
 ```text
-/mypi-herdr-setup
+capabilities/
+├── global/              # stable และ root package โหลดทุก project
+├── project-opt-in/      # stable แต่ trusted project ต้องเลือกติดตั้ง
+└── incubator/           # development/candidate; root packageห้ามโหลด
+
+lab/                     # disposable experiments
+scripts/                 # aggregate repository automation
+tests/                   # architecture/cross-capability tests
+docs/                    # repository-owned notes และ plans
 ```
 
-Command จะแสดง path ปลายทาง ขออนุมัติก่อนเรียก `herdr integration install pi` และ reload resources เมื่อสำเร็จ ส่วน startup notifier จะแจ้งอีกครั้งเมื่อ reporter ขาดหรือล้าสมัย
+หนึ่ง capabilityเป็นหน่วย ownership/deployment และมี `package.json`, README, extensions, skills, tests, profilesหรือ resourceอื่นเฉพาะที่มันเป็นเจ้าของ
 
-ตรวจสอบ package ที่ Pi รู้จักได้ด้วย:
+## Stable global capabilities
 
-```sh
-pi list
-```
+Root `package.json#pi` aggregateเฉพาะ packagesใต้ `capabilities/global/`:
 
-## การใช้งานจากเครื่องใหม่
+- [`runtime-mode`](capabilities/global/runtime-mode/)
+  - ระบุ session ที่ Coordinator สร้างด้วย `mypi-worker:*`
+  - ปิด interactive toolsที่ไม่มีผู้ใช้เฝ้า
+  - command `/mypi-worker-status`
+- [`dependency-updates`](capabilities/global/dependency-updates/)
+  - ตรวจ dependencyแบบ backgroundไม่ขวาง startup
+  - command `/mypi-updates`
+- [`herdr-integration`](capabilities/global/herdr-integration/)
+  - shared Herdr CLI client, blocked-state bridge และ official lifecycle integration setup
+  - commands `/mypi-herdr-status`, `/mypi-herdr-setup`
+- [`safety-guardrails`](capabilities/global/safety-guardrails/)
+  - ตรวจ secret reads, local uploads และ filesystem mutationsภายนอก workspace
+  - manual modeถามผู้ใช้; non-interactive mode fail closed
+- [`interactive-steering`](capabilities/global/interactive-steering/)
+  - ให้ผู้ใช้เลือก Steer, Wait หรือ Cancel ระหว่าง agentทำงาน
+- [`structured-questions`](capabilities/global/structured-questions/)
+  - adapterสำหรับ `@juicesharp/rpiv-ask-user-question`
+- [`planning-review`](capabilities/global/planning-review/)
+  - adapterสำหรับ `@plannotator/pi-extension`
+- [`planning-continuity`](capabilities/global/planning-continuity/)
+  - session-internal plan snapshots หรือ pointerไป workspace plan
+  - แยก continuity tracking ออกจาก optional Plannotator review
+  - command `/mypi-continuity`
+- [`ui-themes`](capabilities/global/ui-themes/)
+  - `cffy-dark`, `cffy-sky`, `modern-dark`
 
-1. Clone repository ไปยังตำแหน่งถาวร
-2. เข้าไปใน repository แล้วติดตั้ง dependency ตาม lockfile:
+Package manifestsและ aggregate lockfileเป็น authorityสำหรับ resource/dependency paths ห้ามเพิ่ม incubatorหรือ project-opt-in resourceเข้า root Pi manifest
 
-   ```sh
-   npm ci
-   ```
+## Project opt-ins
 
-3. ลงทะเบียน absolute path ของ repository กับ Pi:
+### Azure DevOps
 
-   ```sh
-   pi install /absolute/path/to/my-pi
-   ```
+[`capabilities/project-opt-in/azure-devops/`](capabilities/project-opt-in/azure-devops/) รองรับ Azure Boards/Repos read tools และ opt-in Work Item create/update/soft-delete
 
-Pi บันทึก absolute path ไว้ใน user settings ดังนั้นถ้าย้าย repository ต้องลบ path เดิมและติดตั้ง path ใหม่
-
-## อัปเดต
-
-อัปเดต third-party dependencies:
-
-```sh
-npm update
-```
-
-หากต้องการให้ตรงกับ `package-lock.json` ทุกประการ:
-
-```sh
-npm ci
-```
-
-หลังแก้ extension, theme หรืออัปเดต dependency ให้ใช้ `/reload` หรือเปิด Pi ใหม่
-
-เนื่องจาก setup นี้เป็น local-path package คำสั่ง `pi update --extensions` จะไม่อัปเดต dependency ภายใน repository ให้ ต้องใช้ npm จาก repository นี้
-
-Extension `dependency-update-notifier.ts` ช่วยตรวจ dependency เหล่านี้วันละครั้ง โดยเก็บ cache ใต้ temporary directory ที่ harness หรือ OS กำหนด หาก cache ถูกล้าง extension อาจตรวจใหม่ก่อนครบหนึ่งวัน แต่ไม่กระทบผลลัพธ์ หากต้องการตรวจทันทีโดยไม่รอรอบถัดไป ให้ใช้:
-
-```text
-/mypi-updates
-```
-
-## Azure DevOps ราย project
-
-Azure DevOps extension ไม่ได้อยู่ใน global package แต่ maintain ที่ `local/extensions/azure-devops/` แต่ละ project ที่ต้องใช้ต้องเพิ่ม path ใน `.pi/settings.json` (path นี้ resolve จาก directory `.pi`; ตัวอย่างจึงใช้ absolute path):
+แต่ละ trusted projectเปิดใช้ผ่าน `.pi/settings.json`:
 
 ```json
 {
-  "extensions": [
-    "/Users/developer/my-project/my-pi/local/extensions/azure-devops"
+  "packages": [
+    "/absolute/path/to/stable-mypi/capabilities/project-opt-in/azure-devops"
   ]
 }
 ```
 
-Project ต้องถูก trust ก่อน Pi จึงจะอ่าน settings และ execute extension จากนั้นเพิ่ม `.pi/azure-devops.json` ใน project เดียวกัน Config เดิมที่ไม่มี `permissions` จะ normalize เป็น read-only:
+จากนั้นเพิ่ม `.pi/azure-devops.json` ใน projectเดียวกัน Configเดิมที่ไม่มี `permissions` normalizeเป็น read-only:
 
 ```json
 {
@@ -207,7 +78,7 @@ Project ต้องถูก trust ก่อน Pi จึงจะอ่าน 
 }
 ```
 
-Project ที่ต้องเขียน Work Items ต้องใช้ `auth.method: "pat"` และเปิด operation อย่างชัดเจน:
+Project ที่ต้องเขียน Work Items ต้องใช้ PAT และเปิด operationอย่างชัดเจน:
 
 ```json
 {
@@ -231,72 +102,148 @@ Project ที่ต้องเขียน Work Items ต้องใช้ `a
 }
 ```
 
-Create/Update/Delete ไม่ fallback ไป Azure CLI, ต้องยืนยันทุกครั้ง และถูก block เมื่อไม่มี interactive UI ส่วน Delete รองรับเฉพาะ soft delete ไป recycle bin ไม่มี permanent destroy ตำแหน่งหรือวิธีเก็บ PAT อยู่นอกขอบเขตของ extension นี้ ดูรายละเอียดที่ [`local/extensions/azure-devops/README.md`](local/extensions/azure-devops/README.md)
+Create/Update/Delete ไม่ fallbackไป Azure CLI, ต้องยืนยันทุกครั้งและถูก blockเมื่อไม่มี interactive UI Deleteเป็น soft deleteเท่านั้น ดู contractเต็มใน [Azure DevOps README](capabilities/project-opt-in/azure-devops/README.md)
 
-## เพิ่ม package อื่น
+## Incubator
 
-1. เพิ่ม package เป็น dependency:
+[`capabilities/incubator/delegated-orchestration/`](capabilities/incubator/delegated-orchestration/) รวม manual Herdr orchestrationเดิมกับ delegated-autonomy policy/registries, harness profiles, scoped tools, patched agent-teams artifacts/probesและ `herdr-orchestration` Skillไว้เป็น whole capability
 
-   ```sh
-   npm install <package-name>
-   ```
+สถานะปัจจุบัน:
 
-2. เพิ่ม resource ของ package ใน `package.json` ภายใต้ `pi.extensions`, `pi.skills`, `pi.prompts` หรือ `pi.themes`
-3. ใช้ `/reload`
+- mandate/policy/REVIEW pure registriesและ Phase 0 acceptanceผ่านแล้ว
+- agent-teams candidateยัง production disabled
+- root stable manifestไม่โหลด orchestration extensionหรือ skill
+- Worker profile, credential provisioningและ no-default-fallbackยังรอ design discussion
+- ห้ามตีความ package migrationเป็น Worker security acceptance
 
-ควรตรวจ source code ก่อนติดตั้ง เพราะ Pi extensions ทำงานด้วยสิทธิ์ของ process และเข้าถึงระบบไฟล์ได้
+Agent-teams artifactsอยู่ที่:
+
+```text
+capabilities/incubator/delegated-orchestration/profiles/pi-agent-teams/node-worker-v1/
+```
+
+Opt-in probes:
+
+```sh
+npm run test:agent-teams-runtime -- <patched-checkout>
+npm run test:agent-teams-acceptance -- <patched-checkout> [fresh-output-root]
+```
+
+## Development setup
+
+ติดตั้ง dependenciesตาม lockfile:
+
+```sh
+npm ci
+```
+
+ใช้ Pi profileแยกจาก Default profileสำหรับ active checkout:
+
+```sh
+PI_CODING_AGENT_DIR="$HOME/.pi-profiles/my-pi-dev" \
+  pi install /absolute/path/to/my-pi
+
+PI_CODING_AGENT_DIR="$HOME/.pi-profiles/my-pi-dev" pi
+```
+
+Local-path packageอ้าง sourceโดยตรง จึงใช้ `/reload` หลังแก้ stable capabilityได้ แต่ไม่ควรใช้ development checkoutเป็น Default Pi packageหลัง pinned releaseพร้อม
+
+`pi -e <extension>` เหมาะกับ quick one-shot test แต่ resourceที่โหลดด้วย `-e` ไม่ hot-reload
+
+## Stable release installation
+
+Target release modelคือ exact Git refจาก remote:
+
+```text
+git@github.com:nawatt-works/mypi.git
+```
+
+หลังสร้าง release tagแล้ว Default Piจะติดตั้งรูปแบบนี้:
+
+```sh
+pi install git:git@github.com:nawatt-works/mypi.git@vX.Y.Z
+```
+
+Pinned refไม่เลื่อนเองจากการแก้ working treeหรือ `pi update --extensions` การเปลี่ยนรุ่นต้องระบุ refใหม่และ rollbackได้ด้วย previous ref
+
+ระหว่างที่ capability migrationยังไม่ถึง release phase ให้ใช้ isolated development profileและอย่าอ้างว่ามี stable tagที่ยังไม่ได้สร้าง
+
+## Verification
+
+รัน full repository suite:
+
+```sh
+npm test
+```
+
+Test runnerค้น `*.test.ts` ใต้ root `tests/` และ `capabilities/` Architecture checksยืนยันว่า:
+
+- ทุก capabilityมี unique package manifestและ README
+- root aggregateโหลดทุกและเฉพาะ `capabilities/global/` resources
+- global packageห้าม import/dependไปอีก lane
+- commandsที่ maintainเองใช้ prefix `/mypi-`
+- legacy flat resource rootsไม่มีเหลือ
+
+Clean-install gateต้องผ่าน `npm ci` และโหลด stable extension setจาก temporary isolated Pi directoryโดยไม่อาศัย development `node_modules`
+
+## Dependency updates
+
+ตรวจทันที:
+
+```text
+/mypi-updates
+```
+
+หรืออัปเดตจาก repository:
+
+```sh
+npm update
+npm test
+```
+
+หากต้องการให้ตรง lockfileทุกประการใช้ `npm ci` Capability package dependenciesเป็น npm workspacesและ root lockfileเป็น clean-install boundary
 
 ## Guardrails และขอบเขตการป้องกัน
 
-`guardrails.ts` มีไว้ลดความผิดพลาดจาก model และป้องกันการเข้าถึงข้อมูลสำคัญโดยไม่ตั้งใจ โดยพยายามถามเฉพาะการกระทำที่มีความเสี่ยง เพื่อไม่ให้ permission prompts รบกวนการทำงานปกติมากเกินไป
+Safety Guardrails ลดความผิดพลาดจาก modelและป้องกันการเข้าถึงข้อมูลสำคัญโดยไม่ตั้งใจ ครอบคลุม built-in tools, shell commandsที่วิเคราะห์ pathได้, nested MCP/custom filesystem tools, local uploads, known PDF outputและ screenshot paths
 
-สิ่งที่ตรวจได้ครอบคลุม built-in tools, shell commands ที่วิเคราะห์ path ได้, nested MCP/custom filesystem tools และพฤติกรรมเฉพาะของ extensions ที่รู้จัก เช่น local file upload, PDF output และ screenshot path
+Temporary-file policy:
 
-นโยบาย temporary files:
+- ใช้ temporary directoryตาม harness/OS default
+- อนุญาตเขียนใต้ `os.tmpdir()` โดยไม่ถาม
+- `/dev/null` ใช้ทิ้ง outputได้ แต่ไม่ได้อนุญาต pathอื่นใต้ `/dev`
 
-- Pi, child processes และ extensions ใช้ temporary directory ตามค่า default ของ harness หรือ OS โดยไม่เปลี่ยน `TMPDIR`, `TMP` หรือ `TEMP`
-- Guardrails อนุญาตการเขียนใต้ temporary root ที่ `os.tmpdir()` คืนให้ process โดยไม่ถาม แต่ path ภายนอกอื่นยังอยู่ภายใต้นโยบายอนุมัติเดิม
-- `/dev/null` ใช้ทิ้ง output ได้โดยไม่ถาม แต่ไม่ได้อนุญาต path อื่นใต้ `/dev`
-- side effect ภายในของเครื่องมือที่ไม่ได้ส่ง output path ผ่าน `tool_call` ยังเป็นข้อจำกัดแบบ best-effort
+Guardrailsเป็น best-effort policy layer ไม่ใช่ security sandbox:
 
-Guardrails เป็น best-effort policy layer ไม่ใช่ security sandbox จึงยังมีข้อจำกัดที่ยอมรับไว้:
+- มองไม่เห็น side effectที่ซ่อนใน MCP server, extension, local scriptหรือ subprocessทั้งหมด
+- runtime-computed pathsอาจวิเคราะห์ล่วงหน้าไม่ได้
+- slash commands/startup hooksอาจไม่ผ่าน `tool_call`
+- Pi/extensions/shellยังมีสิทธิ์ตาม OS user
 
-- ไม่สามารถเห็น side effect ที่ซ่อนอยู่ภายใน MCP server, extension, local script หรือ subprocess
-- คำสั่งที่คำนวณ path ระหว่าง runtime อาจตรวจล่วงหน้าไม่ได้ทั้งหมด
-- Slash commands และ startup hooks ของ third-party extensions อาจไม่ผ่าน `tool_call`
-- Browser actions ขึ้นอยู่กับความหมายของหน้าเว็บ จึงไม่ได้ถามทุก navigation หรือ click
-- Process ของ Pi, extensions และ shell ยังคงมีสิทธิ์ตาม OS user ที่เปิด Pi
+งานกับ inputที่ไม่น่าเชื่อถือและต้องการขอบเขตที่ข้ามไม่ได้ควรใช้ container, VM, OS sandboxหรือ execution identityที่จำกัดเพิ่ม
 
-สำหรับ setup ส่วนตัว ขอบเขตนี้เพียงพอสำหรับป้องกันความผิดพลาดทั่วไป หากต้องทำงานกับ code หรือ input ที่ไม่น่าเชื่อถือและต้องการขอบเขตที่ข้ามไม่ได้ ควรรัน Pi ใน container, VM, OS sandbox หรือ user ที่มีสิทธิ์จำกัดเพิ่มเติม
+## Plan, continuity และ Plannotator
 
-## Plan, Todo และ Handoff
+Planning Continuityแยกสามเรื่อง:
 
-ระบบ planning แยกการตัดสินใจเป็นสามเรื่อง: งานต้องมี continuity หรือไม่, continuity นั้นต้องเป็น workspace artifact หรือเป็นเพียง AI working state และต้องใช้ Plannotator เพื่อ human review/approval หรือไม่
+1. งานต้องมี continuity stateหรือไม่
+2. stateเป็น session-internal AI working stateหรือ workspace artifact
+3. ต้องใช้ Plannotatorสำหรับ human review/approvalหรือไม่
 
-สำหรับงานใหญ่ที่ plan มีไว้ให้ AI ติดตามสถานะของตัวเอง เรียก `mypi_start_work_plan` โดยไม่ส่ง `filePath` และส่ง compact `snapshot` แทน สถานะนี้เก็บเป็น custom entry ของ Pi session, ถูก inject กลับทุก turn และอัปเดตด้วย `mypi_update_work_plan` จึงช่วย resume หลัง compaction ได้โดยไม่สร้างไฟล์ใน workspace ควรเก็บเฉพาะ goal, progress, remaining steps, decisions, blockers, verification และ exact next action โดยสรุปเนื้อหาที่ไม่น่าเชื่อถือแทนการคัดลอกคำสั่งเข้ามา และไม่เก็บ private chain-of-thought หรือข้อมูลลับ เพราะ session storage ไม่ใช่ confidential store
-
-เมื่อผู้ใช้, skill, workflow หรือ harness ต้องการ plan เป็น artifact และระบุ Markdown path ภายใน workspace AI จะสร้างหรือแก้ไฟล์ผ่านกลไกของเจ้าของ artifact แล้วส่ง exact path ให้ `mypi_start_work_plan` เพื่อลงทะเบียน pointer เท่านั้น Extension ไม่เลือก folder, ไม่สร้าง skeleton, ไม่เปลี่ยน schema, ไม่เพิ่ม index และไม่ลบไฟล์เมื่อปิดงาน หาก artifact จำเป็นจริงแต่ไม่มี convention เจ้าของงานเลือก path ที่เหมาะสมได้โดยไม่ทำให้ `.workbench/`, `workbench/`, `workspace-meta/` หรือ folder อื่นกลายเป็น default กลาง
-
-สองโหมดเลือกจาก input อย่างชัดเจน: มี `filePath` หมายถึง workspace plan; ไม่มี `filePath` หมายถึง session-internal plan และต้องมี `snapshot` Extension ไม่ promote หรือแปลงข้ามโหมดเอง การปิดด้วย `mypi_finish_work_plan` หยุด tracking เท่านั้น
-
-ควบคุมพฤติกรรมใน session ปัจจุบันได้ด้วย:
+Session-internal planเก็บ compact snapshotใน Pi sessionโดยไม่สร้างไฟล์ Workspace planใช้ exact pathที่ artifact ownerกำหนดและ extensionเก็บเพียง pointer ไม่สร้าง skeleton, เปลี่ยน schema, ย้ายหรือ delete artifact
 
 ```text
-/mypi-continuity automatic  # AI ประเมินและเริ่ม continuity state เมื่องานใหญ่ (ค่าเริ่มต้น)
-/mypi-continuity off        # ปิด automatic guidance ใน session นี้; caller ยัง register plan ได้
-/mypi-continuity status     # แสดง mode และ active plan ปัจจุบัน
+/mypi-continuity automatic
+/mypi-continuity off
+/mypi-continuity status
 ```
 
-`mypi_use_plannotator` รองรับเฉพาะ workspace plan เพราะ Browser UI review ต้องทำงานกับไฟล์ หากยังไม่มี active workspace plan ต้องส่ง exact `filePath`; หาก active plan เป็น session-internal tool นี้จะถูกปิดไว้ ถ้าต้องการ artifact สำหรับมนุษย์จริง ให้ปิด session plan แล้วให้ artifact owner สร้าง workspace plan ที่ path ชัดเจนก่อน ไม่มีการ promote อัตโนมัติ คำสั่ง `pi --plan`, `/plannotator-plan-mode <path>` และ `Ctrl+Alt+P` ยังใช้เปิดด้วยตนเองได้ตามเดิม
+`mypi_use_plannotator` รองรับ workspace planเท่านั้นและไม่ promote session planเป็นไฟล์อัตโนมัติ
 
-เมื่อใช้ Plannotator หลังอนุมัติจะแสดง checklist ใน terminal และติดตามความคืบหน้าด้วย Markdown checkbox ร่วมกับ `[DONE:n]` โดย Plannotator รองรับ plan file ที่ใดก็ได้ภายใน working directory และไม่ต้องผ่าน folder ของ `my-pi`
+แผน migrationปัจจุบันอยู่ที่ [`docs/plans/capability-packages-and-pinned-releases.md`](docs/plans/capability-packages-and-pinned-releases.md) ส่วน delegated-autonomy planถูกพักไว้ที่ [`docs/plans/delegated-autonomy-coordinator.md`](docs/plans/delegated-autonomy-coordinator.md) จนกว่าจะถึง Worker-profile discussion
 
-ดูเหตุผลและสถานะการออกแบบได้ที่ [`docs/notes/persistent-todo-handoff.md`](docs/notes/persistent-todo-handoff.md) ส่วน [`docs/plans/`](docs/plans/) เป็นประวัติแผนของ repository นี้ ไม่ใช่ default path สำหรับ tool หรือ skill อื่น
+## Security
 
-## ถอดออกจาก Pi
+Pi extensionsทำงานด้วยสิทธิ์ของ processและเข้าถึงระบบไฟล์ได้ ควร review source/dependenciesก่อนติดตั้ง capabilityใหม่ Project-opt-in extensionsโหลดหลัง project trustเท่านั้น
 
-การถอด setup ออกจาก global settings จะไม่ลบ repository:
-
-```sh
-pi remove /Users/developer/my-project/my-pi
-```
+Credential guidanceของ Azure DevOpsอยู่ใน [`AZURE_DEVOPS_PAT_SECURITY.md`](AZURE_DEVOPS_PAT_SECURITY.md)

@@ -1,0 +1,18 @@
+{
+  "name": "@nawatt-works/mypi-herdr-integration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Herdr lifecycle integration, blocked-state bridge, and shared CLI client for Pi.",
+  "keywords": ["pi-package"],
+  "exports": {
+    ".": "./extensions/index.ts",
+    "./client": "./extensions/client.ts"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/index.ts"]
+  }
+}

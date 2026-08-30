@@ -1,0 +1,17 @@
+{
+  "name": "@nawatt-works/mypi-runtime-mode",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared Pi session-mode capability for Coordinator-managed Workers.",
+  "keywords": ["pi-package"],
+  "exports": {
+    ".": "./extensions/index.ts"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/index.ts"]
+  }
+}

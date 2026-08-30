@@ -1,0 +1,17 @@
+{
+  "name": "@nawatt-works/mypi-planning-review",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "My Pi adapter capability for Plannotator plan and diff review.",
+  "keywords": ["pi-package"],
+  "dependencies": {
+    "@plannotator/pi-extension": "^0.27.6"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/index.ts"]
+  }
+}

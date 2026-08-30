@@ -23,6 +23,8 @@
 
 ผล disposable probes และคำสั่งที่ทำซ้ำได้บันทึกใน [Phase 0 Probes — Delegated Autonomy Harness Profiles](../notes/delegated-autonomy-phase0-probes.md)
 
+> **Path migration note (2026-08-30):** capabilityนี้ย้ายทั้งชุดไป `capabilities/incubator/delegated-orchestration/` แล้ว References แบบ `extensions/...`, `profiles/...`, `skills/...` และ `tests/...` ด้านล่างบันทึก layout ณ เวลาที่ phaseนั้นเกิด; เมื่อ resume implementationให้ resolve current sourceจาก incubator packageและไม่โหลดผ่าน root stable manifest
+
 ## Goal and scope
 
 ### Goal

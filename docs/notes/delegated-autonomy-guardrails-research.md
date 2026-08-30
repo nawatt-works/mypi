@@ -292,7 +292,7 @@ Initial Pi Workerไม่มี human prompt REVIEWต้องกลับ Coo
 
 Containerช่วยลด blast radiusแต่ worktreeเป็น host bind mount จึงยังต้อง block worktree wipe/history destructionตาม role การลบ generated pathsควรอนุญาตแบบ canonical path + task-scoped rule ไม่ใช่ allow `rm` ทั้ง command family
 
-Phase 0 milestoneเพิ่ม pure [`extensions/command-policy.ts`](../../extensions/command-policy.ts) ตาม contractนี้แล้ว: bounded parser, structured outcomes, no raw command retention และ exact REVIEW grant TTLไม่เกิน 15 นาที Targeted adversarial testsผ่าน `15/15`; moduleถูก wireเข้า versioned agent-teams candidate Worker boundaryแล้วแต่ productionยัง disabledและไม่อ้างเป็น sandbox
+Phase 0 milestoneเพิ่ม pure [`command-policy.ts`](../../capabilities/incubator/delegated-orchestration/extensions/command-policy.ts) ตาม contractนี้แล้ว: bounded parser, structured outcomes, no raw command retention และ exact REVIEW grant TTLไม่เกิน 15 นาที Targeted adversarial testsผ่าน `15/15`; moduleถูก wireเข้า versioned agent-teams candidate Worker boundaryแล้วแต่ productionยัง disabledและไม่อ้างเป็น sandbox
 
 แหล่งข้อมูล:
 

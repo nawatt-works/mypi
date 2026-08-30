@@ -1,8 +1,8 @@
 # จัด My Pi เป็น Capability Packages และ Pinned Releases
 
-> **Status:** active — planning and inventory<br>
+> **Status:** active — Phase 6 release checkpoint preparation<br>
 > **Created:** 2026-08-30 09:10<br>
-> **Updated:** 2026-08-30 10:00<br>
+> **Updated:** 2026-08-30 11:00<br>
 > **Purpose:** แยก capability ตามสถานะและขอบเขตการติดตั้ง ให้ Default Pi โหลดเฉพาะของที่ stable จริงจาก pinned Git release โดยไม่ผูกการพัฒนากับ production working tree
 
 ## Goal and scope
@@ -310,75 +310,75 @@ Incubator orchestration commands/toolsและ Azure toolsมี namesไม่
 - [x] สร้าง complete current resource/import/dependency graph
 - [x] จัด proposed capability ownershipและ laneให้ทุก extension/skill/theme/third-party resource
 - [x] ระบุ path/hash contracts ที่จะเสียเมื่อย้ายไฟล์
-- [ ] ให้ผู้ใช้ตรวจและยืนยัน capability groupingก่อน bulk move
+- [x] ผู้ใช้ยืนยัน capability groupingตาม proposalก่อน bulk move
 
 Exit criteria: ไม่มี current global resourceหรือ transitive importที่ยังไม่มี capability ownerและ proposed lane
 
 ### Phase 1 — Define package and aggregate contracts
 
-- [ ] สร้าง template/contractสำหรับ capability `package.json` และ README
-- [ ] ตัดสิน root npm workspace/dependency layout
-- [ ] ตัดสิน root Pi manifest aggregationโดยไม่ auto-discover resourceนอก stable lane
-- [ ] เพิ่ม architecture tests:
+- [x] สร้าง contractสำหรับ capability `package.json` และ README
+- [x] ใช้ root npm workspacesครอบทั้งสาม capability lanes
+- [x] root Pi manifest aggregateทุกและเฉพาะ stable global resources
+- [x] เพิ่ม architecture tests:
   - root releaseห้ามโหลด `capabilities/incubator/`
   - root releaseห้ามโหลด `capabilities/project-opt-in/`
   - stable global transitive importsห้ามข้ามไป `capabilities/incubator/`
   - package manifestsต้องอ้าง pathที่มีจริง
   - package/tool/command namesห้ามชนโดยไม่ตั้งใจ
-- [ ] กำหนด clean-install smoke harnessด้วย isolated Pi directory
+- [x] เพิ่ม `scripts/smoke-capability-install.mjs` สำหรับ `npm ci`, isolated Pi install, RPC session startup, stable command setและ Azure opt-in load
 
 Exit criteria: package skeletonหนึ่งตัวติดตั้ง/testได้จาก clean checkoutและ architecture checks failเมื่อจงใจข้าม boundary
 
 ### Phase 2 — Move stable global capabilities
 
-- [ ] ตรวจ stable gateทีละ provisional global capability
-- [ ] ย้ายทั้ง capabilityพร้อม source/tests/docsโดยไม่แยก behaviorภายในเพื่อ compatibility
-- [ ] แก้ importsและ test paths
-- [ ] ตรวจ extension commandsยังใช้ prefix `/mypi-`
-- [ ] เก็บเฉพาะ capabilityที่ stableจริงใน root aggregate manifest
-- [ ] capabilityที่ไม่ผ่าน gateย้ายหรือคงไว้ใน `capabilities/incubator/` ทั้งชุด
+- [x] ตรวจ baseline testsและ clean-load gateของ stable global candidates
+- [x] ย้ายทั้ง capabilityพร้อม source/tests/docsโดยไม่แยก behaviorภายในเพื่อ compatibility
+- [x] แก้ importsและ test paths
+- [x] architecture testยืนยัน extension commandsยังใช้ prefix `/mypi-`
+- [x] root aggregate manifestเก็บเฉพาะ stable global capability resources
+- [x] orchestration capabilityที่ยังไม่พร้อมอยู่ `capabilities/incubator/` ทั้งชุด
 
 Exit criteria: root stable manifestโหลดเฉพาะ packagesที่มี evidenceครบและ full stable suiteผ่าน
 
 ### Phase 3 — Rename and package project opt-ins
 
-- [ ] เปลี่ยน `local/` เป็น `capabilities/project-opt-in/`
-- [ ] ย้าย Azure DevOpsเป็น `capabilities/project-opt-in/azure-devops/`
-- [ ] เพิ่ม package manifestและจัด extension/tests/docsให้อยู่กับ capability
-- [ ] อัปเดต `.pi/settings.json` examplesทั้งหมด
-- [ ] ตรวจ project trust, read-only compatibility, opt-in writesและ non-interactive denial
-- [ ] ยืนยัน `capabilities/project-opt-in/` packageไม่ถูก root global manifestโหลด
+- [x] เปลี่ยน `local/` เป็น `capabilities/project-opt-in/`
+- [x] ย้าย Azure DevOpsเป็น `capabilities/project-opt-in/azure-devops/`
+- [x] เพิ่ม package manifestและจัด extension/tests/docsให้อยู่กับ capability
+- [x] อัปเดต `.pi/settings.json` examplesปัจจุบันให้ใช้ package path
+- [x] existing testsยืนยัน project trust, read-only compatibility, opt-in writesและ non-interactive denial
+- [x] architecture/install smokeยืนยัน Azureไม่อยู่ root globalแต่โหลดได้เมื่อ explicit install
 
 Exit criteria: trusted fixture projectเปิด Azure DevOps packageได้อย่าง explicit และ fixtureที่ไม่ opt inไม่เห็น tools/commandsของ package
 
 ### Phase 4 — Consolidate incubator capabilities
 
-- [ ] สร้าง `capabilities/incubator/delegated-orchestration/`
-- [ ] ย้าย orchestration/delegated resourcesทั้ง capabilityตาม ownershipที่ inventoryตัดสิน
-- [ ] ไม่ split stable manual subsetออกมาเพียงเพื่อ global release
-- [ ] ย้าย tests/profiles/probesพร้อม source owner
-- [ ] regenerate/update path-bound hashesและ manifestsเฉพาะเมื่อยังต้องใช้ candidate evidence
-- [ ] rerun overlay apply-check, profile artifact verification, runtime probesและ acceptanceที่ path movementกระทบ
-- [ ] คง production activation disabled
+- [x] สร้าง `capabilities/incubator/delegated-orchestration/`
+- [x] ย้าย orchestration/delegated resourcesทั้ง capabilityตาม ownershipที่ยืนยัน
+- [x] ไม่ split stable manual subsetออกมาเพียงเพื่อ global release
+- [x] ย้าย tests/profiles/probesพร้อม source owner
+- [x] regenerate Worker boundary/scoped-tools/overlay hashesและ profile manifestหลัง import/path change
+- [ ] defer runtime/real-model acceptanceไป Phase 7 Worker-profile discussionตามคำขอผู้ใช้; unit artifact verificationและ clean overlay apply-checkหลังย้ายผ่านแล้ว และห้ามใช้เป็น production acceptance
+- [x] root aggregateและ clean startupยืนยัน production activationยัง disabled
 
 Exit criteria: incubator package self-contained, testsอ้าง owner pathใหม่, root stable releaseไม่มี transitive importเข้ามา
 
 ### Phase 5 — Documentation and clean installation
 
-- [ ] อัปเดต root READMEให้แยก `capabilities/global/`, `capabilities/project-opt-in/` และ `capabilities/incubator/` ชัดเจน
-- [ ] อัปเดต `docs/README.md` และ historical links
-- [ ] อัปเดต install/update/rollback instructions
-- [ ] ทดสอบ `npm ci` จาก clean checkout
-- [ ] ทดสอบ Pi package discovery/listจาก isolated agent directory
-- [ ] ทดสอบ stable startupโดยไม่มี development checkoutบน module resolution path
-- [ ] ตรวจ package provenance/versionและ `git diff --check`
+- [x] อัปเดต root READMEให้แยก `capabilities/global/`, `capabilities/project-opt-in/` และ `capabilities/incubator/` ชัดเจน
+- [x] อัปเดต `docs/README.md`, plan progressและ current artifact linksครบ; historical path referencesมี migration notes
+- [x] อัปเดต development/pinned install/update/rollback instructionsระดับปัจจุบัน
+- [x] `npm ci` ผ่านจาก temporary clean copy
+- [x] isolated Pi `install`/`list` และ explicit Azure package installผ่าน
+- [x] stable aggregate RPC session startupผ่านโดยไม่มี development `node_modules`
+- [x] เลือก root aggregate version `0.2.0`; all links, full tests, clean smoke, overlay applyและ `git diff --check` ผ่าน
 
 Exit criteria: ผู้ใช้ clone exact commitแล้วติดตั้ง stable aggregateได้จากเอกสารโดยไม่พึ่งไฟล์นอก release
 
 ### Phase 6 — Pinned Git release
 
-- [ ] เลือก semantic versionแรกหลัง migration
-- [ ] ตรวจ working tree, tests, smokeและ release notes
+- [x] เลือก semantic versionแรกหลัง migrationเป็น `0.2.0` (breaking pre-1.0 layout change)
+- [x] ตรวจ staged migration, full tests, clean smoke, links, overlay applyและ release documentation
 - [ ] สร้าง local release commit/tag
 - [ ] ให้ผู้ใช้ตรวจหรืออนุมัติ external push
 - [ ] push commit/tagตาม human-only boundary
@@ -478,16 +478,28 @@ Testsผ่านเพียงอย่างเดียวไม่ทำใ
 - map tracked resourcesเป็น stable global candidates 9 packages, project-opt-in Azure package 1 และ incubator delegated-orchestration package 1
 - ระบุ cross-capability dependencies, aggregate tests, external package ownershipและ path/digest contractsแล้ว
 - baseline full suiteผ่าน `142/142`
-- ยังไม่ย้ายไฟล์; รอผู้ใช้ยืนยัน groupingตาม Phase 0 gate
+- ผู้ใช้ยืนยัน groupingตาม proposal
+
+### 2026-08-30 — Capability package migration implemented
+
+- สร้าง npm workspace manifests/READMEsครบ 11 capability packages
+- root stable aggregateโหลด global packages 9 ตัว; skillsว่างและไม่โหลด orchestration
+- Azure DevOpsย้ายเข้า project-opt-in packageและ explicit install smokeผ่าน
+- delegated orchestrationย้ายทั้งชุดเข้า incubatorโดยไม่ split manual subset
+- เพิ่ม recursive test runnerและ architecture boundary tests; full suiteผ่าน `146/146`
+- regenerate trusted agent-teams boundary/scoped-tools/overlay hashes; profile artifact verificationและ clean upstream overlay apply-checkผ่าน
+- temporary clean copyผ่าน `npm ci --omit=dev`, isolated Pi install/list, RPC session startup, stable commands, RPIV/Plannotator toolsและ Azure opt-in load
+- linksและ `git diff --check` ผ่าน; historical plans/notesเก็บ old path contextและเพิ่ม current migration notes
+- เลือก root aggregate version `0.2.0` สำหรับ breaking pre-1.0 layout change
 
 ## Exact next action
 
-ให้ผู้ใช้ตรวจ proposed capability ownershipใน Phase 0 inventory โดยเฉพาะ:
+สร้าง atomic migration commit แล้วเตรียม pinned release handoff:
 
-1. stable global granularity: แยก `runtime-mode`, `dependency-updates`, `herdr-integration`, `safety-guardrails`, `interactive-steering`, `planning-continuity`, `structured-questions`, `planning-review`, `ui-themes`
-2. รวม manual Herdr orchestration + delegated policy/profile/probes + orchestration Skillเป็น `capabilities/incubator/delegated-orchestration/` ทั้งชุด
-3. Azure DevOpsเป็น `capabilities/project-opt-in/azure-devops/`
+1. commit staged capability migrationพร้อม manifests, lockfile, tests, scriptsและ docs
+2. บันทึก exact commitใน planและตรวจ clean working tree
+3. เสนอ local tag `v0.2.0` และ exact `pi install git:git@github.com:nawatt-works/mypi.git@v0.2.0` ให้ผู้ใช้ตรวจ
+4. push commit/tagและเปลี่ยน Default Pi settingsเฉพาะเมื่อผู้ใช้อนุมัติ human-only external mutation
+5. หลัง pinned install/rollback verificationเสร็จ จึงกลับไป Worker-profile discussion
 
-เมื่อ groupingได้รับการยืนยัน ให้ทำ Phase 1 package/workspace/aggregate contractและ architecture testsก่อน bulk move
-
-ห้าม production-wire delegated Workers, ย้าย `pi-doc`, push tagหรือเปลี่ยน Default Pi settingsในขั้นนี้
+ห้าม production-wire delegated Workers, ย้าย `pi-doc`, push tagหรือเปลี่ยน Default Pi settingsก่อนผู้ใช้ตัดสิน Phase 6 actions

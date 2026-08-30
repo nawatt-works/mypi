@@ -1,42 +1,40 @@
 {
   "name": "my-pi-setup",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
-  "description": "Personal global Pi setup with custom extensions, themes, and pinned third-party packages.",
+  "description": "Stable global My Pi capability aggregate with project-opt-in and incubator packages.",
   "keywords": [
     "pi-package"
   ],
+  "workspaces": [
+    "capabilities/global/*",
+    "capabilities/project-opt-in/*",
+    "capabilities/incubator/*"
+  ],
   "scripts": {
-    "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "test:agent-teams-runtime": "node --experimental-strip-types tests/agent-teams-runtime-probe.mjs",
-    "test:agent-teams-acceptance": "node tests/agent-teams-acceptance-probe.mjs"
-  },
-  "dependencies": {
-    "@juicesharp/rpiv-ask-user-question": "^2.7.0",
-    "@plannotator/pi-extension": "^0.27.6",
-    "typebox": "^1.3.11"
+    "test": "node scripts/run-tests.mjs",
+    "test:capability-install": "node scripts/smoke-capability-install.mjs",
+    "test:agent-teams-runtime": "node --experimental-strip-types capabilities/incubator/delegated-orchestration/tests/agent-teams-runtime-probe.mjs",
+    "test:agent-teams-acceptance": "node capabilities/incubator/delegated-orchestration/tests/agent-teams-acceptance-probe.mjs"
   },
   "peerDependencies": {
     "@earendil-works/pi-coding-agent": "*"
   },
   "pi": {
     "extensions": [
-      "./extensions/worker-mode.ts",
-      "./extensions/dependency-update-notifier.ts",
-      "./extensions/herdr-integration.ts",
-      "./extensions/guardrails.ts",
-      "./extensions/steering-choice.ts",
-      "./node_modules/@juicesharp/rpiv-ask-user-question/index.ts",
-      "./node_modules/@plannotator/pi-extension/index.ts",
-      "./extensions/planning-workflow.ts",
-      "./extensions/orchestration.ts"
+      "./capabilities/global/runtime-mode/extensions/index.ts",
+      "./capabilities/global/dependency-updates/extensions/index.ts",
+      "./capabilities/global/herdr-integration/extensions/index.ts",
+      "./capabilities/global/safety-guardrails/extensions/index.ts",
+      "./capabilities/global/interactive-steering/extensions/index.ts",
+      "./capabilities/global/structured-questions/extensions/index.ts",
+      "./capabilities/global/planning-review/extensions/index.ts",
+      "./capabilities/global/planning-continuity/extensions/index.ts"
     ],
     "themes": [
-      "./themes"
+      "./capabilities/global/ui-themes/themes"
     ],
-    "skills": [
-      "./skills"
-    ]
+    "skills": []
   }
 }

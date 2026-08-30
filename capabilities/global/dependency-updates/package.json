@@ -1,0 +1,17 @@
+{
+  "name": "@nawatt-works/mypi-dependency-updates",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Background and on-demand dependency update notifications for My Pi.",
+  "keywords": ["pi-package"],
+  "dependencies": {
+    "@nawatt-works/mypi-runtime-mode": "0.1.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/index.ts"]
+  }
+}

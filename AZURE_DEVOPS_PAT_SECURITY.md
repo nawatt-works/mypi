@@ -7,7 +7,7 @@
 
 ## ขอบเขต
 
-เอกสารนี้กล่าวถึงวิธีจัดเก็บและดึง Azure DevOps Personal Access Token (PAT) สำหรับ `local/extensions/azure-devops/` เท่านั้น Extension ถูก maintain ใน repository นี้ แต่แต่ละ project เป็นผู้เลือกโหลดผ่าน `.pi/settings.json` เอกสารนี้ยังไม่ใช่แผน implementation และไม่มีค่า PAT จริง
+เอกสารนี้กล่าวถึงวิธีจัดเก็บและดึง Azure DevOps Personal Access Token (PAT) สำหรับ `capabilities/project-opt-in/azure-devops/` เท่านั้น Extension ถูก maintain ใน repository นี้ แต่แต่ละ project เป็นผู้เลือกโหลดผ่าน `.pi/settings.json` เอกสารนี้ยังไม่ใช่แผน implementation และไม่มีค่า PAT จริง
 
 Azure DevOps extension ปัจจุบันมีนโยบายดังนี้:
 

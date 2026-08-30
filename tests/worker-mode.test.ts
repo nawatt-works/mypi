@@ -5,9 +5,9 @@ import workerMode, {
 	WORKER_SESSION_PREFIX,
 	isWorkerMode,
 	workerSessionName,
-} from "../extensions/worker-mode.ts";
-import steeringChoice from "../extensions/steering-choice.ts";
-import dependencyUpdateNotifier from "../extensions/dependency-update-notifier.ts";
+} from "../capabilities/global/runtime-mode/extensions/index.ts";
+import steeringChoice from "../capabilities/global/interactive-steering/extensions/index.ts";
+import dependencyUpdateNotifier from "../capabilities/global/dependency-updates/extensions/index.ts";
 
 type Fake = {
 	pi: any;

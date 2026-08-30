@@ -1,0 +1,17 @@
+{
+  "name": "@nawatt-works/mypi-interactive-steering",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Interactive Steer, Wait, and Cancel behavior while Pi is working.",
+  "keywords": ["pi-package"],
+  "dependencies": {
+    "@nawatt-works/mypi-runtime-mode": "0.1.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/index.ts"]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "@nawatt-works/mypi-ui-themes",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Stable My Pi terminal themes.",
+  "keywords": ["pi-package"],
+  "pi": {
+    "themes": ["./themes"]
+  }
+}

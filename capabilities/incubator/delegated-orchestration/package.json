@@ -1,0 +1,25 @@
+{
+  "name": "@nawatt-works/mypi-delegated-orchestration",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Incubator package for Herdr orchestration and delegated-autonomy policy, profiles, and probes.",
+  "keywords": ["pi-package"],
+  "exports": {
+    "./command-policy": "./extensions/command-policy.ts",
+    "./orchestration-policy": "./extensions/orchestration-policy.ts"
+  },
+  "dependencies": {
+    "@nawatt-works/mypi-herdr-integration": "0.1.0",
+    "@nawatt-works/mypi-runtime-mode": "0.1.0",
+    "@nawatt-works/mypi-safety-guardrails": "0.1.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/orchestration.ts"],
+    "skills": ["./skills/herdr-orchestration/SKILL.md"]
+  }
+}

@@ -2,8 +2,8 @@
 
 > **Status:** complete<br>
 > **Created:** 2026-08-09 11:10<br>
-> **Updated:** 2026-08-09 19:25<br>
-> **Purpose:** บันทึกการพัฒนา Azure DevOps CRUD extension และสถานะปัจจุบันที่ maintain แบบ project-local จาก `local/extensions/azure-devops/`
+> **Updated:** 2026-08-30 10:30<br>
+> **Purpose:** บันทึกการพัฒนา Azure DevOps CRUD extension และสถานะปัจจุบันที่ maintain เป็น capability packageใต้ `capabilities/project-opt-in/azure-devops/`
 
 ## Context
 
@@ -13,11 +13,11 @@
 
 ## Post-completion state
 
-หลังปิดแผนเดิม ผู้ใช้เปลี่ยน deployment model จาก global package เป็น project-local reference:
+หลังปิดแผนเดิม ผู้ใช้เปลี่ยน deployment model จาก global package เป็น project-local reference และต่อมาย้ายเข้า capability layout:
 
-- Source ปัจจุบันอยู่ที่ `local/extensions/azure-devops/`
-- `package.json#pi.extensions` ไม่โหลด Azure DevOps แบบ global แล้ว
-- แต่ละ project ที่ต้องใช้เพิ่ม absolute path ไปยัง folder นี้ใน `.pi/settings.json`
+- Source ปัจจุบันอยู่ที่ `capabilities/project-opt-in/azure-devops/`
+- root `package.json#pi.extensions` ไม่โหลด Azure DevOps แบบ global
+- แต่ละ project ที่ต้องใช้เพิ่ม absolute package pathใน `.pi/settings.json#packages`
 - `.pi/azure-devops.json`, permission policy และ read-only default ยังคงเป็น config ราย project
 
 Scope, checklist และ path แบบ global ในส่วนถัดไปเป็นประวัติของ implementation รอบเดิม ไม่ใช่ deployment model ปัจจุบัน
@@ -248,7 +248,7 @@ Implementation และ automated verification เสร็จถึง Phase 5
 
 Final automated review ของ implementation เดิมผ่าน: extension import สำเร็จ, `npm test` ผ่าน 37 tests, `git diff --check` ผ่าน, credential scan ไม่พบค่า secret และไม่มี temporary artifact ถูกเพิ่มเข้า versioned changes Local source `/Users/developer/office/cpmatch/exim/.pi/extensions/azure-boards/` ไม่มีอยู่แล้ว
 
-สถานะ deployment ปัจจุบัน: source อยู่ที่ `local/extensions/azure-devops/`, ไม่ได้ลงทะเบียน global และแต่ละ project ต้องเพิ่ม path ใน `.pi/settings.json` เอง ไม่มี blocker เหลือ
+สถานะ deployment ปัจจุบัน (อัปเดต 2026-08-30): sourceอยู่ที่ `capabilities/project-opt-in/azure-devops/`, มี capability manifestของตัวเอง, ไม่ถูก root stable aggregateโหลด และแต่ละ projectต้องเพิ่ม package pathใน `.pi/settings.json` เอง
 
 ## Change log
 

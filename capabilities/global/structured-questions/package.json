@@ -1,0 +1,17 @@
+{
+  "name": "@nawatt-works/mypi-structured-questions",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "My Pi adapter capability for structured user questions.",
+  "keywords": ["pi-package"],
+  "dependencies": {
+    "@juicesharp/rpiv-ask-user-question": "^2.7.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/index.ts"]
+  }
+}

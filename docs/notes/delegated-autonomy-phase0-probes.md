@@ -741,7 +741,7 @@ observed image digest: sha256:8b50f94e47e5085446081411ed152f84ebe0a146a575bba172
 Node: v24.15.0
 ```
 
-สร้าง versioned profile packageที่ [`profiles/pi-agent-teams/node-worker-v1/`](../../profiles/pi-agent-teams/node-worker-v1/) พร้อม exact Dockerfile, runtime contract, profile metadata และ SPDX 2.3 SBOM 170 packages
+สร้าง versioned profile packageที่ [`capabilities/incubator/delegated-orchestration/profiles/pi-agent-teams/node-worker-v1/`](../../capabilities/incubator/delegated-orchestration/profiles/pi-agent-teams/node-worker-v1/) พร้อม exact Dockerfile, runtime contract, profile metadata และ SPDX 2.3 SBOM 170 packages
 
 ```text
 Dockerfile SHA-256: a391813a89ea2dc8ff004f9ca80a06ada2fdce618ff5a5d06b9615fb17e6ba35
@@ -769,12 +769,12 @@ Caution: mount worktreeทั้งก้อน ไม่ซ่อนไฟล�
 
 เลือก maintenance strategyเป็น **minimal maintained overlay** บน exact upstream commitแทนการ vendor/fork sourceทั้ง repository:
 
-- [`agent-teams-overlay.patch`](../../profiles/pi-agent-teams/node-worker-v1/agent-teams-overlay.patch) apply-checkผ่านบน clean `2c1776d`
-- [`extensions/agent-teams-profile.ts`](../../extensions/agent-teams-profile.ts) สร้าง leader environment allowlist, force-worktree, ceiling 1–3, exact child tools/extensions และ expected artifact hashesพร้อมกัน
+- [`agent-teams-overlay.patch`](../../capabilities/incubator/delegated-orchestration/profiles/pi-agent-teams/node-worker-v1/agent-teams-overlay.patch) apply-checkผ่านบน clean `2c1776d`
+- [`agent-teams-profile.ts`](../../capabilities/incubator/delegated-orchestration/extensions/agent-teams-profile.ts) สร้าง leader environment allowlist, force-worktree, ceiling 1–3, exact child tools/extensions และ expected artifact hashesพร้อมกัน
 - patched leader freeze child profileตอน factory load ไม่อ่าน ambient environmentใหม่ทุก spawn
 - child RPCเก็บ observed environment **key namesเท่านั้น** เพื่อ verify allowlistโดยไม่เก็บ values
-- [`worker-boundary.ts`](../../profiles/pi-agent-teams/node-worker-v1/worker-boundary.ts) รวม command/data policy, scoped direct tools, immutable Docker Bash และ artifact/image preflightเป็น extensionเดียว; init failต้องเกิดก่อน Worker ready handshake
-- [`extensions/scoped-worker-tools.ts`](../../extensions/scoped-worker-tools.ts) canonicalize lexical/existing/canonical pathsและ deny external, sensitive, `.git` และ symlink escapeก่อน direct filesystem operation
+- [`worker-boundary.ts`](../../capabilities/incubator/delegated-orchestration/profiles/pi-agent-teams/node-worker-v1/worker-boundary.ts) รวม command/data policy, scoped direct tools, immutable Docker Bash และ artifact/image preflightเป็น extensionเดียว; init failต้องเกิดก่อน Worker ready handshake
+- [`scoped-worker-tools.ts`](../../capabilities/incubator/delegated-orchestration/extensions/scoped-worker-tools.ts) canonicalize lexical/existing/canonical pathsและ deny external, sensitive, `.git` และ symlink escapeก่อน direct filesystem operation
 
 Independent reviewของ producer commit `ead8778` ให้ verdict `PASS-WITH-FOLLOWUPS` และพบ medium findingsสองข้อ: patched entryยังไม่มี end-to-end provenance และ overlay fallbackเมื่อ managed envหาย Correction `43967a8` ปิด provenanceและ missing-env fallback แต่ Codex re-reviewให้ `FAIL` เพราะ digest/markerยัง deriveจากค่าที่ callerส่งและ boundary pathยังไม่ bind trusted content Correction v2ปิดตาม required findingsโดย:
 
@@ -821,7 +821,7 @@ Final overlay ceiling-2 multi-worker runtime:
 
 Negative/fault chainหลัง independent review:
 
-- committed opt-in [`tests/agent-teams-runtime-probe.mjs`](../../tests/agent-teams-runtime-probe.mjs) รันผ่าน `npm run test:agent-teams-runtime -- <patched-checkout>`: clean upstream `git apply --check`, profile build และ executable negative startup cases `6/6`; childทุกตัวใช้ temporary `--session-dir` จึง reproducibleใน reviewer sandboxโดยไม่เขียน global Pi store
+- committed opt-in [`tests/agent-teams-runtime-probe.mjs`](../../capabilities/incubator/delegated-orchestration/tests/agent-teams-runtime-probe.mjs) รันผ่าน `npm run test:agent-teams-runtime -- <patched-checkout>`: clean upstream `git apply --check`, profile build และ executable negative startup cases `6/6`; childทุกตัวใช้ temporary `--session-dir` จึง reproducibleใน reviewer sandboxโดยไม่เขียน global Pi store
 - overlay artifact regenerateเป็น `--unified=0` เพื่อตัด whitespace-bearing upstream context; semantic patched source tree digestคงเดิมและ apply-checkผ่าน
 - missing required managed env, valid-but-wrong 64-hex contract digest และ replaced boundary extension → failก่อน extension load
 - clean overlay-applied checkoutผ่าน entry/tree/Git provenance;แก้ `leader.ts` ที่ pathเดิมแล้ว builder fail closed
@@ -837,7 +837,7 @@ Operational note: ระหว่าง restart reviewer pane, Codex standalone 
 
 #### v9 — real Pi-native implement → review → correction acceptance
 
-เพิ่ม opt-in [`tests/agent-teams-acceptance-probe.mjs`](../../tests/agent-teams-acceptance-probe.mjs) + `.mts` harnessซึ่งเรียก dependenciesจาก pinned patched checkoutโดยไม่ install agent-teamsใน Pi profileหลัก Probeสร้าง disposable Git fixtureและใช้ exact atomic profileกับ `openai-codex/gpt-5.4-mini:low`:
+เพิ่ม opt-in [`tests/agent-teams-acceptance-probe.mjs`](../../capabilities/incubator/delegated-orchestration/tests/agent-teams-acceptance-probe.mjs) + `.mts` harnessซึ่งเรียก dependenciesจาก pinned patched checkoutโดยไม่ install agent-teamsใน Pi profileหลัก Probeสร้าง disposable Git fixtureและใช้ exact atomic profileกับ `openai-codex/gpt-5.4-mini:low`:
 
 1. `implementer` ทำ Phase Aใน per-Worker worktreeและคง controlled reversed-range defectหนึ่งจุด
 2. Coordinator collect/commit artifactแล้ว spawn `reviewer` จาก commitนั้น
@@ -937,7 +937,7 @@ Remaining before production verified:
 
 ### Pure dangerous-command policy fixture
 
-เพิ่ม [`extensions/command-policy.ts`](../../extensions/command-policy.ts) เป็น pure Phase 0 analyzer/resolverโดยไม่ register Pi tool/event และไม่เปลี่ยน production behavior พร้อม adversarial testsใน [`tests/command-policy.test.ts`](../../tests/command-policy.test.ts)
+เพิ่ม [`command-policy.ts`](../../capabilities/incubator/delegated-orchestration/extensions/command-policy.ts) เป็น pure Phase 0 analyzer/resolverโดยไม่ register Pi tool/event และไม่เปลี่ยน production behavior พร้อม adversarial testsใน [`command-policy.test.ts`](../../capabilities/incubator/delegated-orchestration/tests/command-policy.test.ts)
 
 Decision flow:
 
