@@ -276,6 +276,8 @@ try {
 	await realpath(replacement.cwd!);
 	await leader.command(`/team kill ${workerName}`);
 	await waitUntilAbsent(firstWorkerRoot);
+	const prematureLeaderLossMarkers = (await readdir(join(runtimeRoot, "coordination", teamId))).filter((name) => name.startsWith("leader-loss-"));
+	if (prematureLeaderLossMarkers.length !== 0) throw new Error("orderly Worker shutdown was misclassified as leader loss");
 	await leader.command(`/team spawn ${workerName} fresh worktree`);
 	const orphaned = await readPersistedMember();
 	const orphanedDigest = orphaned.meta!.childProfile!.generatedProfileDigest as string;
@@ -290,6 +292,7 @@ try {
 		leaderLossMarker.workerId !== workerName || leaderLossMarker.profileDigest !== orphanedDigest || leaderLossMarker.worktree !== orphaned.cwd) {
 		throw new Error("leader-loss reconciliation marker does not match the exact orphaned generation");
 	}
+	if (await realpath(leaderLossMarker.worktree) !== leaderLossMarker.worktree) throw new Error("leader-loss worktree was not retained for artifact recovery");
 	const claimed = await readdir(join(runtimeRoot, "claimed-leases"));
 	const leasesRunRoot = join(runtimeRoot, "credential-leases", teamId);
 	const leases = existsSync(leasesRunRoot) ? await readdir(leasesRunRoot) : [];
@@ -301,6 +304,8 @@ try {
 	checks.noInteractiveRequests = true;
 	checks.forcedCrashCleanup = true;
 	checks.leaderLossCleanup = true;
+	checks.leaderLossWorktreeRetained = true;
+	checks.orderlyShutdownClassified = true;
 	checks.stopCleanup = true;
 	checks.sameNameReplacement = true;
 	checks.noReusableCredentialState = true;

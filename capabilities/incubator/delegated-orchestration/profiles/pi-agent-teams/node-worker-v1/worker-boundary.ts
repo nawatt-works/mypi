@@ -1,6 +1,6 @@
 import { spawn, spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -284,6 +284,9 @@ async function reconcileLeaderLoss(generatedProfileDigest: string): Promise<void
 	if (!manifestPathValue || !teamsRootValue || !/^[A-Za-z0-9._-]{1,128}$/.test(teamId) || !/^[A-Za-z0-9._-]{1,128}$/.test(workerId)) {
 		throw new Error("leader-loss reconciliation identity is missing or invalid");
 	}
+	// An orderly leader may have completed authority-bound cleanup before the
+	// child observes pipe closure. That state is already reconciled.
+	if (!existsSync(manifestPathValue)) return;
 	const manifestPath = realpathSync(manifestPathValue);
 	const manifestInfo = lstatSync(manifestPath);
 	if (manifestInfo.isSymbolicLink() || !manifestInfo.isFile()) throw new Error("leader-loss Worker manifest identity is invalid");
@@ -298,7 +301,12 @@ async function reconcileLeaderLoss(generatedProfileDigest: string): Promise<void
 	}
 	const teamsRoot = realpathSync(teamsRootValue);
 	if (teamsRoot !== join(runtimeRoot, "coordination")) throw new Error("leader-loss coordination root is outside the runtime authority");
-	const teamDir = realpathSync(join(teamsRoot, teamId));
+	const requestedTeamDir = join(teamsRoot, teamId);
+	const teamInfo = lstatSync(requestedTeamDir);
+	if (teamInfo.isSymbolicLink() || !teamInfo.isDirectory()) throw new Error("leader-loss team directory identity is invalid");
+	if (typeof process.getuid === "function" && teamInfo.uid !== process.getuid()) throw new Error("leader-loss team directory has a different owner");
+	const teamDir = realpathSync(requestedTeamDir);
+	if (teamDir !== requestedTeamDir) throw new Error("leader-loss team directory is outside the coordination authority");
 	const markerPath = join(teamDir, `leader-loss-${workerId}-${generatedProfileDigest}.json`);
 	writeFileSync(markerPath, `${JSON.stringify({
 		schemaVersion: 1,
@@ -309,11 +317,16 @@ async function reconcileLeaderLoss(generatedProfileDigest: string): Promise<void
 		worktree: manifest.worktree,
 		detectedAt: new Date().toISOString(),
 	})}\n`, { mode: 0o600, flag: "wx" });
-	await cleanupMaterializedWorkerProfile({
-		profile: { manifest, environment: {} },
-		runtimeRoot,
-		expectedProfileDigest: generatedProfileDigest,
-	});
+	try {
+		await cleanupMaterializedWorkerProfile({
+			profile: { manifest, environment: {} },
+			runtimeRoot,
+			expectedProfileDigest: generatedProfileDigest,
+		});
+	} catch (error) {
+		if (existsSync(workerRoot)) throw error;
+		// The leader completed the exact cleanup concurrently.
+	}
 }
 
 export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
