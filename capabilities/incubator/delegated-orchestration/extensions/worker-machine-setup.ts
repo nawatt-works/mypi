@@ -32,6 +32,7 @@ const MACHINE_CHILDREN = [
 	"lease-authority",
 	"locks",
 	"runs",
+	"transactions",
 ] as const;
 
 export type WorkerMachineManifest = {
@@ -406,6 +407,42 @@ export async function withWorkerMachineAuthorityLock<T>(runtimeRootInput: string
 	}
 }
 
+type RotationJournalPayload = {
+	schemaVersion: 1;
+	kind: "mypi-worker-credential-rotation";
+	providerId: string;
+	previousSetupDigest: string;
+	nextSetupDigest: string;
+	nextCredentialRevision: number;
+};
+
+type RotationJournal = { payload: RotationJournalPayload; signature: string; transactionRoot: string };
+
+async function loadRotationJournal(runtimeRoot: string): Promise<RotationJournal | undefined> {
+	const transactionsRoot = await requireDirectory("transactions root", join(runtimeRoot, "transactions"), true);
+	const entries = await readdir(transactionsRoot);
+	if (entries.length === 0) return undefined;
+	if (entries.length !== 1 || !IDENTIFIER.test(entries[0]!)) throw new Error("Worker machine has ambiguous rotation transactions");
+	const transactionRoot = await requireDirectory("rotation transaction", join(transactionsRoot, entries[0]!), true);
+	const { content } = await requirePrivateFile("rotation journal", join(transactionRoot, "journal.json"));
+	let parsed: unknown;
+	try { parsed = JSON.parse(content.toString("utf8")); } catch { throw new Error("rotation journal is malformed"); }
+	if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("rotation journal must be an object");
+	const record = parsed as Record<string, unknown>;
+	if (JSON.stringify(Object.keys(record).sort()) !== JSON.stringify(["payload", "signature"])) throw new Error("rotation journal has an invalid shape");
+	const payload = record.payload as RotationJournalPayload;
+	if (!payload || payload.schemaVersion !== 1 || payload.kind !== "mypi-worker-credential-rotation" ||
+		!IDENTIFIER.test(payload.providerId) || !DIGEST.test(payload.previousSetupDigest) || !DIGEST.test(payload.nextSetupDigest) ||
+		!Number.isSafeInteger(payload.nextCredentialRevision) || payload.nextCredentialRevision < 2 || typeof record.signature !== "string") {
+		throw new Error("rotation journal payload is invalid");
+	}
+	const publicKey = (await requirePrivateFile("lease public key", join(runtimeRoot, "lease-authority", "public.pem"))).content;
+	if (!verify(null, Buffer.from(canonicalJson(payload)), publicKey, Buffer.from(record.signature, "base64"))) {
+		throw new Error("rotation journal signature verification failed");
+	}
+	return { payload, signature: record.signature, transactionRoot };
+}
+
 async function hasWorkerState(runtimeRoot: string): Promise<boolean> {
 	for (const root of ["credential-leases", "claimed-leases", "runs"] as const) {
 		const queue = [join(runtimeRoot, root)];
@@ -435,8 +472,16 @@ async function recoverWorkerMachineUnlocked(input: {
 	requireDisjoint("runtimeRoot", runtimeRoot, "sourceAgentDir", sourceAgentDir);
 	const providerId = requireIdentifier("providerId", input.providerId);
 	const manifest = await readManifest(runtimeRoot);
-	if (!DIGEST.test(input.expectedSetupDigest) || manifest.setupDigest !== input.expectedSetupDigest) {
-		throw new Error("Worker machine recovery authority digest mismatch");
+	const journal = await loadRotationJournal(runtimeRoot);
+	if (!DIGEST.test(input.expectedSetupDigest)) throw new Error("Worker machine recovery authority digest mismatch");
+	if (manifest.setupDigest !== input.expectedSetupDigest) {
+		if (!journal || journal.payload.previousSetupDigest !== input.expectedSetupDigest || journal.payload.nextSetupDigest !== manifest.setupDigest) {
+			throw new Error("Worker machine recovery authority digest mismatch");
+		}
+		const completed = await verifyWorkerMachine({ ...input, expectedSetupDigest: manifest.setupDigest });
+		if (!completed.verified || !completed.manifest) throw new Error(`completed rotation is not verified: ${completed.mismatches.join(",")}`);
+		await rm(journal.transactionRoot, { recursive: true });
+		return completed.manifest;
 	}
 	const { setupDigest: _digest, ...payload } = manifest;
 	if (manifest.setupDigest !== sha256(canonicalJson(payload)) || manifest.runtimeRoot !== runtimeRoot ||
@@ -448,28 +493,40 @@ async function recoverWorkerMachineUnlocked(input: {
 	const source = parseCredentialSource((await requirePrivateFile("Worker credential source", credentialPath)).content);
 	if (source.providerId !== providerId) throw new Error("Worker credential source provider does not match recovery authority");
 	if (source.revision === manifest.credentialRevision) {
+		if (journal) await rm(journal.transactionRoot, { recursive: true });
 		const current = await verifyWorkerMachine({ ...input, expectedSetupDigest: manifest.setupDigest });
 		if (!current.verified || !current.manifest) throw new Error(`Worker machine recovery found unresolved drift: ${current.mismatches.join(",")}`);
 		return current.manifest;
 	}
 	if (source.revision !== manifest.credentialRevision + 1) throw new Error("Worker credential source revision cannot be recovered automatically");
-	const next = withSetupDigest({
-		...payload,
-		credentialType: source.credential.type,
-		credentialRevision: source.revision,
-		updatedAt: (input.now ?? new Date()).toISOString(),
-	});
+	let next: WorkerMachineManifest;
 	const manifestPath = join(runtimeRoot, "machine.json");
-	const manifestTemp = `${manifestPath}.recover-${randomBytes(12).toString("hex")}`;
-	try {
-		await writePrivateJson(manifestTemp, next);
-		await rename(manifestTemp, manifestPath);
-	} catch (error) {
-		await rm(manifestTemp, { force: true }).catch(() => undefined);
-		throw error;
+	if (journal) {
+		if (journal.payload.previousSetupDigest !== manifest.setupDigest || journal.payload.nextCredentialRevision !== source.revision) {
+			throw new Error("rotation journal does not match the recoverable credential revision");
+		}
+		next = JSON.parse((await requirePrivateFile("next machine manifest", join(journal.transactionRoot, "machine.next.json"))).content.toString("utf8")) as WorkerMachineManifest;
+		if (next.setupDigest !== journal.payload.nextSetupDigest) throw new Error("next machine manifest does not match the signed rotation journal");
+		await rename(join(journal.transactionRoot, "machine.next.json"), manifestPath);
+	} else {
+		next = withSetupDigest({
+			...payload,
+			credentialType: source.credential.type,
+			credentialRevision: source.revision,
+			updatedAt: (input.now ?? new Date()).toISOString(),
+		});
+		const manifestTemp = `${manifestPath}.recover-${randomBytes(12).toString("hex")}`;
+		try {
+			await writePrivateJson(manifestTemp, next);
+			await rename(manifestTemp, manifestPath);
+		} catch (error) {
+			await rm(manifestTemp, { force: true }).catch(() => undefined);
+			throw error;
+		}
 	}
 	const verification = await verifyWorkerMachine({ ...input, expectedSetupDigest: next.setupDigest });
 	if (!verification.verified || !verification.manifest) throw new Error(`recovered Worker machine failed verification: ${verification.mismatches.join(",")}`);
+	if (journal) await rm(journal.transactionRoot, { recursive: true });
 	return verification.manifest;
 }
 
@@ -500,9 +557,13 @@ async function rotateWorkerCredentialUnlocked(input: {
 	if (canonicalJson(sourceCredential) !== canonicalJson(credential)) throw new Error("rotated credential does not match the explicit source profile");
 	const revision = manifest.credentialRevision + 1;
 	const credentialPath = join(manifest.runtimeRoot, "credential-source", `${manifest.providerId}.auth.json`);
-	const credentialTemp = `${credentialPath}.rotate-${randomBytes(12).toString("hex")}`;
 	const manifestPath = join(manifest.runtimeRoot, "machine.json");
-	const manifestTemp = `${manifestPath}.rotate-${randomBytes(12).toString("hex")}`;
+	const transactionsRoot = await requireDirectory("transactions root", join(manifest.runtimeRoot, "transactions"), true);
+	if ((await readdir(transactionsRoot)).length !== 0) throw new Error("Worker machine has an unrecovered rotation transaction");
+	const transactionRoot = join(transactionsRoot, randomBytes(16).toString("hex"));
+	await mkdir(transactionRoot, { mode: 0o700 });
+	const credentialTemp = join(transactionRoot, "credential.next.json");
+	const manifestTemp = join(transactionRoot, "machine.next.json");
 	const { setupDigest: _previousDigest, ...current } = manifest;
 	const next = withSetupDigest({
 		...current,
@@ -513,15 +574,31 @@ async function rotateWorkerCredentialUnlocked(input: {
 	try {
 		await writePrivateJson(credentialTemp, { schemaVersion: 1, providerId: manifest.providerId, revision, credential });
 		await writePrivateJson(manifestTemp, next);
+		const journalPayload: RotationJournalPayload = {
+			schemaVersion: 1,
+			kind: "mypi-worker-credential-rotation",
+			providerId: manifest.providerId,
+			previousSetupDigest: manifest.setupDigest,
+			nextSetupDigest: next.setupDigest,
+			nextCredentialRevision: revision,
+		};
+		const privateKey = (await requirePrivateFile("lease private key", join(manifest.runtimeRoot, "lease-authority", "private.pem"))).content;
+		await writePrivateJson(join(transactionRoot, "journal.json"), {
+			payload: journalPayload,
+			signature: sign(null, Buffer.from(canonicalJson(journalPayload)), privateKey).toString("base64"),
+		});
 		await rename(credentialTemp, credentialPath);
 		await rename(manifestTemp, manifestPath);
 	} catch (error) {
-		await rm(credentialTemp, { force: true }).catch(() => undefined);
-		await rm(manifestTemp, { force: true }).catch(() => undefined);
+		// Preserve a signed transaction after either live rename so recovery can
+		// deterministically finish or acknowledge the committed rotation.
+		const credentialCommitted = await readFile(credentialPath).then((raw) => parseCredentialSource(raw).revision === revision).catch(() => false);
+		if (!credentialCommitted) await rm(transactionRoot, { recursive: true, force: true }).catch(() => undefined);
 		throw error;
 	}
 	const result = await verifyWorkerMachine({ ...input, expectedSetupDigest: next.setupDigest });
 	if (!result.verified || !result.manifest) throw new Error(`rotated Worker machine failed verification: ${result.mismatches.join(",")}`);
+	await rm(transactionRoot, { recursive: true });
 	return result.manifest;
 }
 

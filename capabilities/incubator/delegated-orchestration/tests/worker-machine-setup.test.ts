@@ -52,9 +52,9 @@ test("creates an atomic private machine hierarchy without putting credentials in
 	assert.ok((await readFile(join(f.runtimeRoot, "credential-source", `${PROVIDER}.auth.json`), "utf8")).includes(SECRET_ONE));
 	assert.deepEqual((await readdir(f.runtimeRoot)).sort(), [
 		"claimed-leases", "consumed-leases", "coordination", "credential-leases",
-		"credential-source", "lease-authority", "locks", "machine.json", "runs",
+		"credential-source", "lease-authority", "locks", "machine.json", "runs", "transactions",
 	]);
-	for (const path of [f.runtimeRoot, "claimed-leases", "consumed-leases", "coordination", "credential-leases", "credential-source", "lease-authority", "locks", "runs"].map((item) => item === f.runtimeRoot ? item : join(f.runtimeRoot, item))) {
+	for (const path of [f.runtimeRoot, "claimed-leases", "consumed-leases", "coordination", "credential-leases", "credential-source", "lease-authority", "locks", "runs", "transactions"].map((item) => item === f.runtimeRoot ? item : join(f.runtimeRoot, item))) {
 		assert.equal((await lstat(path)).mode & 0o077, 0, path);
 	}
 	for (const path of [
