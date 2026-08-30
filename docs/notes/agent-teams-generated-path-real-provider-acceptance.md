@@ -3,8 +3,8 @@
 > **Status:** PASS — production remains disabled<br>
 > **Executed:** 2026-08-30<br>
 > **Provider/model:** `openai-codex/gpt-5.4`, thinking `low`<br>
-> **Candidate commits:** `cb05e2f`, `5340500`, `d09c982`, `567826a`, `d5273ed`, `637f0b0`, `89b91b6`, `6ef5705`<br>
-> **Profile digest:** `49aa101f226cb8c296d6d7592ae6bf72bd5ead767bb58da99b996bffcf18e02c`
+> **Candidate commits:** `cb05e2f`, `5340500`, `d09c982`, `567826a`, `d5273ed`, `637f0b0`, `89b91b6`, `6ef5705`, `3463b31`<br>
+> **Profile digest:** `050ed48bd9df30e0ee39738e2cb7ab9b69d4e16fb5daa2570ea65351b66dd3fd`
 
 ## Operator boundary
 
@@ -20,8 +20,8 @@ Startup correctionถัดมาย้าย Git worktreeออกจาก cre
 {
   "status": "PASS",
   "productionActivated": false,
-  "profileDigest": "49aa101f226cb8c296d6d7592ae6bf72bd5ead767bb58da99b996bffcf18e02c",
-  "runtimeAuthorityDigest": "b960b882a430aa70150f523d5b3abf25573556938b6d31a7757a717eaa913b95",
+  "profileDigest": "050ed48bd9df30e0ee39738e2cb7ab9b69d4e16fb5daa2570ea65351b66dd3fd",
+  "runtimeAuthorityDigest": "15b146d99f655bc318607e1b730472d679e98af3f2c5435dfc1b457ae484cf43",
   "credentialRevision": 1,
   "providerId": "openai-codex",
   "modelId": "gpt-5.4",
@@ -76,7 +76,8 @@ trusted machine receipt
 
 ## Verification
 
-- full repository suite `198/198`
+- full repository suite `199/199`
+- exact Docker runtime hardening contract bindใน leader/boundary digestและ negative drift coverageครบ
 - runtime/fault probes `10/10`
 - patched upstream typecheck/lint PASS
 - rotation integration: active generated profile block, idle rotation revision `1→2`, stale setup/revision failก่อน lease/spawn, revisionใหม่สร้าง profile identityใหม่และ cleanupผ่าน

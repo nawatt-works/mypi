@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — final Phase 2–3 evidence review; production remains disabled<br>
+> **Status:** active — delegated resolver wiring; production remains disabled<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 23:10<br>
+> **Updated:** 2026-08-30 23:45<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -903,17 +903,20 @@ Success metric หลัก:
 - `d5273ed`, `637f0b0`เพิ่ม parent-loss watchdog + exact self-clean, canonical nonsecret marker, orderly-shutdown classificationและ retained recovery worktree
 - generated-path acceptance **PASS 11/11** profile `368d561e…`; leader-loss pathไม่มี reusable credential state
 - `89b91b6`, `6ef5705`แยก `read-only-v1`/`worktree-write-v1`, bind exact managed path, canonical cwd, generated manifestและ structured readiness; independent correction review **PASS**
-- final generated-path acceptance **PASS 13/13** profile `49aa101f…`; interactive requests `0`, no reusable credential state, full suite `198/198`, runtime probes `10/10`
+- generated-path acceptanceหลัง dual adapters **PASS 13/13** profile `49aa101f…`; exact cwd/readiness bindครบ
+- `3463b31`, `be6f3dc` exact-validateและ bind Docker runtime hardeningทุก fieldใน authority digestพร้อม negative coverage
+- final generated-path acceptance **PASS 13/13** profile `050ed48b…`; interactive requests `0`, no reusable credential state, full suite `199/199`, runtime probes `10/10`
+- final Phase 2–3 independent correction review **PASS**; auditอยู่ที่ [Delegated Orchestration Phase 2–3 Final Review](../notes/delegated-orchestration-phase2-3-final-review.md)
 - execution-adapter auditอยู่ที่ [Worker Execution Adapters Independent Review](../notes/worker-execution-adapters-independent-review.md)
 - evidenceอยู่ที่ [Agent-teams Generated-path Real-provider Acceptance](../notes/agent-teams-generated-path-real-provider-acceptance.md)
 - productionยัง disabled
 
 ## Exact next action
 
-1. ขอ independent final Phase 2–3 evidence reviewทั้ง generated profile, machine authority, crashes, leader-lossและ dual execution adapters
-2. หลัง profile pathผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
-3. รัน production-path acceptanceอีกครั้งหลัง resolver wiring โดย productionยัง disabled
-4. ขอ human decisionก่อน production import, push, release/tagหรือ Default Pi switch
+1. แยก guardrail detection → policy resolution → UI renderingโดยคง manual behaviorเดิม
+2. wire trusted delegated resolverกับ exact REVIEW grantsและ human-only boundaries
+3. รัน production-path acceptanceหลัง resolver wiring โดย productionยัง disabled
+4. ขอ independent resolver review แล้วจึงขอ human decisionก่อน production import, push, release/tagหรือ Default Pi switch
 
 External push, release/tagและ Default Pi switchเป็น human-only mutationsและยังไม่ทำ
 

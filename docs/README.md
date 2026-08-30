@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-07-27 08:55<br>
-> **Updated:** 2026-08-30 23:10<br>
+> **Updated:** 2026-08-30 23:45<br>
 > **Purpose:** แสดงภาพรวมของ design notes และ implementation history ที่ repository `my-pi` เป็นเจ้าของ
 
 `docs/` เป็น project documentation ของ repository นี้ ไม่ใช่ workspace-wide artifact store และไม่ใช่ default path สำหรับ plan, note หรือ output จาก AI tool/skill/harness อื่น
@@ -12,7 +12,7 @@
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
 | 2026-08-30 12:00 | 2026-08-30 09:10 | completed | [จัด My Pi เป็น Capability Packages และ Pinned Releases](plans/capability-packages-and-pinned-releases.md) | `v0.2.0` pinned releaseผ่านและ Worker-profile decisions handoffไป delegated planแล้ว |
-| 2026-08-30 23:10 | 2026-08-28 15:32 | active — final Phase review | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | dual adapters + exact cwd readinessผ่าน 13/13; ถัดไป final Phase 2–3 review, productionยัง disabled |
+| 2026-08-30 23:45 | 2026-08-28 15:32 | active — resolver wiring | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | final Phase 2–3 PASS, runtime contract + profile 050ed48b 13/13; ถัดไป delegated resolver, productionยัง disabled |
 | 2026-08-28 15:32 | 2026-08-25 09:19 | superseded | [Pi Coordinator บน Herdr](plans/pi-herdr-coordinator.md) | เก็บ implementation/probe history; authority contract และ Phase 3 เดิมถูกแทนด้วย delegated-autonomy plan |
 | 2026-08-23 11:19 | 2026-08-22 12:40 | superseded | [แยก Workflow Plan, Continuity Ledger และ Plannotator Review](plans/flexible-planning-continuity.md) | implementation รุ่น managed fallback; ต่อมาถูกแทนด้วย pointer-only และ dual session/workspace tracking |
 | 2026-08-30 10:30 | 2026-08-09 11:10 | complete | [ย้ายและขยาย Azure DevOps extension](plans/azure-devops-extension-crud.md) | เพิ่ม opt-in Work Item CRUD; capabilityปัจจุบันอยู่ `capabilities/project-opt-in/azure-devops/` และ root stable manifestไม่โหลด |
@@ -24,6 +24,7 @@
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
 | 2026-08-30 23:05 | 2026-08-30 20:00 | acceptance PASS | [Agent-teams Generated-path Real-provider Acceptance](notes/agent-teams-generated-path-real-provider-acceptance.md) | exact read-only/worktree-write + crash/leader-loss/cleanupผ่าน 13/13 |
+| 2026-08-30 23:40 | 2026-08-30 23:15 | review PASS | [Delegated Orchestration Phase 2–3 Final Review](notes/delegated-orchestration-phase2-3-final-review.md) | ปิด Docker runtime-contract Medium; final candidateไม่มี High/Medium |
 | 2026-08-30 23:00 | 2026-08-30 22:40 | review PASS | [Worker Execution Adapters Independent Review](notes/worker-execution-adapters-independent-review.md) | ปิด wrong-cwd Mediumด้วย manifest/canonical cwd/readiness binding |
 | 2026-08-30 19:10 | 2026-08-30 18:30 | complete harness review | [Agent-teams Generated-path Acceptance Harness Review](notes/agent-teams-generated-path-acceptance-harness-review.md) | real-provider/replacement/cleanup harnessผ่าน review; executionรอ trusted machine setup |
 | 2026-08-30 18:10 | 2026-08-30 16:40 | complete review | [Worker Machine Setup Independent Review](notes/worker-machine-setup-independent-review.md) | source/revision/rotation/crash/stale-lock correctionsครบ; final re-review PASS |
@@ -41,6 +42,7 @@
 
 ## Change log
 
+- 2026-08-30 23:45 — final Phase 2–3 review PASS หลัง exact Docker runtime contract correction
 - 2026-08-30 23:10 — dual execution adaptersผ่าน independent reviewและ real-provider 13/13
 - 2026-08-30 21:40 — leader-loss child self-reconciliationและ recovery-worktree retentionผ่าน real-provider 11/11
 - 2026-08-30 21:00 — forced Worker crash + immediate same-name retryผ่าน 8/8 และ credential rotation integrationผ่าน
