@@ -229,6 +229,16 @@ try {
 	await leader.command(`/team send ${workerName} Create generated-profile-acceptance.json in the current worktree with exactly this JSON and no markdown: ${JSON.stringify(expectedArtifact)}. Use the write tool. Do not modify any other file.`);
 	const artifact = JSON.parse((await waitForFile(artifactPath, 300_000)).toString("utf8"));
 	if (JSON.stringify(artifact) !== JSON.stringify(expectedArtifact)) throw new Error("Worker artifact content did not match the acceptance contract");
+	const interactiveRequests = leader.events.filter((event) => {
+		if (!event || typeof event !== "object") return false;
+		const value = event as { type?: unknown; method?: unknown };
+		return value.type === "extension_ui_request" && ["confirm", "select", "input", "editor"].includes(String(value.method));
+	});
+	if (interactiveRequests.length !== 0) throw new Error("acceptance observed an interactive approval/input request");
+	const status = spawnSync("git", ["status", "--porcelain"], { cwd: workerCwd, encoding: "utf8", timeout: 10_000 });
+	if (status.status !== 0 || status.stdout.trim() !== "?? generated-profile-acceptance.json") {
+		throw new Error("real-provider task mutated files outside its exact worktree artifact contract");
+	}
 	await leader.command(`/team kill ${workerName}`);
 	const firstWorkerRoot = join(runtimeRoot, "runs", teamId, "workers", workerName);
 	await waitUntilAbsent(firstWorkerRoot);
@@ -251,6 +261,8 @@ try {
 	const checks = evidence.checks as Record<string, boolean>;
 	checks.realProviderArtifact = true;
 	checks.generatedSpawnReadiness = true;
+	checks.boundedWorktreeMutation = true;
+	checks.noInteractiveRequests = true;
 	checks.stopCleanup = true;
 	checks.sameNameReplacement = true;
 	checks.noReusableCredentialState = true;
@@ -258,8 +270,7 @@ try {
 	evidence.teamId = teamId;
 	evidence.workerName = workerName;
 	evidence.generatedProfileRootRemoved = true;
-	evidence.routineApprovals = 0;
-	evidence.humanSideEffects = 0;
+	evidence.interactiveRequestsObserved = interactiveRequests.length;
 	await writeFile(join(outputRoot, "acceptance.json"), `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
 	process.stdout.write(`${JSON.stringify(evidence, null, 2)}\n`);
 } catch (error) {

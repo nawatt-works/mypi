@@ -567,7 +567,7 @@ export default function orchestration(pi: ExtensionAPI): void {
 					};
 				}
 				if (result.code !== 0) throw new Error(`acceptance subprocess exited ${result.code ?? "without a status"}; redacted failure evidence was appended to session audit`);
-				const expectedChecks = ["generatedSpawnReadiness", "noReusableCredentialState", "realProviderArtifact", "sameNameReplacement", "stopCleanup"];
+				const expectedChecks = ["boundedWorktreeMutation", "generatedSpawnReadiness", "noInteractiveRequests", "noReusableCredentialState", "realProviderArtifact", "sameNameReplacement", "stopCleanup"];
 				const checks = evidence.checks && typeof evidence.checks === "object" && !Array.isArray(evidence.checks)
 					? evidence.checks as Record<string, unknown>
 					: {};

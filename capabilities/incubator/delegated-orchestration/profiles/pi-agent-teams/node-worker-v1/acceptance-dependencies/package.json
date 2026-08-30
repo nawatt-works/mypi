@@ -1,0 +1,11 @@
+{
+  "name": "mypi-agent-teams-acceptance-dependencies",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "0.84.4",
+    "@earendil-works/pi-coding-agent": "0.84.4",
+    "@earendil-works/pi-tui": "0.84.4",
+    "@sinclair/typebox": "0.34.48"
+  }
+}

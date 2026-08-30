@@ -874,10 +874,10 @@ index 78b8b47..e791a44 100644
 @@ -276,0 +280 @@ export function runWorker(pi: ExtensionAPI): void {
 +						setTimeout(() => process.exit(0), 25);
 diff --git a/extensions/teams/worktree.ts b/extensions/teams/worktree.ts
-index 845b04e..19cb0a7 100644
+index 845b04e..d4991d5 100644
 --- a/extensions/teams/worktree.ts
 +++ b/extensions/teams/worktree.ts
-@@ -42,0 +43,25 @@ export type WorktreeResult = {
+@@ -42,0 +43,31 @@ export type WorktreeResult = {
 +function managedWorktreesDir(teamDir: string, teamId: string): string {
 +	const configuredRuntimeRoot = process.env.PI_TEAMS_WORKER_RUNTIME_ROOT;
 +	if (!configuredRuntimeRoot) return path.join(teamDir, "worktrees");
@@ -900,12 +900,18 @@ index 845b04e..19cb0a7 100644
 +	const teamRoot = path.join(root, sanitizeName(teamId));
 +	fs.mkdirSync(teamRoot, { recursive: true, mode: 0o700 });
 +	fs.chmodSync(teamRoot, 0o700);
++	const teamInfo = fs.lstatSync(teamRoot);
++	if (teamInfo.isSymbolicLink() || !teamInfo.isDirectory() || fs.realpathSync(teamRoot) !== teamRoot) throw new Error("Managed team worktree root identity is invalid");
++	if (typeof process.getuid === "function" && teamInfo.uid !== process.getuid()) throw new Error("Managed team worktree root has a different owner");
++	if (process.platform !== "win32" && ((teamInfo.mode & 0o077) !== 0 || (teamInfo.mode & 0o700) !== 0o700)) {
++		throw new Error("Managed team worktree root must be private and owner-accessible");
++	}
 +	return teamRoot;
 +}
 +
-@@ -81 +106 @@ export async function ensureWorktreeCwd(opts: {
+@@ -81 +112 @@ export async function ensureWorktreeCwd(opts: {
 -	const worktreesDir = path.join(opts.teamDir, "worktrees");
 +	const worktreesDir = managedWorktreesDir(opts.teamDir, opts.teamId);
-@@ -158 +183 @@ export async function cleanupWorktrees(opts: {
+@@ -158 +189 @@ export async function cleanupWorktrees(opts: {
 -	const worktreesDir = path.join(opts.teamDir, "worktrees");
 +	const worktreesDir = managedWorktreesDir(opts.teamDir, opts.teamId);
