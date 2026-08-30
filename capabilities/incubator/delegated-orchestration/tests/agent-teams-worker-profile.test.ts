@@ -60,13 +60,14 @@ async function fixture(t: TestContext) {
 	const credentialRoot = join(runtimeRoot, "credential-leases", "run-1");
 	const credentialLeasePath = join(credentialRoot, "worker-a.auth.json");
 	const teamsRootDir = join(runtimeRoot, "coordination");
-	const worktree = join(root, "worktree");
+	const worktree = join(root, "worker-worktrees-v1", "run-1", "worker-a");
+	const leaderWorkspace = join(root, "leader-workspace");
 	const workerBoundaryPath = join(root, "worker-boundary.ts");
 	const teamsExtensionPath = join(root, "teams.ts");
 	const leaseAuthorityRoot = join(runtimeRoot, "lease-authority");
 	const consumedLeasesRoot = join(runtimeRoot, "consumed-leases");
 	const claimedLeasesRoot = join(runtimeRoot, "claimed-leases");
-	for (const path of [defaultAgentDir, worktree]) {
+	for (const path of [defaultAgentDir, worktree, leaderWorkspace]) {
 		await mkdir(path, { recursive: true, mode: 0o700 });
 		await chmod(path, 0o700);
 	}
@@ -95,6 +96,7 @@ async function fixture(t: TestContext) {
 	await writeFile(teamsExtensionPath, "export default function teams() {}\n", { mode: 0o600 });
 	const agentTeamsWorkerProfilePath = fileURLToPath(new URL("../extensions/agent-teams-worker-profile.ts", import.meta.url));
 	const workerProfileRuntimePath = fileURLToPath(new URL("../extensions/worker-profile-runtime.ts", import.meta.url));
+	const workerExecutionAdapterPath = fileURLToPath(new URL("../extensions/worker-execution-adapters.ts", import.meta.url));
 	const configuration: AgentTeamsWorkerProfileConfiguration = {
 		runtimeRoot,
 		defaultAgentDir,
@@ -111,6 +113,8 @@ async function fixture(t: TestContext) {
 		workerProfileRuntimeSha256: createHash("sha256").update(await readFile(workerProfileRuntimePath)).digest("hex"),
 		agentTeamsWorkerProfilePath,
 		agentTeamsWorkerProfileSha256: createHash("sha256").update(await readFile(agentTeamsWorkerProfilePath)).digest("hex"),
+		workerExecutionAdapterPath,
+		workerExecutionAdapterSha256: createHash("sha256").update(await readFile(workerExecutionAdapterPath)).digest("hex"),
 		maxWorkers: 2,
 		leasePublicKeyPath,
 		leasePublicKeySha256: createHash("sha256").update(publicKeyPem).digest("hex"),
@@ -125,6 +129,8 @@ async function fixture(t: TestContext) {
 		runId: "run-1",
 		workerId: "worker-a",
 		worktree,
+		leaderWorkspace,
+		executionMode: "worktree-write",
 		teamId: "team-1",
 		taskListId: "tasks-1",
 		leadName: "team-lead",
@@ -135,7 +141,7 @@ async function fixture(t: TestContext) {
 		style: "default",
 	};
 	return {
-		root, runtimeRoot, defaultAgentDir, credentialRoot, credentialLeasePath, teamsRootDir, worktree,
+		root, runtimeRoot, defaultAgentDir, credentialRoot, credentialLeasePath, teamsRootDir, worktree, leaderWorkspace,
 		configuration, spawn, privateKey, publicKeyPem, leaseRaw, issueLease: issueFixtureLease, consumedLeasesRoot, claimedLeasesRoot,
 	};
 }
@@ -276,6 +282,8 @@ test("materializes an exact child profile from a signed single-use lease without
 	assert.deepEqual(worker.childArgs, worker.profile.manifest.launchArgs.slice(2));
 	assert.deepEqual(worker.childArgs.slice(0, 4), ["--name", "mypi-worker:worker-a", "--session-dir", worker.profile.manifest.paths.sessions]);
 	assert.deepEqual(worker.profile.manifest.resources.tools, ["read", "bash", "edit", "write", "team_message"]);
+	assert.equal(worker.profile.manifest.workspaceMode, "worktree-write");
+	assert.equal(worker.profile.environment.MYPI_AGENT_TEAMS_EXECUTION_ADAPTER, "worktree-write-v1");
 	assert.deepEqual(worker.profile.manifest.resources.extensions.map((entry) => entry.path), [
 		await realpath(f.configuration.workerBoundaryPath),
 		await realpath(f.configuration.teamsExtensionPath),
@@ -297,6 +305,24 @@ test("materializes an exact child profile from a signed single-use lease without
 		expectedProfileDigest: worker.profile.manifest.profileDigest,
 	});
 	await assert.rejects(() => lstat(worker.profile.manifest.paths.workerRoot), /ENOENT/);
+});
+
+test("materializes a read-only profile with no shell or mutation tools", async (t) => {
+	const f = await fixture(t);
+	const worker = await materializeAgentTeamsWorkerProfile({
+		configuration: f.configuration,
+		spawn: { ...f.spawn, worktree: f.leaderWorkspace, executionMode: "read-only" },
+		environment: { PATH: "/bin" },
+		now: NOW,
+	});
+	assert.equal(worker.profile.manifest.workspaceMode, "read-only");
+	assert.deepEqual(worker.profile.manifest.resources.tools, ["read", "team_message"]);
+	assert.equal(worker.profile.environment.MYPI_AGENT_TEAMS_EXECUTION_ADAPTER, "read-only-v1");
+	assert.equal(worker.profile.environment.MYPI_AGENT_TEAMS_WORKSPACE_MODE, "read-only");
+	assert.equal(worker.childArgs.includes("bash"), false);
+	assert.equal(worker.childArgs.includes("edit"), false);
+	assert.equal(worker.childArgs.includes("write"), false);
+	await cleanupAgentTeamsWorkerProfile({ worker, runtimeRoot: f.runtimeRoot, expectedProfileDigest: worker.profile.manifest.profileDigest });
 });
 
 test("binds signed leases to run, Worker, provider, nonce, TTL, and authority key", async (t) => {
@@ -376,10 +402,12 @@ test("binds signed leases to run, Worker, provider, nonce, TTL, and authority ke
 	const run2Root = join(f.runtimeRoot, "credential-leases", "run-2");
 	await mkdir(run2Root, { mode: 0o700 });
 	const run2Lease = join(run2Root, "worker-a.auth.json");
+	const run2Worktree = join(f.root, "worker-worktrees-v1", "run-2", "worker-a");
+	await mkdir(run2Worktree, { recursive: true, mode: 0o700 });
 	await writeFile(run2Lease, f.leaseRaw, { mode: 0o600 });
 	await assert.rejects(() => materializeAgentTeamsWorkerProfile({
 		configuration: f.configuration,
-		spawn: { ...f.spawn, runId: "run-2", credentialLeasePath: run2Lease },
+		spawn: { ...f.spawn, runId: "run-2", worktree: run2Worktree, credentialLeasePath: run2Lease },
 		environment: { PATH: "/bin" },
 		now: NOW,
 	}), /identity does not match/);
@@ -398,10 +426,12 @@ test("rejects copied leases across Workers and persistent replay after cleanup",
 	}), /already consumed/);
 
 	const workerBLease = join(f.credentialRoot, "worker-b.auth.json");
+	const workerBWorktree = join(f.root, "worker-worktrees-v1", "run-1", "worker-b");
+	await mkdir(workerBWorktree, { recursive: true, mode: 0o700 });
 	await writeFile(workerBLease, f.leaseRaw, { mode: 0o600 });
 	await assert.rejects(() => materializeAgentTeamsWorkerProfile({
 		configuration: f.configuration,
-		spawn: { ...f.spawn, workerId: "worker-b", credentialLeasePath: workerBLease },
+		spawn: { ...f.spawn, workerId: "worker-b", worktree: workerBWorktree, credentialLeasePath: workerBLease },
 		environment: { PATH: "/bin" },
 		now: NOW,
 	}), /identity does not match/);
@@ -425,6 +455,8 @@ test("keeps mutable state disjoint when the authority issues distinct Worker lea
 	const f = await fixture(t);
 	const first = await materializeAgentTeamsWorkerProfile({ configuration: f.configuration, spawn: f.spawn, environment: { PATH: "/bin" }, now: NOW });
 	const secondLease = join(f.credentialRoot, "worker-b.auth.json");
+	const secondWorktree = join(f.root, "worker-worktrees-v1", "run-1", "worker-b");
+	await mkdir(secondWorktree, { recursive: true, mode: 0o700 });
 	await writeFile(secondLease, f.issueLease({
 		leaseId: "lease-worker-b-1",
 		runId: "run-1",
@@ -432,7 +464,7 @@ test("keeps mutable state disjoint when the authority issues distinct Worker lea
 	}), { mode: 0o600 });
 	const second = await materializeAgentTeamsWorkerProfile({
 		configuration: f.configuration,
-		spawn: { ...f.spawn, workerId: "worker-b", credentialLeasePath: secondLease },
+		spawn: { ...f.spawn, workerId: "worker-b", worktree: secondWorktree, credentialLeasePath: secondLease },
 		environment: { PATH: "/bin" },
 		now: NOW,
 	});
@@ -500,6 +532,24 @@ test("requires exact coordination, trusted extensions, Worker limits, and public
 		environment: { PATH: "/bin" },
 		now: NOW,
 	}), /runtime digest mismatch/);
+	await assert.rejects(() => materializeAgentTeamsWorkerProfile({
+		configuration: { ...f.configuration, workerExecutionAdapterSha256: "f".repeat(64) },
+		spawn: f.spawn,
+		environment: { PATH: "/bin" },
+		now: NOW,
+	}), /execution adapter digest mismatch/);
+	await assert.rejects(() => materializeAgentTeamsWorkerProfile({
+		configuration: f.configuration,
+		spawn: { ...f.spawn, executionMode: "read-only" },
+		environment: { PATH: "/bin" },
+		now: NOW,
+	}), /read-only adapter must use the exact leader workspace/);
+	await assert.rejects(() => materializeAgentTeamsWorkerProfile({
+		configuration: f.configuration,
+		spawn: { ...f.spawn, worktree: f.leaderWorkspace },
+		environment: { PATH: "/bin" },
+		now: NOW,
+	}), /exact disjoint managed Worker worktree/);
 	await assert.rejects(() => materializeAgentTeamsWorkerProfile({
 		configuration: { ...f.configuration, maxWorkers: 4 },
 		spawn: f.spawn,

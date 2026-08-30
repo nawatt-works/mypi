@@ -66,6 +66,17 @@ test("denies sensitive files and repository-control paths through lexical or can
 	await assert.rejects(() => validator.assertPath(join(workspace, "src", "innocent-link.txt"), "read"), /canonical sensitive path/);
 });
 
+test("read-only mode permits reads but rejects every write path", async (t) => {
+	const { root, workspace } = await fixture();
+	t.after(() => rm(root, { recursive: true, force: true }));
+	const operations = createScopedToolOperations({ workspaceRoot: workspace, workspaceMode: "read-only" });
+	assert.equal((await operations.read.readFile(join(workspace, "src", "input.txt"))).toString(), "INPUT\n");
+	await assert.rejects(() => operations.write.writeFile(join(workspace, "output.txt"), "NO\n"), /read-only execution adapter/);
+	await assert.rejects(() => operations.write.mkdir(join(workspace, "generated")), /read-only execution adapter/);
+	await assert.rejects(() => operations.edit.access(join(workspace, "src", "input.txt")), /read-only execution adapter/);
+	await assert.rejects(() => operations.edit.writeFile(join(workspace, "src", "input.txt"), "NO\n"), /read-only execution adapter/);
+});
+
 test("rejects malformed policy roots and relative operation paths", async (t) => {
 	assert.throws(() => createScopedPathValidator({ workspaceRoot: "relative/worktree" }), /absolute path/);
 	const { root, workspace } = await fixture();

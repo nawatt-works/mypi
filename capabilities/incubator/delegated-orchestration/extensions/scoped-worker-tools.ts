@@ -14,6 +14,7 @@ export type ScopedPathAccess = "read" | "write";
 
 export type ScopedWorkerPathPolicy = {
 	workspaceRoot: string;
+	workspaceMode?: "read-only" | "worktree-write";
 	denySensitivePaths?: boolean;
 	protectedSegments?: readonly string[];
 };
@@ -59,11 +60,13 @@ export function createScopedPathValidator(policy: ScopedWorkerPathPolicy): {
 	if (!isAbsolute(policy.workspaceRoot)) throw new Error("workspaceRoot must be an absolute path");
 	const workspaceRoot = resolve(policy.workspaceRoot);
 	const canonicalRootPromise = realpath(workspaceRoot);
+	const workspaceMode = policy.workspaceMode ?? "worktree-write";
 	const denySensitivePaths = policy.denySensitivePaths ?? true;
 	const protectedSegments = new Set(policy.protectedSegments ?? DEFAULT_PROTECTED_SEGMENTS);
 
 	return {
 		async assertPath(absolutePath, access) {
+			if (workspaceMode === "read-only" && access === "write") throw new Error("Scoped Worker write denied by read-only execution adapter");
 			if (!isAbsolute(absolutePath)) throw new Error("Scoped Worker operation requires an absolute path");
 			const requestedPath = resolve(absolutePath);
 			if (!isWithin(requestedPath, workspaceRoot)) {

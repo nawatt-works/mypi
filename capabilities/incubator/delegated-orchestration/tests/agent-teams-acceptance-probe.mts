@@ -226,12 +226,14 @@ try {
 	const state = await leader.send({ type: "get_state" }, 20_000);
 	teamId = String((state.data as { sessionId?: unknown })?.sessionId ?? "");
 	if (!ID.test(teamId)) throw new Error("leader did not expose a bounded session/team identity");
-	await leader.command(`/team spawn ${workerName} fresh worktree`);
 	const teamConfigPath = join(runtimeRoot, "coordination", teamId, "config.json");
-	type PersistedMember = { name?: string; status?: string; cwd?: string; meta?: { childProfile?: { generatedProfileDigest?: unknown; leaseId?: unknown; processId?: unknown } } };
-	const readPersistedMember = async (): Promise<PersistedMember> => {
+	type PersistedMember = { name?: string; status?: string; cwd?: string; meta?: { childProfile?: {
+		generatedProfileDigest?: unknown; leaseId?: unknown; processId?: unknown; executionMode?: unknown; executionAdapter?: unknown;
+		tools?: unknown; boundaryReadiness?: { workspaceMode?: unknown; executionAdapter?: unknown; tools?: unknown };
+	} } };
+	const readPersistedMember = async (expectedName = workerName): Promise<PersistedMember> => {
 		const config = JSON.parse((await readFile(teamConfigPath, "utf8"))) as { members?: PersistedMember[] };
-		const member = config.members?.find((entry) => entry.name === workerName);
+		const member = config.members?.find((entry) => entry.name === expectedName);
 		if (!member || member.status !== "online" || typeof member.cwd !== "string" ||
 			typeof member.meta?.childProfile?.generatedProfileDigest !== "string" || typeof member.meta.childProfile.leaseId !== "string" ||
 			!Number.isSafeInteger(member.meta.childProfile.processId)) {
@@ -239,7 +241,29 @@ try {
 		}
 		return member;
 	};
+	const readerName = "acceptance-reader";
+	await leader.command(`/team spawn ${readerName} fresh shared`);
+	const reader = await readPersistedMember(readerName);
+	const readerBoundary = reader.meta!.childProfile!.boundaryReadiness!;
+	if (await realpath(reader.cwd!) !== await realpath(fixture) || reader.meta!.childProfile!.executionMode !== "read-only" ||
+		reader.meta!.childProfile!.executionAdapter !== "read-only-v1" || JSON.stringify(reader.meta!.childProfile!.tools) !== JSON.stringify(["read"]) ||
+		readerBoundary.workspaceMode !== "read-only" || readerBoundary.executionAdapter !== "read-only-v1" ||
+		JSON.stringify(readerBoundary.tools) !== JSON.stringify(["read", "team_message"])) {
+		throw new Error("read-only Worker did not bind the exact shared-workspace tool/mount/policy adapter");
+	}
+	await leader.command(`/team kill ${readerName}`);
+	await waitUntilAbsent(join(runtimeRoot, "runs", teamId, "workers", readerName));
+	const readerStatus = spawnSync("git", ["status", "--porcelain"], { cwd: fixture, encoding: "utf8", timeout: 10_000 });
+	if (readerStatus.status !== 0 || readerStatus.stdout.trim() !== "") throw new Error("read-only Worker mutated the leader workspace");
+	await leader.command(`/team spawn ${workerName} fresh worktree`);
 	const member = await readPersistedMember();
+	const writerBoundary = member.meta!.childProfile!.boundaryReadiness!;
+	if (member.meta!.childProfile!.executionMode !== "worktree-write" || member.meta!.childProfile!.executionAdapter !== "worktree-write-v1" ||
+		JSON.stringify(member.meta!.childProfile!.tools) !== JSON.stringify(["read", "bash", "edit", "write"]) ||
+		writerBoundary.workspaceMode !== "worktree-write" || writerBoundary.executionAdapter !== "worktree-write-v1" ||
+		JSON.stringify(writerBoundary.tools) !== JSON.stringify(["bash", "edit", "read", "team_message", "write"])) {
+		throw new Error("worktree-write Worker did not bind the exact isolated-worktree tool/mount/policy adapter");
+	}
 	const firstGeneration = {
 		profileDigest: member.meta!.childProfile!.generatedProfileDigest as string,
 		leaseId: member.meta!.childProfile!.leaseId as string,
@@ -299,6 +323,8 @@ try {
 	if (claimed.length !== 0 || leases.length !== 0) throw new Error("reusable Worker credential lease state remained after cleanup");
 	const checks = evidence.checks as Record<string, boolean>;
 	checks.realProviderArtifact = true;
+	checks.exactReadOnlyAdapter = true;
+	checks.exactWorktreeWriteAdapter = true;
 	checks.generatedSpawnReadiness = true;
 	checks.boundedWorktreeMutation = true;
 	checks.noInteractiveRequests = true;

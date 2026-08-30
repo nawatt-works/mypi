@@ -129,7 +129,8 @@ try {
 		entrySha256: digest("e"),
 		sourceSha256: digest("f"),
 		tools: ["read"],
-		workspaceMode: "worktree",
+		workspaceMode: "worktree-write",
+		executionAdapter: "worktree-write-v1",
 		maxWorkers: 2,
 	};
 	const commonStart = {
@@ -146,7 +147,7 @@ try {
 
 	const exactEnvironmentExtension = join(temporaryRoot, "exact-environment.ts");
 	const exactEnvironmentExpected = { ...expectedReadiness, boundaryPath: exactEnvironmentExtension };
-	writeFileSync(exactEnvironmentExtension, `export default function exactEnvironment(pi) { pi.on("session_start", () => { if (process.env.LC_SECRET_TOKEN) process.exit(78); process.stderr.write("MYPI_WORKER_BOUNDARY_READY " + JSON.stringify({contractDigest:"${exactEnvironmentExpected.contractDigest}",runtimeContractDigest:"${exactEnvironmentExpected.runtimeContractDigest}",generatedProfileDigest:"${exactEnvironmentExpected.generatedProfileDigest}",leaseId:"${exactEnvironmentExpected.leaseId}",nonceDigest:"${exactEnvironmentExpected.nonceDigest}",teamId:process.env.PI_TEAMS_TEAM_ID??"",workerName:process.env.PI_TEAMS_AGENT_NAME??"",boundaryPath:${JSON.stringify(exactEnvironmentExtension)},boundarySha256:"${exactEnvironmentExpected.boundarySha256}",entryPath:${JSON.stringify(exactEnvironmentExpected.entryPath)},entrySha256:"${exactEnvironmentExpected.entrySha256}",sourceSha256:"${exactEnvironmentExpected.sourceSha256}",tools:["read"],environmentKeys:Object.keys(process.env).sort(),workspaceMode:"worktree",maxWorkers:2}) + "\\n"); }); }\n`);
+	writeFileSync(exactEnvironmentExtension, `export default function exactEnvironment(pi) { pi.on("session_start", () => { if (process.env.LC_SECRET_TOKEN) process.exit(78); process.stderr.write("MYPI_WORKER_BOUNDARY_READY " + JSON.stringify({contractDigest:"${exactEnvironmentExpected.contractDigest}",runtimeContractDigest:"${exactEnvironmentExpected.runtimeContractDigest}",generatedProfileDigest:"${exactEnvironmentExpected.generatedProfileDigest}",leaseId:"${exactEnvironmentExpected.leaseId}",nonceDigest:"${exactEnvironmentExpected.nonceDigest}",teamId:process.env.PI_TEAMS_TEAM_ID??"",workerName:process.env.PI_TEAMS_AGENT_NAME??"",boundaryPath:${JSON.stringify(exactEnvironmentExtension)},boundarySha256:"${exactEnvironmentExpected.boundarySha256}",entryPath:${JSON.stringify(exactEnvironmentExpected.entryPath)},entrySha256:"${exactEnvironmentExpected.entrySha256}",sourceSha256:"${exactEnvironmentExpected.sourceSha256}",tools:["read"],environmentKeys:Object.keys(process.env).sort(),workspaceMode:"worktree-write",executionAdapter:"worktree-write-v1",maxWorkers:2}) + "\\n"); }); }\n`);
 	process.env.LC_SECRET_TOKEN = "must-not-reach-worker";
 	const exactEnvironment = new TeammateRpc("exact-environment");
 	let exactEnvironmentError = "";
@@ -162,7 +163,7 @@ try {
 	record("exact-environment-no-ambient-lc-secret", exactEnvironmentError === "", exactEnvironmentError || "ambient LC secret was not inherited");
 
 	const forgedExtension = expectedReadiness.boundaryPath;
-	writeFileSync(forgedExtension, `export default function forged(pi) { pi.on("session_start", () => process.stderr.write("MYPI_WORKER_BOUNDARY_READY " + JSON.stringify({contractDigest:"${expectedReadiness.contractDigest}",runtimeContractDigest:"${expectedReadiness.runtimeContractDigest}",generatedProfileDigest:"${expectedReadiness.generatedProfileDigest}",leaseId:"${expectedReadiness.leaseId}",nonceDigest:"${digest("a")}",teamId:process.env.PI_TEAMS_TEAM_ID??"",workerName:process.env.PI_TEAMS_AGENT_NAME??"",boundaryPath:${JSON.stringify(forgedExtension)},boundarySha256:"${expectedReadiness.boundarySha256}",entryPath:${JSON.stringify(expectedReadiness.entryPath)},entrySha256:"${expectedReadiness.entrySha256}",sourceSha256:"${expectedReadiness.sourceSha256}",tools:["read"],environmentKeys:Object.keys(process.env).sort(),workspaceMode:"worktree",maxWorkers:2}) + "\\n")); }\n`);
+	writeFileSync(forgedExtension, `export default function forged(pi) { pi.on("session_start", () => process.stderr.write("MYPI_WORKER_BOUNDARY_READY " + JSON.stringify({contractDigest:"${expectedReadiness.contractDigest}",runtimeContractDigest:"${expectedReadiness.runtimeContractDigest}",generatedProfileDigest:"${expectedReadiness.generatedProfileDigest}",leaseId:"${expectedReadiness.leaseId}",nonceDigest:"${digest("a")}",teamId:process.env.PI_TEAMS_TEAM_ID??"",workerName:process.env.PI_TEAMS_AGENT_NAME??"",boundaryPath:${JSON.stringify(forgedExtension)},boundarySha256:"${expectedReadiness.boundarySha256}",entryPath:${JSON.stringify(expectedReadiness.entryPath)},entrySha256:"${expectedReadiness.entrySha256}",sourceSha256:"${expectedReadiness.sourceSha256}",tools:["read"],environmentKeys:Object.keys(process.env).sort(),workspaceMode:"worktree-write",executionAdapter:"worktree-write-v1",maxWorkers:2}) + "\\n")); }\n`);
 	const forged = new TeammateRpc("forged-marker");
 	let forgedError = "";
 	try {
@@ -187,7 +188,7 @@ try {
 
 	const raceExtension = join(temporaryRoot, "readiness-race.ts");
 	const raceExpected = { ...expectedReadiness, boundaryPath: raceExtension, nonceDigest: digest("9") };
-	writeFileSync(raceExtension, `export default function race(pi) { pi.on("session_start", () => { process.stderr.write("MYPI_WORKER_BOUNDARY_READY " + JSON.stringify({contractDigest:"${raceExpected.contractDigest}",runtimeContractDigest:"${raceExpected.runtimeContractDigest}",generatedProfileDigest:"${raceExpected.generatedProfileDigest}",leaseId:"${raceExpected.leaseId}",nonceDigest:"${raceExpected.nonceDigest}",teamId:process.env.PI_TEAMS_TEAM_ID??"",workerName:process.env.PI_TEAMS_AGENT_NAME??"",boundaryPath:${JSON.stringify(raceExtension)},boundarySha256:"${raceExpected.boundarySha256}",entryPath:${JSON.stringify(raceExpected.entryPath)},entrySha256:"${raceExpected.entrySha256}",sourceSha256:"${raceExpected.sourceSha256}",tools:["read"],environmentKeys:Object.keys(process.env).sort(),workspaceMode:"worktree",maxWorkers:2}) + "\\n"); setTimeout(() => process.exit(78), 500); }); }\n`);
+	writeFileSync(raceExtension, `export default function race(pi) { pi.on("session_start", () => { process.stderr.write("MYPI_WORKER_BOUNDARY_READY " + JSON.stringify({contractDigest:"${raceExpected.contractDigest}",runtimeContractDigest:"${raceExpected.runtimeContractDigest}",generatedProfileDigest:"${raceExpected.generatedProfileDigest}",leaseId:"${raceExpected.leaseId}",nonceDigest:"${raceExpected.nonceDigest}",teamId:process.env.PI_TEAMS_TEAM_ID??"",workerName:process.env.PI_TEAMS_AGENT_NAME??"",boundaryPath:${JSON.stringify(raceExtension)},boundarySha256:"${raceExpected.boundarySha256}",entryPath:${JSON.stringify(raceExpected.entryPath)},entrySha256:"${raceExpected.entrySha256}",sourceSha256:"${raceExpected.sourceSha256}",tools:["read"],environmentKeys:Object.keys(process.env).sort(),workspaceMode:"worktree-write",executionAdapter:"worktree-write-v1",maxWorkers:2}) + "\\n"); setTimeout(() => process.exit(78), 500); }); }\n`);
 	const race = new TeammateRpc("startup-race");
 	let raceError = "";
 	try {

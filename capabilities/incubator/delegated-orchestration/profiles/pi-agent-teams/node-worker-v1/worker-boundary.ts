@@ -19,6 +19,7 @@ import {
 } from "../../../extensions/command-policy.ts";
 import { analyzeToolCall } from "@nawatt-works/mypi-safety-guardrails";
 import { createScopedToolOperations } from "../../../extensions/scoped-worker-tools.ts";
+import { resolveWorkerExecutionAdapter, WORKER_EXECUTION_ADAPTERS } from "../../../extensions/worker-execution-adapters.ts";
 import {
 	cleanupMaterializedWorkerProfile,
 	type MaterializedWorkerProfileManifest,
@@ -44,6 +45,7 @@ type WorkerProfile = {
 		agentTeamsWorkerProfileSha256: string;
 		commandPolicySha256: string;
 		scopedWorkerToolsSha256: string;
+		workerExecutionAdaptersSha256: string;
 	};
 	integration: {
 		upstreamCommit: string;
@@ -62,11 +64,7 @@ type WorkerProfile = {
 		tmpfs: string;
 		workdir: "/workspace";
 	};
-	workerResources: {
-		tools: ["read", "bash", "edit", "write"];
-		backendTools: ["team_message"];
-		workspaceMode: "worktree";
-	};
+	executionAdapters: typeof WORKER_EXECUTION_ADAPTERS;
 };
 
 function sha256File(path: string): string {
@@ -113,9 +111,8 @@ export function loadWorkerProfile(): WorkerProfile {
 		throw new Error("Worker profile weakens required Docker boundary");
 	}
 	if (profile.runtime.user !== "node" || profile.runtime.workdir !== "/workspace") throw new Error("unexpected Worker runtime identity");
-	if (JSON.stringify(profile.workerResources.tools) !== JSON.stringify(["read", "bash", "edit", "write"]) ||
-		JSON.stringify(profile.workerResources.backendTools) !== JSON.stringify(["team_message"])) {
-		throw new Error("unexpected Worker tool set");
+	if (JSON.stringify(profile.executionAdapters) !== JSON.stringify(WORKER_EXECUTION_ADAPTERS)) {
+		throw new Error("unexpected Worker execution adapter contracts");
 	}
 	return profile;
 }
@@ -131,11 +128,11 @@ function deriveBoundaryContractDigest(profile: WorkerProfile, boundaryPath: stri
 		agentTeamsWorkerProfileSha256: profile.toolchain.agentTeamsWorkerProfileSha256,
 		commandPolicySha256: profile.toolchain.commandPolicySha256,
 		scopedWorkerToolsSha256: profile.toolchain.scopedWorkerToolsSha256,
+		workerExecutionAdaptersSha256: profile.toolchain.workerExecutionAdaptersSha256,
 		imageDigest: profile.toolchain.observedLocalImageDigest,
-		childTools: profile.workerResources.tools,
+		executionAdapters: profile.executionAdapters,
 		childExtensions: [boundaryPath],
 		maxWorkers,
-		forceWorktree: true,
 	}));
 }
 
@@ -170,6 +167,7 @@ export function verifyWorkerProfileArtifacts(profile: WorkerProfile): void {
 	requireHash("agent-teams Worker profile adapter", join(REPOSITORY_ROOT, "extensions", "agent-teams-worker-profile.ts"), profile.toolchain.agentTeamsWorkerProfileSha256);
 	requireHash("command policy", join(REPOSITORY_ROOT, "extensions", "command-policy.ts"), profile.toolchain.commandPolicySha256);
 	requireHash("scoped Worker tools", join(REPOSITORY_ROOT, "extensions", "scoped-worker-tools.ts"), profile.toolchain.scopedWorkerToolsSha256);
+	requireHash("Worker execution adapters", join(REPOSITORY_ROOT, "extensions", "worker-execution-adapters.ts"), profile.toolchain.workerExecutionAdaptersSha256);
 	requireHash("agent-teams overlay", join(PROFILE_DIR, "agent-teams-overlay.patch"), profile.integration.overlayPatchSha256);
 }
 
@@ -287,10 +285,18 @@ async function reconcileLeaderLoss(generatedProfileDigest: string): Promise<void
 	// An orderly leader may have completed authority-bound cleanup before the
 	// child observes pipe closure. That state is already reconciled.
 	if (!existsSync(manifestPathValue)) return;
-	const manifestPath = realpathSync(manifestPathValue);
-	const manifestInfo = lstatSync(manifestPath);
+	let manifestPath: string;
+	let manifestInfo: ReturnType<typeof lstatSync>;
+	let manifest: MaterializedWorkerProfileManifest;
+	try {
+		manifestPath = realpathSync(manifestPathValue);
+		manifestInfo = lstatSync(manifestPath);
+		manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as MaterializedWorkerProfileManifest;
+	} catch (error) {
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+		throw error;
+	}
 	if (manifestInfo.isSymbolicLink() || !manifestInfo.isFile()) throw new Error("leader-loss Worker manifest identity is invalid");
-	const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as MaterializedWorkerProfileManifest;
 	if (manifest.profileDigest !== generatedProfileDigest || manifest.paths.manifest !== manifestPath || manifest.workerId !== workerId || manifest.runId !== teamId) {
 		throw new Error("leader-loss Worker manifest does not match the ready generation");
 	}
@@ -332,7 +338,9 @@ async function reconcileLeaderLoss(generatedProfileDigest: string): Promise<void
 export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 	const cwd = process.cwd();
 	const profile = loadWorkerProfile();
-	const scoped = createScopedToolOperations({ workspaceRoot: cwd });
+	const executionAdapter = resolveWorkerExecutionAdapter(process.env.MYPI_AGENT_TEAMS_WORKSPACE_MODE ?? "");
+	if (process.env.MYPI_AGENT_TEAMS_EXECUTION_ADAPTER !== executionAdapter.id) throw new Error("managed Worker execution adapter identity mismatch");
+	const scoped = createScopedToolOperations({ workspaceRoot: cwd, workspaceMode: executionAdapter.workspaceMode });
 	const readTool = createReadTool(cwd, { operations: scoped.read });
 	const writeTool = createWriteTool(cwd, { operations: scoped.write });
 	const editTool = createEditTool(cwd, { operations: scoped.edit });
@@ -353,21 +361,21 @@ export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 			return readTool.execute(...args);
 		},
 	});
-	pi.registerTool({
+	if (executionAdapter.workspaceMode === "worktree-write") pi.registerTool({
 		...writeTool,
 		async execute(...args) {
 			assertReady();
 			return writeTool.execute(...args);
 		},
 	});
-	pi.registerTool({
+	if (executionAdapter.workspaceMode === "worktree-write") pi.registerTool({
 		...editTool,
 		async execute(...args) {
 			assertReady();
 			return editTool.execute(...args);
 		},
 	});
-	pi.registerTool({
+	if (executionAdapter.workspaceMode === "worktree-write") pi.registerTool({
 		...bashTool,
 		label: "bash (My Pi immutable Worker boundary)",
 		async execute(id, input, signal, onUpdate) {
@@ -416,14 +424,16 @@ export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 			if (!requestedBoundaryPath || realpathSync(requestedBoundaryPath) !== boundaryPath) throw new Error("managed Worker boundary path mismatch");
 			const maxWorkers = Number(process.env.MYPI_AGENT_TEAMS_MAX_WORKERS);
 			if (!Number.isSafeInteger(maxWorkers) || maxWorkers < 1 || maxWorkers > 3) throw new Error("managed Worker ceiling is missing or invalid");
-			if (process.env.MYPI_AGENT_TEAMS_WORKSPACE_MODE !== "worktree") throw new Error("managed Worker workspace mode must be worktree");
+			if (process.env.MYPI_AGENT_TEAMS_WORKSPACE_MODE !== executionAdapter.workspaceMode || process.env.MYPI_AGENT_TEAMS_EXECUTION_ADAPTER !== executionAdapter.id) {
+				throw new Error("managed Worker execution adapter contract mismatch");
+			}
 			verifyWorkerProfileArtifacts(profile);
 			const entryPath = verifyManagedAgentTeamsSource(profile);
-			verifyDockerBoundary(profile);
+			if (executionAdapter.workspaceMode === "worktree-write") verifyDockerBoundary(profile);
 			const activeTools = [...pi.getActiveTools()].sort();
 			// Pi reports built-ins and extension tools together. The backend tool is
 			// pinned by both the immutable profile and the verified teams source.
-			const expectedTools = [...profile.workerResources.tools, ...profile.workerResources.backendTools].sort();
+			const expectedTools = [...executionAdapter.builtinTools, ...executionAdapter.backendTools].sort();
 			if (JSON.stringify(activeTools) !== JSON.stringify(expectedTools)) {
 				throw new Error(`observed Worker tool set mismatch: ${activeTools.join(",")}`);
 			}
@@ -444,7 +454,8 @@ export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 				sourceSha256: profile.integration.patchedTeamsSourceSha256,
 				tools: activeTools,
 				environmentKeys: Object.keys(process.env).sort(),
-				workspaceMode: "worktree",
+				workspaceMode: executionAdapter.workspaceMode,
+				executionAdapter: executionAdapter.id,
 				maxWorkers,
 			};
 			const leaderPid = process.ppid;

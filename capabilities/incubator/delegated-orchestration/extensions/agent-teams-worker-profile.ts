@@ -10,8 +10,7 @@ import {
 	type WorkerCredential,
 } from "./worker-profile-runtime.ts";
 import { verifyWorkerMachine, withWorkerMachineAuthorityLock } from "./worker-machine-setup.ts";
-
-const AGENT_TEAMS_TOOLS = ["read", "bash", "edit", "write", "team_message"] as const;
+import { resolveWorkerExecutionAdapter, type WorkerExecutionMode } from "./worker-execution-adapters.ts";
 const DIGEST = /^[a-f0-9]{64}$/;
 const IDENTIFIER = /^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$/;
 const MAX_LEASE_TTL_MS = 5 * 60_000;
@@ -33,6 +32,8 @@ export type AgentTeamsWorkerProfileConfiguration = {
 	workerProfileRuntimeSha256: string;
 	agentTeamsWorkerProfilePath: string;
 	agentTeamsWorkerProfileSha256: string;
+	workerExecutionAdapterPath: string;
+	workerExecutionAdapterSha256: string;
 	maxWorkers: number;
 	leasePublicKeyPath: string;
 	leasePublicKeySha256: string;
@@ -42,6 +43,8 @@ export type AgentTeamsWorkerSpawnIdentity = {
 	runId: string;
 	workerId: string;
 	worktree: string;
+	leaderWorkspace: string;
+	executionMode: WorkerExecutionMode;
 	teamId: string;
 	taskListId: string;
 	leadName: string;
@@ -419,9 +422,11 @@ export async function materializeAgentTeamsWorkerProfile(input: {
 	const runtimeAuthorityDigest = requireDigest("runtimeAuthorityDigest", configuration.runtimeAuthorityDigest);
 	const workerProfileRuntimePath = await canonicalFile("workerProfileRuntimePath", configuration.workerProfileRuntimePath);
 	const agentTeamsWorkerProfilePath = await canonicalFile("agentTeamsWorkerProfilePath", configuration.agentTeamsWorkerProfilePath);
+	const workerExecutionAdapterPath = await canonicalFile("workerExecutionAdapterPath", configuration.workerExecutionAdapterPath);
 	const expectedAdapterPath = await realpath(fileURLToPath(import.meta.url));
 	const expectedRuntimePath = await realpath(join(dirname(expectedAdapterPath), "worker-profile-runtime.ts"));
-	if (agentTeamsWorkerProfilePath !== expectedAdapterPath || workerProfileRuntimePath !== expectedRuntimePath) {
+	const expectedExecutionAdapterPath = await realpath(join(dirname(expectedAdapterPath), "worker-execution-adapters.ts"));
+	if (agentTeamsWorkerProfilePath !== expectedAdapterPath || workerProfileRuntimePath !== expectedRuntimePath || workerExecutionAdapterPath !== expectedExecutionAdapterPath) {
 		throw new Error("Worker profile adapter module identity mismatch");
 	}
 	if (sha256(await readFile(workerProfileRuntimePath)) !== requireDigest("workerProfileRuntimeSha256", configuration.workerProfileRuntimeSha256)) {
@@ -430,12 +435,25 @@ export async function materializeAgentTeamsWorkerProfile(input: {
 	if (sha256(await readFile(agentTeamsWorkerProfilePath)) !== requireDigest("agentTeamsWorkerProfileSha256", configuration.agentTeamsWorkerProfileSha256)) {
 		throw new Error("agent-teams Worker profile adapter digest mismatch");
 	}
+	if (sha256(await readFile(workerExecutionAdapterPath)) !== requireDigest("workerExecutionAdapterSha256", configuration.workerExecutionAdapterSha256)) {
+		throw new Error("Worker execution adapter digest mismatch");
+	}
+	const executionAdapter = resolveWorkerExecutionAdapter(spawn.executionMode);
 	const runId = requireIdentifier("runId", spawn.runId);
 	const workerId = requireIdentifier("workerId", spawn.workerId);
 	const readyNonce = requireDigest("readyNonce", spawn.readyNonce);
 	const workerBoundaryPath = await canonicalFile("workerBoundaryPath", configuration.workerBoundaryPath);
 	const teamsExtensionPath = await canonicalFile("teamsExtensionPath", configuration.teamsExtensionPath);
 	const worktree = await canonicalDirectory("worktree", spawn.worktree);
+	const leaderWorkspace = await canonicalDirectory("leaderWorkspace", spawn.leaderWorkspace);
+	if (executionAdapter.workspaceMode === "read-only") {
+		if (worktree !== leaderWorkspace) throw new Error("read-only adapter must use the exact leader workspace");
+	} else {
+		const expectedWorktree = join(dirname(runtimeRoot), "worker-worktrees-v1", runId, workerId);
+		if (worktree !== expectedWorktree || pathContains(worktree, leaderWorkspace) || pathContains(leaderWorkspace, worktree)) {
+			throw new Error("worktree-write adapter must use the exact disjoint managed Worker worktree");
+		}
+	}
 	for (const extensionPath of [workerBoundaryPath, teamsExtensionPath]) {
 		if (pathContains(worktree, extensionPath)) throw new Error("trusted Worker extensions must be outside the Worker worktree");
 	}
@@ -476,7 +494,8 @@ export async function materializeAgentTeamsWorkerProfile(input: {
 			MYPI_AGENT_TEAMS_MAX_WORKERS: String(configuration.maxWorkers),
 			MYPI_AGENT_TEAMS_PROFILE_DIGEST: boundaryContractDigest,
 			MYPI_AGENT_TEAMS_READY_NONCE: readyNonce,
-			MYPI_AGENT_TEAMS_WORKSPACE_MODE: "worktree",
+			MYPI_AGENT_TEAMS_EXECUTION_ADAPTER: executionAdapter.id,
+			MYPI_AGENT_TEAMS_WORKSPACE_MODE: executionAdapter.workspaceMode,
 			PI_TEAMS_AGENT_NAME: workerId,
 			PI_TEAMS_AUTO_CLAIM: spawn.autoClaim,
 			PI_TEAMS_LEAD_NAME: leadName,
@@ -496,11 +515,11 @@ export async function materializeAgentTeamsWorkerProfile(input: {
 				schemaVersion: 1,
 				profileId: "pi-agent-teams-docker-strong-v1",
 				profileVersion: "2",
-				workspaceMode: "worktree-write",
+				workspaceMode: executionAdapter.workspaceMode,
 				providerId,
 				modelId: configuration.modelId,
 				thinkingLevel: configuration.thinkingLevel,
-				tools: [...AGENT_TEAMS_TOOLS],
+				tools: [...executionAdapter.builtinTools, ...executionAdapter.backendTools],
 				extensions: [workerBoundaryPath, teamsExtensionPath],
 			},
 			credential,

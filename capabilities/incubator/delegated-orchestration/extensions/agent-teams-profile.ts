@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { existsSync, lstatSync, readFileSync, readdirSync, realpathSync } from "node:fs";
 import { isAbsolute, delimiter, dirname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { WORKER_EXECUTION_ADAPTERS, type WorkerExecutionMode } from "./worker-execution-adapters.ts";
 
 const REPOSITORY_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const PROFILE_DIR = join(REPOSITORY_ROOT, "profiles", "pi-agent-teams", "node-worker-v1");
@@ -11,6 +12,7 @@ const WORKER_BOUNDARY_PATH = join(PROFILE_DIR, "worker-boundary.ts");
 const WORKER_PROFILE_RUNTIME_PATH = join(REPOSITORY_ROOT, "extensions", "worker-profile-runtime.ts");
 const WORKER_MACHINE_SETUP_PATH = join(REPOSITORY_ROOT, "extensions", "worker-machine-setup.ts");
 const AGENT_TEAMS_WORKER_PROFILE_PATH = join(REPOSITORY_ROOT, "extensions", "agent-teams-worker-profile.ts");
+const WORKER_EXECUTION_ADAPTER_PATH = join(REPOSITORY_ROOT, "extensions", "worker-execution-adapters.ts");
 const PINNED_UPSTREAM_COMMIT = "2c1776d2a68104aaadc1c622d8a704684c7c35d6";
 const EXACT_CHILD_BUILTIN_TOOLS = ["read", "bash", "edit", "write"] as const;
 const EXACT_CHILD_BACKEND_TOOLS = ["team_message"] as const;
@@ -22,6 +24,7 @@ const CHILD_RUNTIME_ENVIRONMENT_KEYS = ["AI_AGENT", "PI_CODING_AGENT", "__CF_USE
 const CHILD_OVERRIDE_ENVIRONMENT_KEYS = [
 	"MYPI_AGENT_TEAMS_BOUNDARY_PATH",
 	"MYPI_AGENT_TEAMS_ENTRY_PATH",
+	"MYPI_AGENT_TEAMS_EXECUTION_ADAPTER",
 	"MYPI_AGENT_TEAMS_LEASE_ID",
 	"MYPI_AGENT_TEAMS_MAX_WORKERS",
 	"MYPI_AGENT_TEAMS_PROFILE_DIGEST",
@@ -69,6 +72,7 @@ export type AgentTeamsProfile = {
 	workerProfileRuntimePath: string;
 	workerMachineSetupPath: string;
 	agentTeamsWorkerProfilePath: string;
+	workerExecutionAdapterPath: string;
 	runtimeRoot: string;
 	defaultAgentDir: string;
 	teamsRootDir: string;
@@ -80,7 +84,7 @@ export type AgentTeamsProfile = {
 	machineSetupDigest: string;
 	credentialRevision: number;
 	maxWorkers: number;
-	forceWorktree: true;
+	executionModes: WorkerExecutionMode[];
 	childTools: string[];
 	childExtensions: string[];
 	childEnvironmentKeys: string[];
@@ -92,6 +96,7 @@ export type AgentTeamsProfile = {
 	workerProfileRuntimeSha256: string;
 	workerMachineSetupSha256: string;
 	agentTeamsWorkerProfileSha256: string;
+	workerExecutionAdapterSha256: string;
 	commandPolicySha256: string;
 	scopedWorkerToolsSha256: string;
 	patchedTeamsEntrySha256: string;
@@ -109,6 +114,7 @@ export type AgentTeamsObservedProfile = {
 	workerProfileRuntimeSha256: string;
 	workerMachineSetupSha256: string;
 	agentTeamsWorkerProfileSha256: string;
+	workerExecutionAdapterSha256: string;
 	commandPolicySha256: string;
 	scopedWorkerToolsSha256: string;
 	patchedTeamsEntrySha256: string;
@@ -126,7 +132,7 @@ export type AgentTeamsObservedProfile = {
 	credentialLeaseConsumed: boolean;
 	runtimeContractBound: boolean;
 	cleanupVerified: boolean;
-	forceWorktree: boolean;
+	executionModes: WorkerExecutionMode[];
 	maxWorkers: number | null;
 	childTools: string[];
 	childExtensions: string[];
@@ -158,6 +164,7 @@ type ProfileArtifact = {
 		workerProfileRuntimeSha256: string;
 		workerMachineSetupSha256: string;
 		agentTeamsWorkerProfileSha256: string;
+		workerExecutionAdaptersSha256: string;
 		commandPolicySha256: string;
 		scopedWorkerToolsSha256: string;
 	};
@@ -293,12 +300,13 @@ export function buildAgentTeamsProfile(input: {
 	const patchedTeamsEntryPath = realpathSync(requestedTeamsEntryPath);
 	if (!existsSync(WORKER_BOUNDARY_PATH)) throw new Error(`Worker boundary is missing: ${WORKER_BOUNDARY_PATH}`);
 	const workerBoundaryPath = realpathSync(WORKER_BOUNDARY_PATH);
-	if (!existsSync(WORKER_PROFILE_RUNTIME_PATH) || !existsSync(WORKER_MACHINE_SETUP_PATH) || !existsSync(AGENT_TEAMS_WORKER_PROFILE_PATH)) {
+	if (!existsSync(WORKER_PROFILE_RUNTIME_PATH) || !existsSync(WORKER_MACHINE_SETUP_PATH) || !existsSync(AGENT_TEAMS_WORKER_PROFILE_PATH) || !existsSync(WORKER_EXECUTION_ADAPTER_PATH)) {
 		throw new Error("Worker profile adapter modules are missing");
 	}
 	const workerProfileRuntimePath = realpathSync(WORKER_PROFILE_RUNTIME_PATH);
 	const workerMachineSetupPath = realpathSync(WORKER_MACHINE_SETUP_PATH);
 	const agentTeamsWorkerProfilePath = realpathSync(AGENT_TEAMS_WORKER_PROFILE_PATH);
+	const workerExecutionAdapterPath = realpathSync(WORKER_EXECUTION_ADAPTER_PATH);
 	const { artifact, raw } = loadProfileArtifact();
 	verifyPatchedTeamsSource(patchedTeamsEntryPath, artifact);
 	if (sha256(readFileSync(workerProfileRuntimePath)) !== artifact.toolchain.workerProfileRuntimeSha256) {
@@ -309,6 +317,9 @@ export function buildAgentTeamsProfile(input: {
 	}
 	if (sha256(readFileSync(agentTeamsWorkerProfilePath)) !== artifact.toolchain.agentTeamsWorkerProfileSha256) {
 		throw new Error("agent-teams Worker profile adapter digest mismatch");
+	}
+	if (sha256(readFileSync(workerExecutionAdapterPath)) !== artifact.toolchain.workerExecutionAdaptersSha256) {
+		throw new Error("Worker execution adapter digest mismatch");
 	}
 	const runtimeRoot = requirePrivateDirectory("runtimeRoot", input.runtimeRoot);
 	const defaultAgentDir = requirePrivateDirectory("defaultAgentDir", input.defaultAgentDir);
@@ -338,11 +349,11 @@ export function buildAgentTeamsProfile(input: {
 		agentTeamsWorkerProfileSha256: artifact.toolchain.agentTeamsWorkerProfileSha256,
 		commandPolicySha256: artifact.toolchain.commandPolicySha256,
 		scopedWorkerToolsSha256: artifact.toolchain.scopedWorkerToolsSha256,
+		workerExecutionAdaptersSha256: artifact.toolchain.workerExecutionAdaptersSha256,
 		imageDigest: artifact.toolchain.observedLocalImageDigest,
-		childTools: EXACT_CHILD_BUILTIN_TOOLS,
+		executionAdapters: WORKER_EXECUTION_ADAPTERS,
 		childExtensions: injectedChildExtensions,
 		maxWorkers: input.maxWorkers,
-		forceWorktree: true,
 	}));
 	const runtimeAuthorityDigest = sha256(JSON.stringify({
 		boundaryContractDigest,
@@ -352,6 +363,8 @@ export function buildAgentTeamsProfile(input: {
 		workerMachineSetupSha256: artifact.toolchain.workerMachineSetupSha256,
 		agentTeamsWorkerProfilePath,
 		agentTeamsWorkerProfileSha256: artifact.toolchain.agentTeamsWorkerProfileSha256,
+		workerExecutionAdapterPath,
+		workerExecutionAdapterSha256: artifact.toolchain.workerExecutionAdaptersSha256,
 		runtimeRoot,
 		defaultAgentDir,
 		teamsRootDir,
@@ -367,7 +380,7 @@ export function buildAgentTeamsProfile(input: {
 		PI_TEAMS_CHILD_EXTENSIONS: injectedChildExtensions.join(delimiter),
 		PI_TEAMS_CHILD_TOOLS: EXACT_CHILD_BUILTIN_TOOLS.join(","),
 		PI_TEAMS_DEFAULT_AUTO_CLAIM: "0",
-		PI_TEAMS_FORCE_WORKTREE: "1",
+		PI_TEAMS_EXECUTION_MODES: "read-only,worktree-write",
 		PI_TEAMS_MANAGED_PROFILE_DIGEST: boundaryContractDigest,
 		PI_TEAMS_RUNTIME_CONTRACT_DIGEST: runtimeAuthorityDigest,
 		PI_TEAMS_MANAGED_PROFILE_ID: artifact.profileId,
@@ -377,6 +390,8 @@ export function buildAgentTeamsProfile(input: {
 		PI_TEAMS_ROOT_DIR: teamsRootDir,
 		PI_TEAMS_WORKER_PROFILE_ADAPTER_PATH: agentTeamsWorkerProfilePath,
 		PI_TEAMS_WORKER_PROFILE_ADAPTER_SHA256: artifact.toolchain.agentTeamsWorkerProfileSha256,
+		PI_TEAMS_WORKER_EXECUTION_ADAPTER_PATH: workerExecutionAdapterPath,
+		PI_TEAMS_WORKER_EXECUTION_ADAPTER_SHA256: artifact.toolchain.workerExecutionAdaptersSha256,
 		PI_TEAMS_WORKER_PROFILE_RUNTIME_PATH: workerProfileRuntimePath,
 		PI_TEAMS_WORKER_PROFILE_RUNTIME_SHA256: artifact.toolchain.workerProfileRuntimeSha256,
 		PI_TEAMS_WORKER_RUNTIME_ROOT: runtimeRoot,
@@ -405,6 +420,7 @@ export function buildAgentTeamsProfile(input: {
 		workerProfileRuntimePath,
 		workerMachineSetupPath,
 		agentTeamsWorkerProfilePath,
+		workerExecutionAdapterPath,
 		runtimeRoot,
 		defaultAgentDir,
 		teamsRootDir,
@@ -416,7 +432,7 @@ export function buildAgentTeamsProfile(input: {
 		machineSetupDigest,
 		credentialRevision: input.credentialRevision,
 		maxWorkers: input.maxWorkers,
-		forceWorktree: true as const,
+		executionModes: ["read-only", "worktree-write"] as WorkerExecutionMode[],
 		childTools: [...EXACT_CHILD_BUILTIN_TOOLS, ...EXACT_CHILD_BACKEND_TOOLS],
 		childExtensions,
 		childEnvironmentKeys,
@@ -428,6 +444,7 @@ export function buildAgentTeamsProfile(input: {
 		workerProfileRuntimeSha256: artifact.toolchain.workerProfileRuntimeSha256,
 		workerMachineSetupSha256: artifact.toolchain.workerMachineSetupSha256,
 		agentTeamsWorkerProfileSha256: artifact.toolchain.agentTeamsWorkerProfileSha256,
+		workerExecutionAdapterSha256: artifact.toolchain.workerExecutionAdaptersSha256,
 		commandPolicySha256: artifact.toolchain.commandPolicySha256,
 		scopedWorkerToolsSha256: artifact.toolchain.scopedWorkerToolsSha256,
 		patchedTeamsEntrySha256: artifact.integration.patchedTeamsEntrySha256,
@@ -451,6 +468,7 @@ export function verifyAgentTeamsProfile(input: {
 	if (observed.workerProfileRuntimeSha256 !== requested.workerProfileRuntimeSha256) mismatches.push("worker-profile-runtime-digest");
 	if (observed.workerMachineSetupSha256 !== requested.workerMachineSetupSha256) mismatches.push("worker-machine-setup-digest");
 	if (observed.agentTeamsWorkerProfileSha256 !== requested.agentTeamsWorkerProfileSha256) mismatches.push("agent-teams-worker-profile-digest");
+	if (observed.workerExecutionAdapterSha256 !== requested.workerExecutionAdapterSha256) mismatches.push("worker-execution-adapter-digest");
 	if (observed.commandPolicySha256 !== requested.commandPolicySha256) mismatches.push("command-policy-digest");
 	if (observed.scopedWorkerToolsSha256 !== requested.scopedWorkerToolsSha256) mismatches.push("scoped-tools-digest");
 	if (observed.patchedTeamsEntrySha256 !== requested.patchedTeamsEntrySha256) mismatches.push("patched-entry-digest");
@@ -464,7 +482,7 @@ export function verifyAgentTeamsProfile(input: {
 	if (!observed.structuredReadiness) mismatches.push("structured-readiness");
 	if (!observed.sessionBoundReadiness) mismatches.push("session-bound-readiness");
 	if (!observed.trustedBoundaryIdentity) mismatches.push("trusted-boundary-identity");
-	if (observed.forceWorktree !== requested.forceWorktree) mismatches.push("force-worktree");
+	if (JSON.stringify(observed.executionModes) !== JSON.stringify(requested.executionModes)) mismatches.push("execution-modes");
 	if (observed.maxWorkers !== requested.maxWorkers) mismatches.push("max-workers");
 	if (JSON.stringify([...observed.childTools].sort()) !== JSON.stringify([...requested.childTools].sort())) mismatches.push("child-tools");
 	if (JSON.stringify([...observed.childExtensions].sort()) !== JSON.stringify([...requested.childExtensions].sort())) mismatches.push("child-extensions");
