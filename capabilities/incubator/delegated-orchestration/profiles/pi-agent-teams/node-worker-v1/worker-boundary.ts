@@ -336,7 +336,9 @@ async function reconcileLeaderLoss(generatedProfileDigest: string): Promise<void
 }
 
 export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
-	const cwd = process.cwd();
+	const requestedCwd = process.cwd();
+	const cwd = realpathSync(requestedCwd);
+	if (cwd !== requestedCwd) throw new Error("managed Worker cwd must be canonical");
 	const profile = loadWorkerProfile();
 	const executionAdapter = resolveWorkerExecutionAdapter(process.env.MYPI_AGENT_TEAMS_WORKSPACE_MODE ?? "");
 	if (process.env.MYPI_AGENT_TEAMS_EXECUTION_ADAPTER !== executionAdapter.id) throw new Error("managed Worker execution adapter identity mismatch");
@@ -415,6 +417,17 @@ export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 			if (!runtimeContractDigest || !/^[a-f0-9]{64}$/.test(runtimeContractDigest)) throw new Error("managed runtime contract digest is missing or malformed");
 			const generatedProfileDigest = process.env.MYPI_WORKER_PROFILE_DIGEST;
 			if (!generatedProfileDigest || !/^[a-f0-9]{64}$/.test(generatedProfileDigest)) throw new Error("generated Worker profile digest is missing or malformed");
+			const generatedManifestPathValue = process.env.MYPI_WORKER_PROFILE_MANIFEST;
+			if (!generatedManifestPathValue) throw new Error("generated Worker profile manifest path is missing");
+			const generatedManifestPath = realpathSync(generatedManifestPathValue);
+			const generatedManifestInfo = lstatSync(generatedManifestPath);
+			if (generatedManifestInfo.isSymbolicLink() || !generatedManifestInfo.isFile()) throw new Error("generated Worker profile manifest identity is invalid");
+			const generatedManifest = JSON.parse(readFileSync(generatedManifestPath, "utf8")) as MaterializedWorkerProfileManifest;
+			if (generatedManifest.profileDigest !== generatedProfileDigest || generatedManifest.paths.manifest !== generatedManifestPath ||
+				generatedManifest.worktree !== cwd || generatedManifest.workspaceMode !== executionAdapter.workspaceMode ||
+				generatedManifest.runId !== process.env.PI_TEAMS_TEAM_ID || generatedManifest.workerId !== process.env.PI_TEAMS_AGENT_NAME) {
+				throw new Error("generated Worker profile manifest does not bind the exact launch workspace");
+			}
 			const leaseId = process.env.MYPI_AGENT_TEAMS_LEASE_ID;
 			if (!leaseId || !/^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$/.test(leaseId)) throw new Error("Worker credential lease identity is missing or malformed");
 			const nonce = process.env.MYPI_AGENT_TEAMS_READY_NONCE;
@@ -456,6 +469,7 @@ export default function agentTeamsWorkerBoundary(pi: ExtensionAPI): void {
 				environmentKeys: Object.keys(process.env).sort(),
 				workspaceMode: executionAdapter.workspaceMode,
 				executionAdapter: executionAdapter.id,
+				workspacePath: cwd,
 				maxWorkers,
 			};
 			const leaderPid = process.ppid;

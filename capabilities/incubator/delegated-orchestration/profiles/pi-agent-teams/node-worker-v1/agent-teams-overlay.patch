@@ -20,7 +20,7 @@ index 2e6beda..0cd1522 100644
 @@ -241,0 +244 @@ export async function handleTeamCommand(opts: {
 +				suppressConfigBootstrap,
 diff --git a/extensions/teams/leader.ts b/extensions/teams/leader.ts
-index a3bc5c1..821f539 100644
+index a3bc5c1..b7fcc17 100644
 --- a/extensions/teams/leader.ts
 +++ b/extensions/teams/leader.ts
 @@ -0,0 +1 @@
@@ -97,7 +97,7 @@ index a3bc5c1..821f539 100644
 +const MANAGED_PROFILE_ID = "pi-agent-teams-docker-strong-v1";
 +const MANAGED_UPSTREAM_COMMIT = "2c1776d2a68104aaadc1c622d8a704684c7c35d6";
 +const MANAGED_ENTRY_SHA256 = "4f7715812ac0529a5243c5044138510f9c88b8e070910ee3e00b9f465438756b";
-+const MANAGED_BOUNDARY_SHA256 = "dbf1baa725a218358363e6be01df893a937c76873d4e8119eea69f7afbb6aa98";
++const MANAGED_BOUNDARY_SHA256 = "2513ca35b99f0dd878c5f4b1acae6eca81ee849b9ab8aeddcd1f27878c24adc1";
 +const MANAGED_WORKER_PROFILE_RUNTIME_SHA256 = "654cbeeb5b8525c4cf03feded21d20fae7c7a788aacd6de6c9098de8325d67eb";
 +const MANAGED_WORKER_MACHINE_SETUP_SHA256 = "b19e344c889a93533da6afb0dcd89137a909600d84bace65c9f225eec4cedb16";
 +const MANAGED_AGENT_TEAMS_WORKER_PROFILE_SHA256 = "cebb9b81a5dccfed4248606c70f0a0fdaccbccfe0cde51147536596f7a75c191";
@@ -547,7 +547,7 @@ index a3bc5c1..821f539 100644
 +			});
 +			ownedWorker = materialized;
 +			workerProfiles.set(name, materialized);
-@@ -629,9 +905,17 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -629,9 +905,18 @@ export function runLeader(pi: ExtensionAPI): void {
 -				env: {
 -					PI_TEAMS_WORKER: "1",
 -					PI_TEAMS_TEAM_ID: teamId,
@@ -573,12 +573,13 @@ index a3bc5c1..821f539 100644
 +					tools: [...tools, "team_message"].sort(),
 +					workspaceMode: executionMode,
 +					executionAdapter: executionMode === "read-only" ? "read-only-v1" : "worktree-write-v1",
++					workspacePath: fs.realpathSync(childCwd),
 +					maxWorkers: Number(childProfile.maxWorkers),
-@@ -639 +923,2 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -639 +924,2 @@ export function runLeader(pi: ExtensionAPI): void {
 -				args: argsForChild,
 +				env: { ...materialized.profile.environment },
 +				args: materialized.childArgs,
-@@ -641,9 +926,2 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -641,9 +927,2 @@ export function runLeader(pi: ExtensionAPI): void {
 -		} catch (err) {
 -			teammates.delete(name);
 -			return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -590,7 +591,7 @@ index a3bc5c1..821f539 100644
 -		try {
 +			// A second RPC round-trip closes the race where startup hooks fail immediately
 +			// after get_state but before the Worker is recorded as online.
-@@ -652 +930,14 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -652 +931,14 @@ export function runLeader(pi: ExtensionAPI): void {
 -			warnings.push(`Failed to set session name for ${name}: ${err instanceof Error ? err.message : String(err)}`);
 +			teammates.delete(name);
 +			const failures: unknown[] = [err];
@@ -606,10 +607,10 @@ index a3bc5c1..821f539 100644
 +			}
 +			const detail = failures.map((failure) => failure instanceof Error ? failure.message : String(failure)).join("; ");
 +			return { ok: false, error: `Worker profile startup verification failed: ${detail}` };
-@@ -668 +959 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -668 +960 @@ export function runLeader(pi: ExtensionAPI): void {
 -		const childModel = formatProviderModel(childProvider, childModelId);
 +		const childModel = formatProviderModel(managedProvider, managedModelId);
-@@ -678,0 +970,16 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -678,0 +971,16 @@ export function runLeader(pi: ExtensionAPI): void {
 +				childProfile: {
 +					processId: t.getProcessId(),
 +					environment: "allowlist",
@@ -626,9 +627,9 @@ index a3bc5c1..821f539 100644
 +					executionAdapter: executionMode === "read-only" ? "read-only-v1" : "worktree-write-v1",
 +					maxWorkers: workerCeiling.limit,
 +				},
-@@ -702,0 +1010 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -702,0 +1011 @@ export function runLeader(pi: ExtensionAPI): void {
 +		if (suppressedConfigBootstrapTeams.has(currentTeamId) && !fs.existsSync(teamDir)) return;
-@@ -1041,0 +1350,7 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -1041,0 +1351,7 @@ export function runLeader(pi: ExtensionAPI): void {
 +				suppressConfigBootstrap: (teamId) => {
 +					suppressedConfigBootstrapTeams.add(teamId);
 +					if (currentTeamId === teamId) {
@@ -720,7 +721,7 @@ index 0000000..3447fa5
 +	};
 +}
 diff --git a/extensions/teams/teammate-rpc.ts b/extensions/teams/teammate-rpc.ts
-index 8c00c49..a11f666 100644
+index 8c00c49..d823154 100644
 --- a/extensions/teams/teammate-rpc.ts
 +++ b/extensions/teams/teammate-rpc.ts
 @@ -3,0 +4,41 @@ import type { AgentEvent } from "@earendil-works/pi-agent-core";
@@ -765,7 +766,7 @@ index 8c00c49..a11f666 100644
 +		.replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, "Bearer [REDACTED]");
 +}
 +
-@@ -77,0 +119,51 @@ function isAgentEvent(v: unknown): v is AgentEvent {
+@@ -77,0 +119,52 @@ function isAgentEvent(v: unknown): v is AgentEvent {
 +export type WorkerBoundaryReadiness = {
 +	contractDigest: string;
 +	runtimeContractDigest: string;
@@ -783,6 +784,7 @@ index 8c00c49..a11f666 100644
 +	environmentKeys: string[];
 +	workspaceMode: "read-only" | "worktree-write";
 +	executionAdapter: "read-only-v1" | "worktree-write-v1";
++	workspacePath: string;
 +	maxWorkers: number;
 +};
 +
@@ -792,7 +794,7 @@ index 8c00c49..a11f666 100644
 +
 +const READINESS_FIELDS = [
 +	"contractDigest", "runtimeContractDigest", "generatedProfileDigest", "leaseId", "nonceDigest", "teamId", "workerName", "boundaryPath", "boundarySha256",
-+	"entryPath", "entrySha256", "sourceSha256", "tools", "environmentKeys", "workspaceMode", "executionAdapter", "maxWorkers",
++	"entryPath", "entrySha256", "sourceSha256", "tools", "environmentKeys", "workspaceMode", "executionAdapter", "workspacePath", "maxWorkers",
 +].sort();
 +
 +function parseWorkerBoundaryReadiness(line: string): WorkerBoundaryReadiness | null {
@@ -803,7 +805,7 @@ index 8c00c49..a11f666 100644
 +	if (!isRecord(value) || JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(READINESS_FIELDS)) {
 +		throw new Error("Worker boundary readiness marker has an invalid shape");
 +	}
-+	for (const field of ["contractDigest", "runtimeContractDigest", "generatedProfileDigest", "leaseId", "nonceDigest", "teamId", "workerName", "boundaryPath", "boundarySha256", "entryPath", "entrySha256", "sourceSha256"] as const) {
++	for (const field of ["contractDigest", "runtimeContractDigest", "generatedProfileDigest", "leaseId", "nonceDigest", "teamId", "workerName", "boundaryPath", "boundarySha256", "entryPath", "entrySha256", "sourceSha256", "workspacePath"] as const) {
 +		if (typeof value[field] !== "string") throw new Error(`Worker boundary readiness field ${field} is invalid`);
 +	}
 +	if ((value.workspaceMode !== "read-only" && value.workspaceMode !== "worktree-write") ||
@@ -817,11 +819,11 @@ index 8c00c49..a11f666 100644
 +	return value as WorkerBoundaryReadiness;
 +}
 +
-@@ -99,0 +192,3 @@ export class TeammateRpc {
+@@ -99,0 +193,3 @@ export class TeammateRpc {
 +	private environmentKeys: string[] = [];
 +	private boundaryProfileDigest: string | null = null;
 +	private boundaryReadiness: WorkerBoundaryReadiness | null = null;
-@@ -128 +223,52 @@ export class TeammateRpc {
+@@ -128 +224,52 @@ export class TeammateRpc {
 -	async start(opts: { cwd: string; env: Record<string, string>; args: string[] }): Promise<void> {
 +	getEnvironmentKeys(): string[] {
 +		return [...this.environmentKeys];
@@ -875,16 +877,16 @@ index 8c00c49..a11f666 100644
 +	}
 +
 +	async start(opts: { cwd: string; env: Record<string, string>; args: string[]; expectedReadiness: ExpectedWorkerBoundaryReadiness }): Promise<void> {
-@@ -130,0 +277,3 @@ export class TeammateRpc {
+@@ -130,0 +278,3 @@ export class TeammateRpc {
 +		const environment: NodeJS.ProcessEnv = { ...opts.env };
 +		if (!environment.HOME || !environment.PATH) throw new Error("Exact Worker environment requires HOME and PATH");
 +		this.environmentKeys = Object.keys(environment).sort();
-@@ -133 +282 @@ export class TeammateRpc {
+@@ -133 +283 @@ export class TeammateRpc {
 -			env: { ...process.env, ...opts.env },
 +			env: environment,
-@@ -160,0 +310 @@ export class TeammateRpc {
+@@ -160,0 +311 @@ export class TeammateRpc {
 +			this.proc = null;
-@@ -170,6 +320,17 @@ export class TeammateRpc {
+@@ -170,6 +321,17 @@ export class TeammateRpc {
 -		// Give the child a moment to boot.
 -		await new Promise((r) => setTimeout(r, 120));
 -		this.status = "idle";
@@ -908,23 +910,23 @@ index 8c00c49..a11f666 100644
 +			proc?.kill("SIGTERM");
 +			throw new Error(`Teammate RPC ready handshake failed for ${this.name}: ${this.lastError}`, { cause: error });
 +		}
-@@ -179 +340,2 @@ export class TeammateRpc {
+@@ -179 +341,2 @@ export class TeammateRpc {
 -		if (!this.proc) return;
 +		const proc = this.proc;
 +		if (!proc) return;
-@@ -181 +343 @@ export class TeammateRpc {
+@@ -181 +344 @@ export class TeammateRpc {
 -			await this.abort();
 +			await Promise.race([this.abort().catch(() => undefined), sleep(500)]);
-@@ -185 +347 @@ export class TeammateRpc {
+@@ -185 +348 @@ export class TeammateRpc {
 -		this.proc.kill("SIGTERM");
 +		proc.kill("SIGTERM");
-@@ -187 +349 @@ export class TeammateRpc {
+@@ -187 +350 @@ export class TeammateRpc {
 -			if (this.proc && !this.proc.killed) this.proc.kill("SIGKILL");
 +			if (!proc.killed) proc.kill("SIGKILL");
-@@ -258 +420 @@ export class TeammateRpc {
+@@ -258 +421 @@ export class TeammateRpc {
 -	private async send(cmd: RpcCommandWithoutId): Promise<RpcResponse> {
 +	private async send(cmd: RpcCommandWithoutId, timeoutMs = 60_000): Promise<RpcResponse> {
-@@ -272 +434 @@ export class TeammateRpc {
+@@ -272 +435 @@ export class TeammateRpc {
 -			}, 60_000);
 +			}, timeoutMs);
 diff --git a/extensions/teams/worker.ts b/extensions/teams/worker.ts

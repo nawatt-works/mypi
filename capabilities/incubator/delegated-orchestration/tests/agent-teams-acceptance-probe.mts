@@ -229,7 +229,7 @@ try {
 	const teamConfigPath = join(runtimeRoot, "coordination", teamId, "config.json");
 	type PersistedMember = { name?: string; status?: string; cwd?: string; meta?: { childProfile?: {
 		generatedProfileDigest?: unknown; leaseId?: unknown; processId?: unknown; executionMode?: unknown; executionAdapter?: unknown;
-		tools?: unknown; boundaryReadiness?: { workspaceMode?: unknown; executionAdapter?: unknown; tools?: unknown };
+		tools?: unknown; boundaryReadiness?: { workspaceMode?: unknown; executionAdapter?: unknown; workspacePath?: unknown; tools?: unknown };
 	} } };
 	const readPersistedMember = async (expectedName = workerName): Promise<PersistedMember> => {
 		const config = JSON.parse((await readFile(teamConfigPath, "utf8"))) as { members?: PersistedMember[] };
@@ -247,7 +247,7 @@ try {
 	const readerBoundary = reader.meta!.childProfile!.boundaryReadiness!;
 	if (await realpath(reader.cwd!) !== await realpath(fixture) || reader.meta!.childProfile!.executionMode !== "read-only" ||
 		reader.meta!.childProfile!.executionAdapter !== "read-only-v1" || JSON.stringify(reader.meta!.childProfile!.tools) !== JSON.stringify(["read"]) ||
-		readerBoundary.workspaceMode !== "read-only" || readerBoundary.executionAdapter !== "read-only-v1" ||
+		readerBoundary.workspaceMode !== "read-only" || readerBoundary.executionAdapter !== "read-only-v1" || readerBoundary.workspacePath !== await realpath(fixture) ||
 		JSON.stringify(readerBoundary.tools) !== JSON.stringify(["read", "team_message"])) {
 		throw new Error("read-only Worker did not bind the exact shared-workspace tool/mount/policy adapter");
 	}
@@ -260,7 +260,7 @@ try {
 	const writerBoundary = member.meta!.childProfile!.boundaryReadiness!;
 	if (member.meta!.childProfile!.executionMode !== "worktree-write" || member.meta!.childProfile!.executionAdapter !== "worktree-write-v1" ||
 		JSON.stringify(member.meta!.childProfile!.tools) !== JSON.stringify(["read", "bash", "edit", "write"]) ||
-		writerBoundary.workspaceMode !== "worktree-write" || writerBoundary.executionAdapter !== "worktree-write-v1" ||
+		writerBoundary.workspaceMode !== "worktree-write" || writerBoundary.executionAdapter !== "worktree-write-v1" || writerBoundary.workspacePath !== await realpath(member.cwd!) ||
 		JSON.stringify(writerBoundary.tools) !== JSON.stringify(["bash", "edit", "read", "team_message", "write"])) {
 		throw new Error("worktree-write Worker did not bind the exact isolated-worktree tool/mount/policy adapter");
 	}
