@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,6 +12,17 @@ import {
 	type PiWorkerProfileTemplate,
 	type WorkerCredentialProjection,
 } from "../extensions/worker-profile-runtime.ts";
+
+function canonicalJson(value: unknown): string {
+	if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+	if (value && typeof value === "object") {
+		const record = value as Record<string, unknown>;
+		return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(record[key])}`).join(",")}}`;
+	}
+	const encoded = JSON.stringify(value);
+	if (encoded === undefined) throw new Error("test value is not JSON serializable");
+	return encoded;
+}
 
 const SECRET = "sentinel-worker-secret-value";
 const CREDENTIAL: WorkerCredentialProjection = {
@@ -93,9 +105,21 @@ test("materializes a private per-Worker Pi profile without ambient Default state
 	assert.equal(environment.AWS_SESSION_TOKEN, undefined);
 	assert.equal(manifest.worktree, await realpath(worktree));
 	assert.ok(!manifest.launchArgs.includes(defaultAgentDir));
-	for (const flag of ["--no-extensions", "--no-skills", "--no-prompt-templates", "--no-themes", "--no-context-files"]) {
-		assert.ok(manifest.launchArgs.includes(flag), flag);
-	}
+	assert.deepEqual(manifest.launchArgs, [
+		"--mode", "rpc",
+		"--name", "mypi-worker:worker-a",
+		"--session-dir", manifest.paths.sessions,
+		"--no-extensions",
+		"--no-skills",
+		"--no-prompt-templates",
+		"--no-themes",
+		"--no-context-files",
+		"--tools", "read,bash,edit,write,team_message",
+		"--provider", "openai-codex",
+		"--model", "gpt-5.4-mini",
+		"--thinking", "low",
+		"--extension", manifest.resources.extensions[0].path,
+	]);
 	assert.deepEqual(await verifyMaterializedWorkerProfile({
 		profile,
 		expectedProfileDigest: profile.manifest.profileDigest,
@@ -178,6 +202,36 @@ test("rejects Default overlap, worktree overlap, symlinks, malformed identifiers
 		runtimeRoot: f.runtimeRoot,
 		template: { ...f.template, extensions: [symlinkPath] },
 	}), /real file/);
+});
+
+test("requires an authority-supplied Default agent directory with no ambient fallback", async (t) => {
+	const f = await fixture(t);
+	const materializeInput: Record<string, unknown> = {
+		runtimeRoot: f.runtimeRoot,
+		runId: "run-no-default",
+		workerId: "worker-a",
+		worktree: f.worktree,
+		template: f.template,
+		credential: CREDENTIAL,
+		environment: { PATH: "/bin" },
+	};
+	await assert.rejects(
+		() => materializeWorkerProfile(materializeInput as never),
+		/defaultAgentDir must be explicitly supplied/,
+	);
+	const profile = await materializeWorkerProfile({
+		...materializeInput,
+		defaultAgentDir: f.defaultAgentDir,
+	} as never);
+	const verifyInput: Record<string, unknown> = {
+		profile,
+		expectedProfileDigest: profile.manifest.profileDigest,
+		expectedCredential: CREDENTIAL,
+	};
+	await assert.rejects(
+		() => verifyMaterializedWorkerProfile(verifyInput as never),
+		/defaultAgentDir must be explicitly supplied/,
+	);
 });
 
 test("refuses a symlinked runtime hierarchy before writing Worker state", async (t) => {
@@ -266,6 +320,34 @@ test("unexpected preflight artifacts fail verification", async (t) => {
 	});
 	assert.equal(result.verified, false);
 	assert.ok(result.mismatches.includes("unexpected-agent-artifacts"));
+});
+
+test("cleanup rejects a self-consistent forged profile in an unrelated private hierarchy", async (t) => {
+	const { profile, root, runtimeRoot } = await materialize(t);
+	const unrelatedWorkerRoot = join(root, "unrelated", "runs", profile.manifest.runId, "workers", profile.manifest.workerId);
+	await mkdir(unrelatedWorkerRoot, { recursive: true, mode: 0o700 });
+	for (const name of ["home", "agent", "sessions", "tmp"]) await mkdir(join(unrelatedWorkerRoot, name), { mode: 0o700 });
+	const forged = structuredClone(profile);
+	forged.manifest.paths = {
+		workerRoot: unrelatedWorkerRoot,
+		home: join(unrelatedWorkerRoot, "home"),
+		agent: join(unrelatedWorkerRoot, "agent"),
+		sessions: join(unrelatedWorkerRoot, "sessions"),
+		temp: join(unrelatedWorkerRoot, "tmp"),
+		manifest: join(unrelatedWorkerRoot, "manifest.json"),
+	};
+	forged.manifest.launchArgs = forged.manifest.launchArgs.map((value) =>
+		value === profile.manifest.paths.sessions ? forged.manifest.paths.sessions : value
+	);
+	const { profileDigest: _oldDigest, ...unsignedManifest } = forged.manifest;
+	forged.manifest.profileDigest = createHash("sha256").update(canonicalJson(unsignedManifest)).digest("hex");
+	await writeFile(forged.manifest.paths.manifest, `${JSON.stringify(forged.manifest, null, 2)}\n`, { mode: 0o600 });
+	await assert.rejects(() => cleanupMaterializedWorkerProfile({
+		profile: forged,
+		runtimeRoot,
+		expectedProfileDigest: forged.manifest.profileDigest,
+	}), /outside the authorized hierarchy/);
+	assert.ok(await lstat(unrelatedWorkerRoot));
 });
 
 test("cleanup is identity-bound and refuses a forged manifest", async (t) => {

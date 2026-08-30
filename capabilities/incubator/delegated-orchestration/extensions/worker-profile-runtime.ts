@@ -11,7 +11,6 @@ import {
 	rm,
 	writeFile,
 } from "node:fs/promises";
-import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export type WorkerCredential =
@@ -131,7 +130,7 @@ function requireIdentifier(label: string, value: string): string {
 }
 
 function requireAbsolute(label: string, value: string): string {
-	if (!isAbsolute(value)) throw new Error(`${label} must be an absolute path`);
+	if (typeof value !== "string" || !isAbsolute(value)) throw new Error(`${label} must be explicitly supplied as an absolute path`);
 	return resolve(value);
 }
 
@@ -296,7 +295,7 @@ function environmentFor(input: {
 
 export async function materializeWorkerProfile(input: {
 	runtimeRoot: string;
-	defaultAgentDir?: string;
+	defaultAgentDir: string;
 	runId: string;
 	workerId: string;
 	worktree: string;
@@ -305,10 +304,7 @@ export async function materializeWorkerProfile(input: {
 	environment?: NodeJS.ProcessEnv;
 }): Promise<MaterializedWorkerProfile> {
 	const runtimeRoot = requireAbsolute("runtimeRoot", input.runtimeRoot);
-	const defaultAgentDir = await canonicalExistingDirectory(
-		"defaultAgentDir",
-		input.defaultAgentDir ?? join(homedir(), ".pi", "agent"),
-	);
+	const defaultAgentDir = await canonicalExistingDirectory("defaultAgentDir", input.defaultAgentDir);
 	const runId = requireIdentifier("runId", input.runId);
 	const workerId = requireIdentifier("workerId", input.workerId);
 	if (input.template.schemaVersion !== 1) throw new Error("unsupported Worker profile template schema");
@@ -449,7 +445,7 @@ export async function verifyMaterializedWorkerProfile(input: {
 	profile: MaterializedWorkerProfile;
 	expectedProfileDigest: string;
 	expectedCredential: WorkerCredentialProjection;
-	defaultAgentDir?: string;
+	defaultAgentDir: string;
 }): Promise<WorkerProfileVerification> {
 	const { manifest, environment } = input.profile;
 	const mismatches: string[] = [];
@@ -478,7 +474,7 @@ export async function verifyMaterializedWorkerProfile(input: {
 	}
 	if (mismatches.length > 0) return { verified: false, mismatches };
 
-	const requestedDefaultAgentDir = requireAbsolute("defaultAgentDir", input.defaultAgentDir ?? join(homedir(), ".pi", "agent"));
+	const requestedDefaultAgentDir = requireAbsolute("defaultAgentDir", input.defaultAgentDir);
 	let defaultAgentDir = requestedDefaultAgentDir;
 	try {
 		defaultAgentDir = await realpath(requestedDefaultAgentDir);
