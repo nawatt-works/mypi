@@ -373,6 +373,8 @@ test("finishing a mandate clears authority without deleting its audit history", 
 	registry.recordAudit({ type: "verification", actor: "coordinator", outcome: "ALLOW" }, "2026-08-30T01:05:00.000Z");
 	registry.finishMandate("complete", "2026-08-30T01:06:00.000Z");
 	assert.equal(registry.state().activeMandate, undefined);
+	assert.deepEqual(registry.state().mandateIds, ["mandate-a"]);
+	assert.throws(() => registry.activateMandate(authorityMandate(), "2026-08-30T01:07:00.000Z"), /already used/);
 	assert.throws(() => registry.recordAudit({ type: "verification", actor: "coordinator" }), /no active mandate/);
 
 	const restored = restoreAuthorityRegistry(entries, { now: "2026-08-31T00:00:00.000Z" });

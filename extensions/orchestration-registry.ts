@@ -471,7 +471,10 @@ export type AuthorityAuditType =
 	| "worker-stopped"
 	| "artifact-collected"
 	| "verification"
-	| "profile-defect";
+	| "profile-defect"
+	| "review-grant-issued"
+	| "review-grant-consumed"
+	| "review-grant-revoked";
 
 export type AuthorityAuditEvent = {
 	id: string;
@@ -505,6 +508,7 @@ type AuthorityEvent =
 export type OrchestrationAuthorityState = {
 	activeMandate?: DelegationMandate;
 	activeMandateDigest?: string;
+	mandateIds: string[];
 	audit: AuthorityAuditEvent[];
 	profiles: AuthorityProfileRef[];
 	failClosedReason?: string;
@@ -548,7 +552,8 @@ function validAuditType(value: unknown): value is AuthorityAuditType {
 	return typeof value === "string" && [
 		"mandate-activated", "mandate-replaced", "mandate-finished", "spawn-proposed", "spawn-allowed",
 		"spawn-denied", "spawn-escalated", "worker-ready", "worker-blocked", "handoff", "correction",
-		"worker-stopped", "artifact-collected", "verification", "profile-defect",
+		"worker-stopped", "artifact-collected", "verification", "profile-defect", "review-grant-issued",
+		"review-grant-consumed", "review-grant-revoked",
 	].includes(value);
 }
 
@@ -579,6 +584,7 @@ export function restoreAuthorityRegistry(
 ): OrchestrationAuthorityState {
 	let activeMandate: DelegationMandate | undefined;
 	let activeMandateDigest: string | undefined;
+	const mandateIds = new Set<string>();
 	const audit: AuthorityAuditEvent[] = [];
 	const profiles: AuthorityProfileRef[] = [];
 	const errors: string[] = [];
@@ -601,6 +607,10 @@ export function restoreAuthorityRegistry(
 				errors.push(`${data.action} mandate is invalid or its digest does not match`);
 				continue;
 			}
+			if (mandateIds.has(validated.value.id)) {
+				errors.push(`mandate id was reused: ${validated.value.id}`);
+				continue;
+			}
 			if (data.action === "activate") {
 				if (activeMandate) {
 					errors.push("activate entry overlaps an active mandate");
@@ -619,6 +629,7 @@ export function restoreAuthorityRegistry(
 			}
 			activeMandate = validated.value;
 			activeMandateDigest = data.digest;
+			mandateIds.add(validated.value.id);
 		} else if (data.action === "finish") {
 			if (!validIso(data.at) || (data.outcome !== "complete" && data.outcome !== "cancelled") || !activeMandate || data.mandateId !== activeMandate.id) {
 				errors.push("finish entry does not match the active mandate");
@@ -648,9 +659,9 @@ export function restoreAuthorityRegistry(
 		if (!current.ok) errors.push(`active mandate is invalid or stale: ${current.errors.join(";")}`);
 	}
 	if (errors.length > 0) {
-		return { audit, profiles, failClosedReason: errors.join(" | ") };
+		return { mandateIds: [...mandateIds], audit, profiles, failClosedReason: errors.join(" | ") };
 	}
-	return { activeMandate, activeMandateDigest, audit, profiles };
+	return { activeMandate, activeMandateDigest, mandateIds: [...mandateIds], audit, profiles };
 }
 
 export type AuthorityRegistry = {
@@ -664,7 +675,7 @@ export type AuthorityRegistry = {
 };
 
 export function createAuthorityRegistry(pi: Pick<ExtensionAPI, "appendEntry">): AuthorityRegistry {
-	let state: OrchestrationAuthorityState = { audit: [], profiles: [] };
+	let state: OrchestrationAuthorityState = { mandateIds: [], audit: [], profiles: [] };
 	const append = (data: AuthorityEvent) => pi.appendEntry(AUTHORITY_ENTRY, cloneAuthorityEvent(data));
 	const timestamp = (value?: string): string => {
 		const at = value ?? nowIso();
@@ -681,6 +692,7 @@ export function createAuthorityRegistry(pi: Pick<ExtensionAPI, "appendEntry">): 
 		state: () => ({
 			...state,
 			activeMandate: state.activeMandate ? cloneMandate(state.activeMandate) : undefined,
+			mandateIds: [...state.mandateIds],
 			audit: state.audit.map(cloneAuditEvent),
 			profiles: state.profiles.map((profile) => ({ ...profile })),
 		}),
@@ -691,9 +703,15 @@ export function createAuthorityRegistry(pi: Pick<ExtensionAPI, "appendEntry">): 
 			const at = timestamp(now);
 			const validated = validateMandate(input, { now: at });
 			if (!validated.ok) throw new Error(`invalid mandate: ${validated.errors.join("; ")}`);
+			if (state.mandateIds.includes(validated.value.id)) throw new Error(`mandate id was already used: ${validated.value.id}`);
 			const digest = mandateDigest(validated.value);
 			append({ schemaVersion: 1, action: "activate", at, mandate: cloneMandate(validated.value), digest });
-			state = { ...state, activeMandate: cloneMandate(validated.value), activeMandateDigest: digest };
+			state = {
+				...state,
+				activeMandate: cloneMandate(validated.value),
+				activeMandateDigest: digest,
+				mandateIds: [...state.mandateIds, validated.value.id],
+			};
 			return cloneMandate(validated.value);
 		},
 
@@ -702,11 +720,17 @@ export function createAuthorityRegistry(pi: Pick<ExtensionAPI, "appendEntry">): 
 			const at = timestamp(now);
 			const validated = validateMandate(input, { now: at });
 			if (!validated.ok) throw new Error(`invalid replacement mandate: ${validated.errors.join("; ")}`);
+			if (state.mandateIds.includes(validated.value.id)) throw new Error(`mandate id was already used: ${validated.value.id}`);
 			const narrowing = mandateNarrows(previous, validated.value);
 			if (!narrowing.narrows) throw new Error(`replacement expands authority: ${narrowing.expansions.join(",")}`);
 			const digest = mandateDigest(validated.value);
 			append({ schemaVersion: 1, action: "replace", at, previousMandateId: previous.id, mandate: cloneMandate(validated.value), digest });
-			state = { ...state, activeMandate: cloneMandate(validated.value), activeMandateDigest: digest };
+			state = {
+				...state,
+				activeMandate: cloneMandate(validated.value),
+				activeMandateDigest: digest,
+				mandateIds: [...state.mandateIds, validated.value.id],
+			};
 			return cloneMandate(validated.value);
 		},
 

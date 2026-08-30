@@ -148,6 +148,19 @@ test("lower policy layers can only narrow higher authority", () => {
 	}
 });
 
+test("combined policy digest changes with the verified Worker profile version", () => {
+	const action = { ...context(), kind: "routine", capability: "test" } as const;
+	const first = evaluateOrchestrationPolicy({
+		mandate: mandate(), action, now: NOW,
+		layers: { workerProfile: { version: "a".repeat(64), reason: "profile A", defaultOutcome: "ALLOW" } },
+	});
+	const second = evaluateOrchestrationPolicy({
+		mandate: mandate(), action, now: NOW,
+		layers: { workerProfile: { version: "b".repeat(64), reason: "profile B", defaultOutcome: "ALLOW" } },
+	});
+	assert.notEqual(first.policyDigest, second.policyDigest);
+});
+
 test("hardline command deny survives every REVIEW/HUMAN/ALLOW layer", () => {
 	const decision = decide(
 		{ ...context(), kind: "command", analyzerOutcome: "DENY", findingCodes: ["workspace-root-destruction"] },
