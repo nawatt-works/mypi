@@ -57,6 +57,10 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
   - pure Phase 1 bounded-mandate validator/evaluator, narrow-only policy precedence, combined policy digestและ audit redaction
   - `orchestration-registry.ts` เก็บ versioned mandate/audit/profile referencesใน Pi session, reject stale/tampered/duplicate-active replayและไม่คืน mutable state aliases
   - independent correction reviewผ่าน แต่ยังไม่ถูก wireเข้า `orchestration.ts` หรือ production spawn
+- `command-review-registry.ts`
+  - Coordinator-owned exact REVIEW grantsใน trusted Pi session state; lookupจาก contextไม่รับ bearer idจาก Worker, consume-once, short TTL, revokeและ fail-closed replay/tamper
+  - bind verified profileกับ authoritative combined policy digestและห้าม grantสำหรับ HUMAN/DENY
+  - independent correction reviewผ่าน; registryยัง pureและยังไม่ intercept production execution
 - `scoped-worker-tools.ts`
   - scoped Read/Write/Edit operationsสำหรับ Worker; canonicalize existing ancestor/targetและ deny external, sensitive, `.git` และ symlink escape
   - เป็น host-operation guardที่มี TOCTOU limitation ไม่ใช่ OS sandbox

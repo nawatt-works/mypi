@@ -2,7 +2,7 @@
 
 > **Status:** active — Phase 2 guardrails/REVIEW registry<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 08:30<br>
+> **Updated:** 2026-08-30 08:40<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -606,7 +606,7 @@ Tasks:
 - [ ] แยก detection (`MutationFinding[]`) ออกจาก policy decision และ UI rendering
 - [ ] เพิ่ม structured command findings + bounded normalization/parser seam โดย collect decisionครั้งเดียว
 - [ ] hardline/user-policy/mandate denyมาก่อน bypass; unknown/headless fail closed
-- [ ] bind REVIEW tokenกับ command digest, Worker/session, mandate/profile/policy version, resource scope และ expiry
+- [x] bind REVIEW grantกับ command digest, Worker/session, unique mandate id, verified profile, authoritative combined policy digest, cwd/workspace, finding/resource scope และ expiry; trusted session registry consume-once/revoke/restore fail closed
 - [ ] ให้ normal interactive session คง behavior เดิมใน manual mode
 - [ ] ให้ delegated Worker ไม่เปิด dialog
 - [ ] ส่ง policy reference ตอน spawn แบบ atomic และยืนยัน Worker โหลด profile จริง
@@ -614,6 +614,13 @@ Tasks:
 - [ ] จำกัด active tools/extensions/skills ตาม profile
 - [ ] เพิ่ม OS sandboxed bash baseline และบันทึก limitation ของ direct tools
 - [ ] cleanup temporary policy artifacts
+
+REVIEW registry evidence:
+
+- producer `c5457e5`; independent review `FAIL` พบ partial appendที่อาจ consumeซ้ำและ worker-selectable 64-hex policy namespace
+- correction `23c4b1b` ใช้ authoritative appendเดียวต่อ grant transition, append failureทำ registry fail closed, bind requestกับ `AuthorityProfileRef.policyDigest`, reject duplicate profile refsและ mandate-id reuse
+- independent correction re-review `PASS`; grant issue/consume-once/replay/revoke/expiry/tamper/HUMAN-DENY testsผ่าน, full suite `142/142`
+- registryยัง pure/unwired; production executionและ manual UI behaviorยังไม่เปลี่ยน
 
 Exit criteria:
 
@@ -815,9 +822,9 @@ Success metric หลัก:
 
 ดำเนิน Phase 2 แบบ incrementalและคง manual fallback:
 
-1. เพิ่ม Coordinator-owned REVIEW grant registryใน trusted session state; bind exact command/context/mandate/profile/policy digest/expiryและ consume-once
-2. แยก guardrail detection → policy resolution → UI rendering โดย normal manual sessionยังทำงานเดิม
-3. wire delegated Worker resolverให้ DENY/HUMAN/unknown fail closedโดยไม่เปิด dialog; REVIEW executeได้เฉพาะ trusted grantที่ registry consumeสำเร็จ
-4. เพิ่ม integration testsก่อน wire atomic policy referenceเข้า Pi spawn
+1. แยก guardrail detection → policy resolution → UI rendering โดย normal manual sessionยังทำงานเดิม
+2. เพิ่ม atomic Worker policy reference/observed markerก่อนเลือก delegated resolver; unknown/headlessต้อง fail closed
+3. wire delegated Worker resolverให้ DENY/HUMANไม่เปิด dialog และ REVIEW executeได้เฉพาะ trusted registry consumeสำเร็จ
+4. เพิ่ม integration testsสำหรับ manual fallback, stale/missing policy, grant consume raceและ cleanupก่อนแตะ spawn
 
 ห้ามโหลด agent-teams candidateหรือข้าม manual Herdr confirmationจน Phase 2–3 production-path acceptanceผ่าน
