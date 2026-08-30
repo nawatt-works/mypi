@@ -61,31 +61,40 @@ test("hashes the complete patched source tree deterministically and detects drif
 
 test("rejects source drift, missing paths, and worker ceilings outside the managed range", async (t) => {
 	const { entry, teamsRoot } = await fixture(t);
+	const runtimeInputs = {
+		runtimeRoot: teamsRoot,
+		defaultAgentDir: join(teamsRoot, "default-agent"),
+		providerId: "openai-codex",
+		modelId: "gpt-5.4-mini",
+		thinkingLevel: "low" as const,
+		leasePublicKeyPath: join(teamsRoot, "lease-authority", "public.pem"),
+		leasePublicKeySha256: "a".repeat(64),
+	};
 	assert.throws(() => buildAgentTeamsProfile({
 		upstreamCommit: "wrong",
 		patchedTeamsEntryPath: entry,
-		teamsRootDir: teamsRoot,
+		...runtimeInputs,
 		maxWorkers: 2,
 		environment: ENV,
 	}), /unsupported agent-teams commit/);
 	assert.throws(() => buildAgentTeamsProfile({
 		upstreamCommit: COMMIT,
 		patchedTeamsEntryPath: join(teamsRoot, "missing.ts"),
-		teamsRootDir: teamsRoot,
+		...runtimeInputs,
 		maxWorkers: 2,
 		environment: ENV,
 	}), /entry is missing/);
 	assert.throws(() => buildAgentTeamsProfile({
 		upstreamCommit: COMMIT,
 		patchedTeamsEntryPath: entry,
-		teamsRootDir: teamsRoot,
+		...runtimeInputs,
 		maxWorkers: 4,
 		environment: ENV,
 	}), /integer from 1 to 3/);
 	assert.throws(() => buildAgentTeamsProfile({
 		upstreamCommit: COMMIT,
 		patchedTeamsEntryPath: entry,
-		teamsRootDir: teamsRoot,
+		...runtimeInputs,
 		maxWorkers: 2,
 		environment: ENV,
 	}), /patched agent-teams (?:entry|source tree) digest mismatch/);
