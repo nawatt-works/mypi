@@ -12,6 +12,8 @@ const WORKER_BOUNDARY_PATH = join(PROFILE_DIR, "worker-boundary.ts");
 const WORKER_PROFILE_RUNTIME_PATH = join(REPOSITORY_ROOT, "extensions", "worker-profile-runtime.ts");
 const WORKER_MACHINE_SETUP_PATH = join(REPOSITORY_ROOT, "extensions", "worker-machine-setup.ts");
 const AGENT_TEAMS_WORKER_PROFILE_PATH = join(REPOSITORY_ROOT, "extensions", "agent-teams-worker-profile.ts");
+const COMMAND_POLICY_PATH = join(REPOSITORY_ROOT, "extensions", "command-policy.ts");
+const SCOPED_WORKER_TOOLS_PATH = join(REPOSITORY_ROOT, "extensions", "scoped-worker-tools.ts");
 const WORKER_EXECUTION_ADAPTER_PATH = join(REPOSITORY_ROOT, "extensions", "worker-execution-adapters.ts");
 const SAFETY_GUARDRAIL_DETECTOR_PATH = resolve(REPOSITORY_ROOT, "..", "..", "global", "safety-guardrails", "extensions", "detector.ts");
 const PINNED_UPSTREAM_COMMIT = "2c1776d2a68104aaadc1c622d8a704684c7c35d6";
@@ -325,12 +327,14 @@ export function buildAgentTeamsProfile(input: {
 	const patchedTeamsEntryPath = realpathSync(requestedTeamsEntryPath);
 	if (!existsSync(WORKER_BOUNDARY_PATH)) throw new Error(`Worker boundary is missing: ${WORKER_BOUNDARY_PATH}`);
 	const workerBoundaryPath = realpathSync(WORKER_BOUNDARY_PATH);
-	if (!existsSync(WORKER_PROFILE_RUNTIME_PATH) || !existsSync(WORKER_MACHINE_SETUP_PATH) || !existsSync(AGENT_TEAMS_WORKER_PROFILE_PATH) || !existsSync(WORKER_EXECUTION_ADAPTER_PATH) || !existsSync(SAFETY_GUARDRAIL_DETECTOR_PATH)) {
+	if (!existsSync(WORKER_PROFILE_RUNTIME_PATH) || !existsSync(WORKER_MACHINE_SETUP_PATH) || !existsSync(AGENT_TEAMS_WORKER_PROFILE_PATH) || !existsSync(COMMAND_POLICY_PATH) || !existsSync(SCOPED_WORKER_TOOLS_PATH) || !existsSync(WORKER_EXECUTION_ADAPTER_PATH) || !existsSync(SAFETY_GUARDRAIL_DETECTOR_PATH)) {
 		throw new Error("Worker profile adapter modules are missing");
 	}
 	const workerProfileRuntimePath = realpathSync(WORKER_PROFILE_RUNTIME_PATH);
 	const workerMachineSetupPath = realpathSync(WORKER_MACHINE_SETUP_PATH);
 	const agentTeamsWorkerProfilePath = realpathSync(AGENT_TEAMS_WORKER_PROFILE_PATH);
+	const commandPolicyPath = realpathSync(COMMAND_POLICY_PATH);
+	const scopedWorkerToolsPath = realpathSync(SCOPED_WORKER_TOOLS_PATH);
 	const workerExecutionAdapterPath = realpathSync(WORKER_EXECUTION_ADAPTER_PATH);
 	const safetyGuardrailDetectorPath = realpathSync(SAFETY_GUARDRAIL_DETECTOR_PATH);
 	const { artifact, raw } = loadProfileArtifact();
@@ -346,6 +350,12 @@ export function buildAgentTeamsProfile(input: {
 	}
 	if (sha256(readFileSync(workerExecutionAdapterPath)) !== artifact.toolchain.workerExecutionAdaptersSha256) {
 		throw new Error("Worker execution adapter digest mismatch");
+	}
+	if (sha256(readFileSync(commandPolicyPath)) !== artifact.toolchain.commandPolicySha256) {
+		throw new Error("command policy digest mismatch");
+	}
+	if (sha256(readFileSync(scopedWorkerToolsPath)) !== artifact.toolchain.scopedWorkerToolsSha256) {
+		throw new Error("scoped Worker tools digest mismatch");
 	}
 	if (sha256(readFileSync(safetyGuardrailDetectorPath)) !== artifact.toolchain.safetyGuardrailDetectorSha256) {
 		throw new Error("safety guardrail detector digest mismatch");

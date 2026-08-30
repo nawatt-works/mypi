@@ -55,8 +55,9 @@ const FILE_UPLOAD_TOOL_PATTERN = /(?:^|[_-])(?:upload|attach|send[_-]?file)(?:$|
 const SENSITIVE_ENV_NAME_PATTERN = /(?:^|_)(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?|PRIVATE[_-]?KEY|AUTH)(?:_|$)/i;
 const LOCAL_VIDEO_EXTENSION_PATTERN = /\.(?:mp4|mov|webm|avi|mpeg|mpg|wmv|flv|3gp|3gpp)$/i;
 const COMMAND_TOOL_PATTERN = /(?:^|[_:-])(?:(?:bash|shell|terminal)(?:[_:-](?:exec(?:ute)?|run|command|cmd))?|(?:exec(?:ute)?|run)[_-]?(?:command|cmd)?|command[_-]?(?:exec(?:ute)?|run))(?:$|[_:-])/i;
-const REMOTE_SERVICE_TOOL_PATTERN = /(?:^|_)(?:github|gitlab|bitbucket|azure|aws|gcloud|cloudflare|vercel|netlify|firebase|kubernetes|kubectl|docker|npm|slack|jira|linear|notion)(?:_|$)/i;
-const REMOTE_MUTATION_TOOL_PATTERN = /(?:^|_)(?:apply|create|delete|deploy|destroy|merge|patch|post|publish|push|release|remove|rollback|run[_-]?workflow|send|set|sync|update|upload)(?:_|$)/i;
+const REMOTE_SERVICE_TOOL_PATTERN = /(?:^|_)(?:gh|github|gitlab|bitbucket|az|azure|aws|gcloud|cloudflare|vercel|netlify|firebase|terraform|helm|kubernetes|kubectl|docker|npm|cargo|twine|slack|jira|linear|notion)(?:_|$)/i;
+const REMOTE_MUTATION_TOOL_PATTERN = /(?:^|_)(?:apply|copy|cp|create|delete|deploy|destroy|import|install|merge|patch|post|publish|push|release|remove|rollback|rollout|run[_-]?workflow|scale|send|set|sync|uninstall|update|upgrade|upload)(?:_|$)/i;
+const REMOTE_COMMAND_TOOL_NAMES = new Set(["git", "gh", "npm", "pnpm", "yarn", "docker", "kubectl", "terraform", "curl", "wget", "aws", "az", "gcloud", "vercel", "netlify", "wrangler", "firebase", "flyctl", "heroku", "railway", "serverless", "sls", "helm", "cargo", "twine", "gem", "dotnet"]);
 
 const SHELL_CONTENT_READ_COMMANDS = new Set([
 	".",
@@ -928,6 +929,16 @@ function parseNestedToolArguments(value: unknown): Record<string, unknown> | und
 	}
 }
 
+function toolNameMayMutateRemote(normalizedToolName: string): boolean {
+	const parts = normalizedToolName.split("_").filter(Boolean);
+	for (let index = 0; index < parts.length; index += 1) {
+		const command = parts[index]!;
+		if (REMOTE_COMMAND_TOOL_NAMES.has(command) && isRemoteMutationCommand(command, parts.slice(index + 1))) return true;
+	}
+	return REMOTE_MUTATION_TOOL_PATTERN.test(normalizedToolName) &&
+		(REMOTE_SERVICE_TOOL_PATTERN.test(normalizedToolName) || /(?:deploy|publish|push|send_(?:email|message)|run_workflow)/.test(normalizedToolName));
+}
+
 function analyzePathAwareCustomTool(
 	toolName: string,
 	input: Record<string, unknown>,
@@ -938,8 +949,7 @@ function analyzePathAwareCustomTool(
 	const normalizedToolName = normalizedFieldName(toolName);
 	const pathArguments = collectPathArguments(input).filter(({ value }) => isLocalReference(value));
 	const findings: MutationFinding[] = [];
-	if (REMOTE_MUTATION_TOOL_PATTERN.test(normalizedToolName) &&
-		(REMOTE_SERVICE_TOOL_PATTERN.test(normalizedToolName) || /(?:deploy|publish|push|send[_-]?(?:email|message)|run[_-]?workflow)/.test(normalizedToolName))) {
+	if (toolNameMayMutateRemote(normalizedToolName)) {
 		findings.push({ kind: "remote-mutation", reason: `${toolName} may mutate an external service and requires explicit human approval` });
 	}
 	const hasCommandField = Object.hasOwn(input, "command") || Object.hasOwn(input, "cmd");

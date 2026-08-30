@@ -20,7 +20,7 @@ Profile นี้เป็น versioned Phase 0 candidate ภายใน incuba
 - `extensions/worker-execution-adapters.ts`: SHA-256 `34f714bb9b520663bd16e2c682bc5e38e8e232fb1ece0f9adb79138f725435c9`
 - `extensions/command-policy.ts`: SHA-256 `271d09620f748cf7ec19a0a1da9c76e7fcc11fff5d9aa27c29f3ca007ac0585a`
 - `extensions/scoped-worker-tools.ts`: SHA-256 `f937ac471424fcb30a5bb9a7c07eeceb09e521c3421364df335f285c0085d18d`
-- `capabilities/global/safety-guardrails/extensions/detector.ts`: SHA-256 `c844c97043c5fd3136fb5b13de26547ef495041179db1bd97f12cd3d2e89595f`
+- `capabilities/global/safety-guardrails/extensions/detector.ts`: SHA-256 `c831be94f6c14620d288409c4b40d878a6b265690c8f5cd0171c4e95fd09d897`
 
 Observed local digestเป็นหลักฐานของ deterministic no-provenance manifest ที่ probe ไม่ใช่ cross-platform registry contract BuildKit provenance attestationทำ manifest-list digestเปลี่ยนต่อ build จึงปิดด้วย `--provenance=false`; provenanceที่ใช้คือ pinned base digest, exact Dockerfile และ committed SBOM หาก buildใหม่ได้ digestอื่น ห้ามเปลี่ยน `profile.json` อัตโนมัติ ต้องตรวจทุก artifactและ boundary probesใหม่ก่อน
 

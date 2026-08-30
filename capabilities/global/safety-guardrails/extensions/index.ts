@@ -182,7 +182,6 @@ export function registerGuardrails(pi: ExtensionAPI, options: GuardrailsOptions 
 
 		const approvedUploadsThisCall = new Set<string>();
 		const reusedUploadFindings: MutationFinding[] = [];
-		let approvedRemoteMutationThisCall = false;
 		const pendingUploads = findings.filter((finding) => {
 			if (finding.kind !== "external-upload") return false;
 			if (finding.target && hasActiveGuardrailGrant(state, "external-upload", finding.target, now())) {
@@ -196,11 +195,10 @@ export function registerGuardrails(pi: ExtensionAPI, options: GuardrailsOptions 
 		if (pendingUploads.length > 0) {
 			const uploadTargets = new Set(pendingUploads.map((finding) => finding.target).filter((target): target is string => Boolean(target)));
 			const uploadStageFindings = findings.filter((finding) =>
-				pendingUploads.includes(finding) || finding.kind === "remote-mutation" ||
+				pendingUploads.includes(finding) ||
 				(finding.kind === "secret-read" && finding.target !== undefined && uploadTargets.has(finding.target)));
 			const decision = await resolveAuditedStage({ ctx, category: "external-upload", findings: uploadStageFindings, workspaceRoot: workspaceAuthority.workspaceRoot, cwd: executionCwd });
 			if (decision.outcome === "DENY") return { block: true, reason: blockedReason("external-upload", decision, uploadStageFindings) };
-			approvedRemoteMutationThisCall = uploadStageFindings.some((finding) => finding.kind === "remote-mutation");
 			for (const finding of pendingUploads) {
 				if (!finding.target) continue;
 				approvedUploadsThisCall.add(finding.target);
@@ -226,7 +224,7 @@ export function registerGuardrails(pi: ExtensionAPI, options: GuardrailsOptions 
 			}
 		}
 
-		const remoteMutations = approvedRemoteMutationThisCall ? [] : findings.filter((finding) => finding.kind === "remote-mutation");
+		const remoteMutations = findings.filter((finding) => finding.kind === "remote-mutation");
 		if (remoteMutations.length > 0) {
 			const decision = await resolveAuditedStage({ ctx, category: "remote-mutation", findings: remoteMutations, workspaceRoot: workspaceAuthority.workspaceRoot, cwd: executionCwd });
 			if (decision.outcome === "DENY") return { block: true, reason: blockedReason("remote-mutation", decision, remoteMutations) };

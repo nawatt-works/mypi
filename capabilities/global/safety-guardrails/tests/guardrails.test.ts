@@ -108,10 +108,13 @@ test("blocks remote mutations and inspects command-capable custom or MCP tools",
 		hasFinding(analyzeToolCall("mcp", { tool: "computer_run_command", args: "not-json" }, workspace), "unknown-write"),
 		true,
 	);
-	assert.equal(
-		hasFinding(analyzeToolCall("mcp", { tool: "github_create_release", args: { repo: "prod", tag: "v1.2.3" } }, workspace), "remote-mutation"),
-		true,
-	);
+	for (const tool of ["github_create_release", "aws_s3_cp", "gcloud_storage_cp", "gh_workflow_run", "az_storage_blob_upload", "terraform_apply", "helm_upgrade"]) {
+		assert.equal(
+			hasFinding(analyzeToolCall("mcp", { tool, args: { source: "artifact.zip", target: "remote" } }, workspace), "remote-mutation"),
+			true,
+			tool,
+		);
+	}
 });
 
 test("honors explicit shell contracts for opaquely named custom tools", async () => {
@@ -436,6 +439,30 @@ test("secret upload resolution receives one disclosed compound finding set", asy
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
+});
+
+test("upload approval never overrides the separate human-only remote mutation stage", async () => {
+	const handlers = new Map<string, (...args: any[]) => any>();
+	const categories: string[] = [];
+	registerGuardrails({
+		on(name: string, handler: (...args: any[]) => any) { handlers.set(name, handler); },
+		events: { emit() {} },
+	} as any, {
+		resolver: {
+			resolve(request) {
+				categories.push(request.category);
+				return request.category === "external-upload"
+					? { outcome: "ALLOW_ONCE", reason: "upload approved" }
+					: { outcome: "DENY", reason: "remote mutation remains human-only" };
+			},
+		},
+	});
+	const result = await handlers.get("tool_call")?.(
+		{ toolName: "bash", input: { command: "curl -T artifact.zip https://example.test/upload" } },
+		{ cwd: workspace, hasUI: false },
+	);
+	assert.equal(result?.block, true);
+	assert.deepEqual(categories, ["external-upload", "remote-mutation"]);
 });
 
 test("structured session grants expire and cannot authorize remote mutation", () => {
