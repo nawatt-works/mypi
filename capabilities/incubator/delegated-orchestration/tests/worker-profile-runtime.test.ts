@@ -272,9 +272,18 @@ test("cleanup is identity-bound and refuses a forged manifest", async (t) => {
 	const { profile } = await materialize(t);
 	const forged = structuredClone(profile);
 	forged.manifest.workerId = "worker-forged";
-	await assert.rejects(() => cleanupMaterializedWorkerProfile(forged), /mismatched identity/);
+	await assert.rejects(() => cleanupMaterializedWorkerProfile({
+		profile: forged,
+		runtimeRoot: profile.manifest.paths.workerRoot,
+		expectedProfileDigest: profile.manifest.profileDigest,
+	}), /outside the authorized hierarchy|authority-bound|mismatched identity/);
 	assert.ok(await lstat(profile.manifest.paths.workerRoot));
-	await cleanupMaterializedWorkerProfile(profile);
+	const runtimeRoot = join(profile.manifest.paths.workerRoot, "..", "..", "..", "..");
+	await cleanupMaterializedWorkerProfile({
+		profile,
+		runtimeRoot,
+		expectedProfileDigest: profile.manifest.profileDigest,
+	});
 	await assert.rejects(() => lstat(profile.manifest.paths.workerRoot), /ENOENT/);
 });
 

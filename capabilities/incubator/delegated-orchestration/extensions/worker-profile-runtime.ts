@@ -606,24 +606,32 @@ export async function verifyMaterializedWorkerProfile(input: {
 	return { verified: mismatches.length === 0, mismatches };
 }
 
-export async function cleanupMaterializedWorkerProfile(profile: MaterializedWorkerProfile): Promise<void> {
-	const { manifest } = profile;
+export async function cleanupMaterializedWorkerProfile(input: {
+	profile: MaterializedWorkerProfile;
+	runtimeRoot: string;
+	expectedProfileDigest: string;
+}): Promise<void> {
+	const { manifest } = input.profile;
+	const runtimeRoot = await canonicalExistingDirectory("runtimeRoot", input.runtimeRoot);
+	const runId = requireIdentifier("runId", manifest.runId);
+	const workerId = requireIdentifier("workerId", manifest.workerId);
 	const workerRoot = requireAbsolute("workerRoot", manifest.paths.workerRoot);
+	const expectedWorkerRoot = join(runtimeRoot, "runs", runId, "workers", workerId);
+	if (workerRoot !== expectedWorkerRoot) throw new Error("Worker runtime root is outside the authorized hierarchy");
+	if (manifest.profileDigest !== input.expectedProfileDigest) throw new Error("Worker cleanup profile digest is not authority-bound");
+	const { profileDigest: _profileDigest, ...unsignedManifest } = manifest;
+	if (sha256(canonicalJson(profileDigestPayload(unsignedManifest))) !== manifest.profileDigest) {
+		throw new Error("Worker cleanup profile digest is invalid");
+	}
 	const manifestPath = requireAbsolute("manifestPath", manifest.paths.manifest);
-	if (dirname(manifestPath) !== workerRoot) throw new Error("Worker manifest is outside its runtime root");
+	if (manifestPath !== join(workerRoot, "manifest.json")) throw new Error("Worker manifest is outside its runtime root");
 	const rootInfo = await lstat(workerRoot);
 	if (rootInfo.isSymbolicLink() || !rootInfo.isDirectory() || await realpath(workerRoot) !== workerRoot) {
 		throw new Error("refusing to clean a non-canonical Worker runtime root");
 	}
 	if (!(await privateMode(manifestPath, "file"))) throw new Error("refusing to clean through an untrusted Worker manifest");
 	const disk = JSON.parse(await readFile(manifestPath, "utf8")) as MaterializedWorkerProfileManifest;
-	if (
-		disk.kind !== "mypi-generated-worker-profile" ||
-		disk.runId !== manifest.runId ||
-		disk.workerId !== manifest.workerId ||
-		disk.profileDigest !== manifest.profileDigest ||
-		disk.paths.workerRoot !== workerRoot
-	) {
+	if (canonicalJson(disk) !== canonicalJson(manifest)) {
 		throw new Error("refusing to clean a Worker profile with mismatched identity");
 	}
 	await rm(workerRoot, { recursive: true, force: false });
