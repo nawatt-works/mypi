@@ -3,8 +3,8 @@
 > **Status:** PASS — production remains disabled<br>
 > **Executed:** 2026-08-30<br>
 > **Provider/model:** `openai-codex/gpt-5.4`, thinking `low`<br>
-> **Candidate commits:** `cb05e2f`, `5340500`, `d09c982`, `567826a`, `d5273ed`, `637f0b0`, `89b91b6`, `6ef5705`, `3463b31`, `ef05fe8`, `e89dd0b`<br>
-> **Profile digest:** `dc648f5658c7dc7bb3da382864a959ba37a97169c856c4a7e4fb57c21ab70b17`
+> **Candidate commits:** `cb05e2f`, `5340500`, `d09c982`, `567826a`, `d5273ed`, `637f0b0`, `89b91b6`, `6ef5705`, `3463b31`, `ef05fe8`, `e89dd0b`, `53f40e3`, `6e893c2`<br>
+> **Profile digest:** `9635e19adbec39827bc9a17ef967cb58e38ae25195147e4fed39786a09b04aa9`
 
 ## Operator boundary
 
@@ -20,7 +20,7 @@ Startup correctionถัดมาย้าย Git worktreeออกจาก cre
 {
   "status": "PASS",
   "productionActivated": false,
-  "profileDigest": "dc648f5658c7dc7bb3da382864a959ba37a97169c856c4a7e4fb57c21ab70b17",
+  "profileDigest": "9635e19adbec39827bc9a17ef967cb58e38ae25195147e4fed39786a09b04aa9",
   "runtimeAuthorityDigest": "3247e228110755bddce47cb94a635b051ad713290471537c9e95bf1a1a512d4b",
   "credentialRevision": 1,
   "providerId": "openai-codex",
@@ -32,6 +32,8 @@ Startup correctionถัดมาย้าย Git worktreeออกจาก cre
     "delegatedResolverNoWorkerUi": true,
     "exactReviewConsumeOnce": true,
     "humanBoundaryPreserved": true,
+    "productionOptInDisabled": true,
+    "productionEntryComposed": true,
     "generatedSpawnReadiness": true,
     "boundedWorktreeMutation": true,
     "noInteractiveRequests": true,
@@ -65,6 +67,8 @@ trusted machine receipt
   → Coordinator-owned exact workspace generation authority
   → exact REVIEW issue/consume once + replay reject
   → HUMAN remote mutation remains blocked
+  → disabled production entry no-op before authority inspection
+  → exact opt-in composes resolver/orchestration once in disposable path
   → provisionAgentTeamsWorkerProfile
   → signed single-use lease
   → exact generated argv/environment
@@ -83,7 +87,7 @@ trusted machine receipt
 
 ## Verification
 
-- full repository suite `209/209`
+- full repository suite `214/214`
 - exact Docker runtime hardening contract bindใน leader/boundary digestและ negative drift coverageครบ
 - runtime/fault probes `10/10`
 - patched upstream typecheck/lint PASS
@@ -92,4 +96,4 @@ trusted machine receipt
 
 ## Remaining gate
 
-ผลนี้ผ่าน exact read-only/worktree-write adapters, delegated resolver, generated spawn/readiness/work/forced-crash/immediate retry/orderly stop/leader-loss self-clean/worktree retention/replacement path 16/16 และ rotation integrationยืนยัน active block → idle rotate → stale revision reject → new revision spawnแล้ว Final resolver correction reviewผ่าน แต่ productionยัง disabledจนผู้ใช้ตัดสินใจเรื่อง production import, push, release/tagหรือ Default Pi switch
+ผลนี้ผ่าน exact read-only/worktree-write adapters, delegated resolver, generated spawn/readiness/work/forced-crash/immediate retry/orderly stop/leader-loss self-clean/worktree retention/replacement path 18/18 และ rotation integrationยืนยัน active block → idle rotate → stale revision reject → new revision spawnแล้ว Disabled production opt-in reviewผ่านและ explicit entryถูก wireแล้วโดย root/manual behaviorไม่เปลี่ยน Production activation, push, release/tagและ Default Pi switchยังต้องขอ human decisionแยกกัน

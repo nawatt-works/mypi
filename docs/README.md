@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-07-27 08:55<br>
-> **Updated:** 2026-08-31 01:00<br>
+> **Updated:** 2026-08-31 01:40<br>
 > **Purpose:** แสดงภาพรวมของ design notes และ implementation history ที่ repository `my-pi` เป็นเจ้าของ
 
 `docs/` เป็น project documentation ของ repository นี้ ไม่ใช่ workspace-wide artifact store และไม่ใช่ default path สำหรับ plan, note หรือ output จาก AI tool/skill/harness อื่น
@@ -12,7 +12,8 @@
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
 | 2026-08-30 12:00 | 2026-08-30 09:10 | completed | [จัด My Pi เป็น Capability Packages และ Pinned Releases](plans/capability-packages-and-pinned-releases.md) | `v0.2.0` pinned releaseผ่านและ Worker-profile decisions handoffไป delegated planแล้ว |
-| 2026-08-31 01:00 | 2026-08-28 15:32 | ready — human production decision | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | resolver review PASS + profile dc648f56 16/16; productionยัง disabledรอ human-only decisions |
+| 2026-08-31 01:40 | 2026-08-28 15:32 | ready — external mutation decisions | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | disabled opt-in review PASS + profile 9635e19a 18/18; root/manual unchanged |
+| 2026-08-31 01:35 | 2026-08-31 01:05 | review PASS | [Delegated Production Opt-in Independent Review](notes/delegated-production-optin-independent-review.md) | explicit environment, absent/0 no-op, root stable-only, production false |
 | 2026-08-28 15:32 | 2026-08-25 09:19 | superseded | [Pi Coordinator บน Herdr](plans/pi-herdr-coordinator.md) | เก็บ implementation/probe history; authority contract และ Phase 3 เดิมถูกแทนด้วย delegated-autonomy plan |
 | 2026-08-23 11:19 | 2026-08-22 12:40 | superseded | [แยก Workflow Plan, Continuity Ledger และ Plannotator Review](plans/flexible-planning-continuity.md) | implementation รุ่น managed fallback; ต่อมาถูกแทนด้วย pointer-only และ dual session/workspace tracking |
 | 2026-08-30 10:30 | 2026-08-09 11:10 | complete | [ย้ายและขยาย Azure DevOps extension](plans/azure-devops-extension-crud.md) | เพิ่ม opt-in Work Item CRUD; capabilityปัจจุบันอยู่ `capabilities/project-opt-in/azure-devops/` และ root stable manifestไม่โหลด |
@@ -23,7 +24,7 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
-| 2026-08-31 00:50 | 2026-08-30 20:00 | acceptance PASS | [Agent-teams Generated-path Real-provider Acceptance](notes/agent-teams-generated-path-real-provider-acceptance.md) | dual adapters + resolver/REVIEW/HUMAN + crash/leader-loss/cleanupผ่าน 16/16 |
+| 2026-08-31 01:30 | 2026-08-30 20:00 | acceptance PASS | [Agent-teams Generated-path Real-provider Acceptance](notes/agent-teams-generated-path-real-provider-acceptance.md) | disabled opt-in + dual adapters/resolver/REVIEW/HUMAN/crash cleanupผ่าน 18/18 |
 | 2026-08-31 00:55 | 2026-08-31 00:20 | review PASS | [Delegated Guardrail Resolver Independent Review](notes/delegated-guardrail-resolver-independent-review.md) | ปิด policy REVIEW fallback + workspace authority Medium; candidate 16/16 |
 | 2026-08-30 23:40 | 2026-08-30 23:15 | review PASS | [Delegated Orchestration Phase 2–3 Final Review](notes/delegated-orchestration-phase2-3-final-review.md) | ปิด Docker runtime-contract Medium; final candidateไม่มี High/Medium |
 | 2026-08-30 23:00 | 2026-08-30 22:40 | review PASS | [Worker Execution Adapters Independent Review](notes/worker-execution-adapters-independent-review.md) | ปิด wrong-cwd Mediumด้วย manifest/canonical cwd/readiness binding |
@@ -43,6 +44,7 @@
 
 ## Change log
 
+- 2026-08-31 01:40 — disabled production opt-in review/acceptanceผ่าน; root/manual unchanged
 - 2026-08-31 01:00 — delegated resolver + generation-bound REVIEWผ่าน review/acceptance; รอ human production decision
 - 2026-08-30 23:45 — final Phase 2–3 review PASS หลัง exact Docker runtime contract correction
 - 2026-08-30 23:10 — dual execution adaptersผ่าน independent reviewและ real-provider 13/13
