@@ -986,8 +986,8 @@ function analyzeNested(command: string, state: AnalysisState, depth: number): vo
 		if (hasInlineInterpreterPayload) {
 			addFinding(state, {
 				code: "dynamic-code-execution",
-				outcome: "REVIEW",
-				reason: "inline interpreter code can bypass shell-string classification",
+				outcome: "HUMAN",
+				reason: "opaque interpreter code may cross human-only external boundaries",
 				resource: `interpreter:${commandName}`,
 			});
 		}
@@ -997,10 +997,10 @@ function analyzeNested(command: string, state: AnalysisState, depth: number): vo
 			if (script) {
 				addFinding(state, {
 					code: "dynamic-code-execution",
-					outcome: script.dynamic ? "DENY" : "REVIEW",
+					outcome: script.dynamic ? "DENY" : "HUMAN",
 					reason: script.dynamic
-						? "interpreter script identity is dynamic and cannot be bound to an exact review"
-						: "executing a file or module through an interpreter requires exact review",
+						? "interpreter script identity is dynamic and cannot be bound safely"
+						: "opaque file or module execution may cross human-only external boundaries",
 					resource: script.dynamic ? `interpreter:${commandName}` : expandPolicyPath(script.value, state) ?? `interpreter:${commandName}:${script.value}`,
 				});
 			}
@@ -1056,8 +1056,8 @@ function analyzeNested(command: string, state: AnalysisState, depth: number): vo
 		if ((view.command.value.startsWith("./") || view.command.value.startsWith("../") || /\.(?:bash|sh|zsh)$/.test(view.command.value)) && !SHELL_CARRIERS.has(commandName)) {
 			addFinding(state, {
 				code: "dynamic-code-execution",
-				outcome: "REVIEW",
-				reason: "executing a Worker-controlled local program requires exact review",
+				outcome: "HUMAN",
+				reason: "opaque Worker-controlled programs may cross human-only external boundaries",
 				resource: expandPolicyPath(view.command.value, state),
 			});
 		}

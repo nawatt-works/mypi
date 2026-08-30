@@ -19,7 +19,7 @@
   - repeated exact-denial circuit breaker
 - Manual UI: `extensions/ui.ts`
 - Redacted audit: `extensions/audit.ts`
-  - append/event payloadมีเฉพาะ finding kinds, outcomeและ salted-domain digests; ไม่มี raw paths/commands
+  - append/event payloadมีเฉพาะ finding kinds, outcomeและ per-session keyed HMAC digests; ไม่มี keyหรือ raw paths/commands
 - Stable entrypoint: `extensions/index.ts` ใช้ manual resolverเดิมโดย default
 
 ## Workspace และ temporary paths
@@ -30,6 +30,6 @@ OS temporary directoryทั้งก้อนไม่ได้รับอน�
 
 ## Custom tool contracts
 
-Loaderระบุ semanticsของ custom toolsได้ผ่าน `toolContracts` (`shell`, `fetch-content`, `path-aware`) Command-bearing inputและ malformed MCP argumentsไม่ fail open Delegated compositionต้อง inject trusted resolverแบบ explicit; Worker inputเลือก resolverหรือถือ grantเองไม่ได้
+Loaderระบุ semanticsของ custom toolsได้ผ่าน `toolContracts` (`shell`, `fetch-content`, `path-aware`, `remote-mutation`) Command-bearing inputและ malformed MCP argumentsไม่ fail open Delegated compositionต้อง inject trusted resolverแบบ explicit; Worker inputเลือก resolverหรือถือ grantเองไม่ได้
 
 Guardrailsเป็น defense-in-depth ไม่ใช่ OS sandbox Local scripts, extensions, MCP serversและ subprocessอาจมี side effectsที่ static analysisมองไม่เห็น งานกับ untrusted inputยังต้องใช้ container/VM/OS sandboxหรือ scoped execution identity

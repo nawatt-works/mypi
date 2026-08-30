@@ -7,7 +7,9 @@ import guardrails, {
 	analyzeShellMutations,
 	registerGuardrails,
 	analyzeToolCall,
+	createGuardrailAuditKey,
 	createGuardrailSessionState,
+	guardrailDecisionDigest,
 	hasActiveGuardrailGrant,
 	issueGuardrailSessionGrant,
 	isHarnessTemporaryPath,
@@ -106,6 +108,10 @@ test("blocks remote mutations and inspects command-capable custom or MCP tools",
 		hasFinding(analyzeToolCall("mcp", { tool: "computer_run_command", args: "not-json" }, workspace), "unknown-write"),
 		true,
 	);
+	assert.equal(
+		hasFinding(analyzeToolCall("mcp", { tool: "github_create_release", args: { repo: "prod", tag: "v1.2.3" } }, workspace), "remote-mutation"),
+		true,
+	);
 });
 
 test("honors explicit shell contracts for opaquely named custom tools", async () => {
@@ -116,6 +122,20 @@ test("honors explicit shell contracts for opaquely named custom tools", async ()
 	} as any, { toolContracts: { opaque_runner: "shell" } });
 	const result = await handlers.get("tool_call")?.(
 		{ toolName: "opaque_runner", input: { script: "ignored", command: "git push origin main" } },
+		{ cwd: workspace, hasUI: false },
+	);
+	assert.equal(result?.block, true);
+	assert.match(result?.reason ?? "", /external service mutation/i);
+});
+
+test("honors explicit remote-mutation contracts for opaque connectors", async () => {
+	const handlers = new Map<string, (...args: any[]) => any>();
+	registerGuardrails({
+		on(name: string, handler: (...args: any[]) => any) { handlers.set(name, handler); },
+		events: { emit() {} },
+	} as any, { toolContracts: { opaque_connector: "remote-mutation" } });
+	const result = await handlers.get("tool_call")?.(
+		{ toolName: "opaque_connector", input: { action: "release" } },
 		{ cwd: workspace, hasUI: false },
 	);
 	assert.equal(result?.block, true);
@@ -437,6 +457,13 @@ test("structured session grants expire and cannot authorize remote mutation", ()
 	}), /remote-mutation|category/);
 });
 
+test("audit digests are session-keyed and resist stable path dictionaries", () => {
+	const finding = [{ kind: "secret-read" as const, reason: "probe", target: "/repo/.env" }];
+	const first = guardrailDecisionDigest(createGuardrailAuditKey(), "secret-read", finding, "/repo", "/repo");
+	const second = guardrailDecisionDigest(createGuardrailAuditKey(), "secret-read", finding, "/repo", "/repo");
+	assert.notEqual(first, second);
+});
+
 test("repeated exact denials open a no-prompt circuit breaker with redacted audit", async () => {
 	const handlers = new Map<string, (...args: any[]) => any>();
 	const audits: unknown[] = [];
@@ -454,6 +481,25 @@ test("repeated exact denials open a no-prompt circuit breaker with redacted audi
 	assert.equal(uiCalls, 3);
 	assert.ok(audits.some((entry: any) => entry.outcome === "CIRCUIT_BREAKER"));
 	assert.equal(JSON.stringify(audits).includes(outsidePath), false);
+});
+
+test("reused structured grants emit redacted audit without reopening UI", async () => {
+	const handlers = new Map<string, (...args: any[]) => any>();
+	const audits: any[] = [];
+	let uiCalls = 0;
+	registerGuardrails({
+		on(name: string, handler: (...args: any[]) => any) { handlers.set(name, handler); },
+		events: { emit(name: string, entry: unknown) { if (name === "mypi:guardrail-decision") audits.push(entry); } },
+	} as any, { now: () => "2026-08-31T00:00:00.000Z" });
+	const call = () => handlers.get("tool_call")?.(
+		{ toolName: "read", input: { path: ".env" } },
+		{ cwd: workspace, hasUI: true, ui: { async select() { uiCalls += 1; return "Allow this secret file for this session (up to 1 hour)"; } } },
+	);
+	assert.equal(await call(), undefined);
+	assert.equal(await call(), undefined);
+	assert.equal(uiCalls, 1);
+	assert.ok(audits.some((entry) => entry.outcome === "GRANT_REUSED"));
+	assert.equal(JSON.stringify(audits).includes(".env"), false);
 });
 
 test("invalid or non-interactive HUMAN resolver output fails closed", async () => {

@@ -35,3 +35,5 @@ Real child-Pi sentinelยืนยันว่า generated profileเห็น�
 - package/root Pi resourcesไม่ auto-load entrypointนี้
 
 Production activationยัง disabled; push, release/tagและ Default Pi switchยังเป็น human-only
+
+Command policyใช้ remote-mutation taxonomyเดียวกับ stable detector และจัด opaque inline/file/module interpreter executionเป็น `HUMAN` ไม่ใช่ `REVIEW` เพื่อไม่ให้ exact grantลดเพดาน push/deploy/publishที่ซ่อนใน script

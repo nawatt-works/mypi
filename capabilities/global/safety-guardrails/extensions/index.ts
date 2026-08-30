@@ -2,7 +2,7 @@ import { chmodSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { isAbsolute, join } from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { guardrailDecisionDigest, recordGuardrailAudit } from "./audit.ts";
+import { createGuardrailAuditKey, guardrailDecisionDigest, recordGuardrailAudit } from "./audit.ts";
 import { analyzeToolCall, type MutationFinding } from "./detector.ts";
 import {
 	clearGuardrailDenial,
@@ -27,7 +27,7 @@ export * from "./resolution.ts";
 export * from "./ui.ts";
 export * from "./workspace.ts";
 
-export type GuardrailToolContract = "fetch-content" | "shell" | "path-aware";
+export type GuardrailToolContract = "fetch-content" | "shell" | "path-aware" | "remote-mutation";
 
 export type GuardrailsOptions = {
 	resolver?: GuardrailPolicyResolver;
@@ -99,7 +99,19 @@ export function registerGuardrails(pi: ExtensionAPI, options: GuardrailsOptions 
 	let workspaceAuthorityError: string | undefined;
 	let sessionTemporaryRoot: string | undefined;
 	let allowedWriteRoots: readonly string[] = [];
+	let auditKey = createGuardrailAuditKey();
 	const now = () => options.now?.() ?? new Date().toISOString();
+
+	const recordGrantReuse = (input: {
+		category: Exclude<GuardrailCategory, "remote-mutation">;
+		findings: readonly MutationFinding[];
+		workspaceRoot: string;
+		cwd: string;
+	}): void => {
+		if (input.findings.length === 0) return;
+		const decisionDigest = guardrailDecisionDigest(auditKey, input.category, input.findings, input.workspaceRoot, input.cwd);
+		recordGuardrailAudit(auditKey, pi, { category: input.category, outcome: "GRANT_REUSED", decisionDigest, findingKinds: input.findings.map((finding) => finding.kind), workspaceRoot: input.workspaceRoot, cwd: input.cwd, at: now() });
+	};
 
 	const resolveAuditedStage = async (input: {
 		ctx: Pick<ExtensionContext, "cwd" | "hasUI" | "ui">;
@@ -108,20 +120,21 @@ export function registerGuardrails(pi: ExtensionAPI, options: GuardrailsOptions 
 		workspaceRoot: string;
 		cwd: string;
 	}): Promise<GuardrailResolution> => {
-		const decisionDigest = guardrailDecisionDigest(input.category, input.findings, input.workspaceRoot, input.cwd);
+		const decisionDigest = guardrailDecisionDigest(auditKey, input.category, input.findings, input.workspaceRoot, input.cwd);
 		if (isGuardrailCircuitOpen(state, decisionDigest)) {
-			recordGuardrailAudit(pi, { category: input.category, outcome: "CIRCUIT_BREAKER", decisionDigest, findingKinds: input.findings.map((finding) => finding.kind), workspaceRoot: input.workspaceRoot, cwd: input.cwd, at: now() });
+			recordGuardrailAudit(auditKey, pi, { category: input.category, outcome: "CIRCUIT_BREAKER", decisionDigest, findingKinds: input.findings.map((finding) => finding.kind), workspaceRoot: input.workspaceRoot, cwd: input.cwd, at: now() });
 			return { outcome: "DENY", reason: "repeated denial circuit breaker is open for this exact action" };
 		}
 		const decision = await resolveGuardrailStage({ pi, ctx: input.ctx, resolver, category: input.category, findings: input.findings, workspaceRoot: input.workspaceRoot, cwd: input.cwd });
 		if (decision.outcome === "DENY") recordGuardrailDenial(state, decisionDigest);
 		else clearGuardrailDenial(state, decisionDigest);
-		recordGuardrailAudit(pi, { category: input.category, outcome: decision.outcome, decisionDigest, findingKinds: input.findings.map((finding) => finding.kind), workspaceRoot: input.workspaceRoot, cwd: input.cwd, at: now() });
+		recordGuardrailAudit(auditKey, pi, { category: input.category, outcome: decision.outcome, decisionDigest, findingKinds: input.findings.map((finding) => finding.kind), workspaceRoot: input.workspaceRoot, cwd: input.cwd, at: now() });
 		return decision;
 	};
 
 	pi.on("session_start", (_event, ctx) => {
 		resetGuardrailSessionState(state);
+		auditKey = createGuardrailAuditKey();
 		try {
 			workspaceAuthority = createWorkspaceAuthority(ctx.cwd, options.workspaceRoot);
 			for (const root of options.allowedWriteRoots ?? []) if (!isAbsolute(root)) throw new Error("allowedWriteRoots must contain only absolute paths");
@@ -162,19 +175,24 @@ export function registerGuardrails(pi: ExtensionAPI, options: GuardrailsOptions 
 			if (contract === "shell" && typeof policyInput.command !== "string") {
 				return { block: true, reason: `Guardrail shell contract for ${event.toolName} has no inspectable command` };
 			}
-			const findings = analyzeToolCall(policyToolName, policyInput, executionCwd, workspaceAuthority.workspaceRoot, allowedWriteRoots);
+			const findings = contract === "remote-mutation"
+				? [{ kind: "remote-mutation" as const, reason: `${event.toolName} is declared as an external service mutation` }]
+				: analyzeToolCall(policyToolName, policyInput, executionCwd, workspaceAuthority.workspaceRoot, allowedWriteRoots);
 			if (findings.length === 0) return;
 
 		const approvedUploadsThisCall = new Set<string>();
+		const reusedUploadFindings: MutationFinding[] = [];
 		let approvedRemoteMutationThisCall = false;
 		const pendingUploads = findings.filter((finding) => {
 			if (finding.kind !== "external-upload") return false;
 			if (finding.target && hasActiveGuardrailGrant(state, "external-upload", finding.target, now())) {
 				approvedUploadsThisCall.add(finding.target);
+				reusedUploadFindings.push(finding);
 				return false;
 			}
 			return true;
 		});
+		recordGrantReuse({ category: "external-upload", findings: reusedUploadFindings, workspaceRoot: workspaceAuthority.workspaceRoot, cwd: executionCwd });
 		if (pendingUploads.length > 0) {
 			const uploadTargets = new Set(pendingUploads.map((finding) => finding.target).filter((target): target is string => Boolean(target)));
 			const uploadStageFindings = findings.filter((finding) =>
@@ -190,8 +208,16 @@ export function registerGuardrails(pi: ExtensionAPI, options: GuardrailsOptions 
 			}
 		}
 
-		const pendingSecretReads = findings.filter((finding) => finding.kind === "secret-read" &&
-			(!finding.target || (!hasActiveGuardrailGrant(state, "secret-read", finding.target, now()) && !approvedUploadsThisCall.has(finding.target))));
+		const reusedSecretFindings: MutationFinding[] = [];
+		const pendingSecretReads = findings.filter((finding) => {
+			if (finding.kind !== "secret-read") return false;
+			if (finding.target && hasActiveGuardrailGrant(state, "secret-read", finding.target, now())) {
+				reusedSecretFindings.push(finding);
+				return false;
+			}
+			return !finding.target || !approvedUploadsThisCall.has(finding.target);
+		});
+		recordGrantReuse({ category: "secret-read", findings: reusedSecretFindings, workspaceRoot: workspaceAuthority.workspaceRoot, cwd: executionCwd });
 		if (pendingSecretReads.length > 0) {
 			const decision = await resolveAuditedStage({ ctx, category: "secret-read", findings: pendingSecretReads, workspaceRoot: workspaceAuthority.workspaceRoot, cwd: executionCwd });
 			if (decision.outcome === "DENY") return { block: true, reason: blockedReason("secret-read", decision, pendingSecretReads) };
@@ -206,11 +232,17 @@ export function registerGuardrails(pi: ExtensionAPI, options: GuardrailsOptions 
 			if (decision.outcome === "DENY") return { block: true, reason: blockedReason("remote-mutation", decision, remoteMutations) };
 		}
 
+		const reusedMutationFindings: MutationFinding[] = [];
 		const pendingMutations = findings.filter((finding) => {
 			if (finding.kind === "secret-read" || finding.kind === "external-upload" || finding.kind === "remote-mutation") return false;
 			const key = guardrailSessionDirectoryKey(finding);
-			return !key || !hasActiveGuardrailGrant(state, "external-mutation", key, now());
+			if (key && hasActiveGuardrailGrant(state, "external-mutation", key, now())) {
+				reusedMutationFindings.push(finding);
+				return false;
+			}
+			return true;
 		});
+		recordGrantReuse({ category: "external-mutation", findings: reusedMutationFindings, workspaceRoot: workspaceAuthority.workspaceRoot, cwd: executionCwd });
 		if (pendingMutations.length === 0) return;
 		const decision = await resolveAuditedStage({ ctx, category: "external-mutation", findings: pendingMutations, workspaceRoot: workspaceAuthority.workspaceRoot, cwd: executionCwd });
 		if (decision.outcome === "DENY") return { block: true, reason: blockedReason("external-mutation", decision, pendingMutations) };

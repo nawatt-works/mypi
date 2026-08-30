@@ -15,9 +15,9 @@
     "workerProfileRuntimeSha256": "654cbeeb5b8525c4cf03feded21d20fae7c7a788aacd6de6c9098de8325d67eb",
     "workerMachineSetupSha256": "b19e344c889a93533da6afb0dcd89137a909600d84bace65c9f225eec4cedb16",
     "agentTeamsWorkerProfileSha256": "cebb9b81a5dccfed4248606c70f0a0fdaccbccfe0cde51147536596f7a75c191",
-    "commandPolicySha256": "65e33c738caa40ea5981a2da39fd0bc8af139d88e219b2a5540b05b8c991b25d",
+    "commandPolicySha256": "271d09620f748cf7ec19a0a1da9c76e7fcc11fff5d9aa27c29f3ca007ac0585a",
     "scopedWorkerToolsSha256": "f937ac471424fcb30a5bb9a7c07eeceb09e521c3421364df335f285c0085d18d",
-    "safetyGuardrailDetectorSha256": "63e87997de2575cdc1cc5eb83ec215e4f9d32f9f75f554fbdc6947cef33c386d",
+    "safetyGuardrailDetectorSha256": "c844c97043c5fd3136fb5b13de26547ef495041179db1bd97f12cd3d2e89595f",
     "workerExecutionAdaptersSha256": "34f714bb9b520663bd16e2c682bc5e38e8e232fb1ece0f9adb79138f725435c9"
   },
   "integration": {

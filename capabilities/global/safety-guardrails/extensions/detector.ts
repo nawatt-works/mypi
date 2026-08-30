@@ -55,6 +55,8 @@ const FILE_UPLOAD_TOOL_PATTERN = /(?:^|[_-])(?:upload|attach|send[_-]?file)(?:$|
 const SENSITIVE_ENV_NAME_PATTERN = /(?:^|_)(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?|PRIVATE[_-]?KEY|AUTH)(?:_|$)/i;
 const LOCAL_VIDEO_EXTENSION_PATTERN = /\.(?:mp4|mov|webm|avi|mpeg|mpg|wmv|flv|3gp|3gpp)$/i;
 const COMMAND_TOOL_PATTERN = /(?:^|[_:-])(?:(?:bash|shell|terminal)(?:[_:-](?:exec(?:ute)?|run|command|cmd))?|(?:exec(?:ute)?|run)[_-]?(?:command|cmd)?|command[_-]?(?:exec(?:ute)?|run))(?:$|[_:-])/i;
+const REMOTE_SERVICE_TOOL_PATTERN = /(?:^|_)(?:github|gitlab|bitbucket|azure|aws|gcloud|cloudflare|vercel|netlify|firebase|kubernetes|kubectl|docker|npm|slack|jira|linear|notion)(?:_|$)/i;
+const REMOTE_MUTATION_TOOL_PATTERN = /(?:^|_)(?:apply|create|delete|deploy|destroy|merge|patch|post|publish|push|release|remove|rollback|run[_-]?workflow|send|set|sync|update|upload)(?:_|$)/i;
 
 const SHELL_CONTENT_READ_COMMANDS = new Set([
 	".",
@@ -936,6 +938,10 @@ function analyzePathAwareCustomTool(
 	const normalizedToolName = normalizedFieldName(toolName);
 	const pathArguments = collectPathArguments(input).filter(({ value }) => isLocalReference(value));
 	const findings: MutationFinding[] = [];
+	if (REMOTE_MUTATION_TOOL_PATTERN.test(normalizedToolName) &&
+		(REMOTE_SERVICE_TOOL_PATTERN.test(normalizedToolName) || /(?:deploy|publish|push|send[_-]?(?:email|message)|run[_-]?workflow)/.test(normalizedToolName))) {
+		findings.push({ kind: "remote-mutation", reason: `${toolName} may mutate an external service and requires explicit human approval` });
+	}
 	const hasCommandField = Object.hasOwn(input, "command") || Object.hasOwn(input, "cmd");
 	if (COMMAND_TOOL_PATTERN.test(toolName) || hasCommandField) {
 		const command = input.command ?? input.cmd;

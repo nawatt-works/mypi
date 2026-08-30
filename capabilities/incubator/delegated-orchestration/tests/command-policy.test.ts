@@ -244,10 +244,18 @@ test("fails closed on malformed input and parser complexity limits", () => {
 	assert.ok(cases.some((result) => codes(result).includes("parser-limit")));
 });
 
-test("requires REVIEW for substitutions, nested shells, and inline interpreters", () => {
+test("requires REVIEW only for recursively inspectable nested shell forms", () => {
 	for (const command of [
 		"echo $(date +%s)",
 		"sh -c 'printf ok > result.txt'",
+	]) {
+		const result = analyze(command);
+		assert.equal(result.recommendedOutcome, "REVIEW", command);
+	}
+});
+
+test("keeps opaque interpreter and local program execution human-only", () => {
+	for (const command of [
 		"node -e 'console.log(1)'",
 		"./scripts/check.sh",
 		"bash ./scripts/check.sh",
@@ -256,9 +264,12 @@ test("requires REVIEW for substitutions, nested shells, and inline interpreters"
 		"node scripts/release.mjs",
 		"ruby scripts/release.rb",
 		"python -m pytest",
+		"python -m twine upload dist/*",
+		"node /workspace/node_modules/.bin/vercel deploy --prod",
 	]) {
 		const result = analyze(command);
-		assert.equal(result.recommendedOutcome, "REVIEW", command);
+		assert.equal(result.recommendedOutcome, "HUMAN", command);
+		assert.ok(codes(result).includes("dynamic-code-execution"), command);
 	}
 });
 
