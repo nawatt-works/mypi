@@ -3,8 +3,8 @@
 > **Status:** PASS — production remains disabled<br>
 > **Executed:** 2026-08-30<br>
 > **Provider/model:** `openai-codex/gpt-5.4`, thinking `low`<br>
-> **Candidate commits:** `cb05e2f`, `5340500`, `d09c982`, `567826a`, `d5273ed`, `637f0b0`<br>
-> **Profile digest:** `368d561ec19be9b4a57a5b1e0296df606fd814eae958728a97b5464335287f7f`
+> **Candidate commits:** `cb05e2f`, `5340500`, `d09c982`, `567826a`, `d5273ed`, `637f0b0`, `89b91b6`, `6ef5705`<br>
+> **Profile digest:** `49aa101f226cb8c296d6d7592ae6bf72bd5ead767bb58da99b996bffcf18e02c`
 
 ## Operator boundary
 
@@ -20,13 +20,15 @@ Startup correctionถัดมาย้าย Git worktreeออกจาก cre
 {
   "status": "PASS",
   "productionActivated": false,
-  "profileDigest": "368d561ec19be9b4a57a5b1e0296df606fd814eae958728a97b5464335287f7f",
-  "runtimeAuthorityDigest": "7398876bb4d8fe04fe33ac22295e0a7fa153f9a7e26213b88c9b5c19d24a58f7",
+  "profileDigest": "49aa101f226cb8c296d6d7592ae6bf72bd5ead767bb58da99b996bffcf18e02c",
+  "runtimeAuthorityDigest": "b960b882a430aa70150f523d5b3abf25573556938b6d31a7757a717eaa913b95",
   "credentialRevision": 1,
   "providerId": "openai-codex",
   "modelId": "gpt-5.4",
   "checks": {
     "realProviderArtifact": true,
+    "exactReadOnlyAdapter": true,
+    "exactWorktreeWriteAdapter": true,
     "generatedSpawnReadiness": true,
     "boundedWorktreeMutation": true,
     "noInteractiveRequests": true,
@@ -52,6 +54,10 @@ trusted machine receipt
   → pinned public upstream + zero-context overlay
   → exact acceptance dependency lock + npm ci
   → patched leader RPC
+  → read-only Worker: canonical leader workspace, exact read + team_message, no shell/mutation/container mount
+  → orderly read-only stop + no leader-workspace mutation
+  → worktree-write Worker: exact managed sibling worktree, exact read/bash/edit/write + team_message, Bash rw bind
+  → exact manifest/canonical cwd/readiness workspace binding
   → provisionAgentTeamsWorkerProfile
   → signed single-use lease
   → exact generated argv/environment
@@ -70,7 +76,7 @@ trusted machine receipt
 
 ## Verification
 
-- full repository suite `194/194`
+- full repository suite `198/198`
 - runtime/fault probes `10/10`
 - patched upstream typecheck/lint PASS
 - rotation integration: active generated profile block, idle rotation revision `1→2`, stale setup/revision failก่อน lease/spawn, revisionใหม่สร้าง profile identityใหม่และ cleanupผ่าน
@@ -78,4 +84,4 @@ trusted machine receipt
 
 ## Remaining gate
 
-ผลนี้ผ่าน generated spawn/readiness/work/forced-crash/immediate retry/orderly stop/leader-loss self-clean/worktree retention/replacement path 11/11 และ rotation integrationยืนยัน active block → idle rotate → stale revision reject → new revision spawnแล้ว แต่ยังไม่เปิด production ต้องเพิ่ม read-only/worktree-write adaptersและ final Phase 2–3 evidence reviewก่อน root import, releaseหรือ Default Pi switch
+ผลนี้ผ่าน exact read-only/worktree-write adapters, generated spawn/readiness/work/forced-crash/immediate retry/orderly stop/leader-loss self-clean/worktree retention/replacement path 13/13 และ rotation integrationยืนยัน active block → idle rotate → stale revision reject → new revision spawnแล้ว แต่ยังไม่เปิด production ต้องผ่าน final Phase 2–3 evidence reviewก่อน root import, releaseหรือ Default Pi switch
