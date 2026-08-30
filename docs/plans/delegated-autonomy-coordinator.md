@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — Phase 2 generated Worker-profile implementation; production wiring remains disabled<br>
+> **Status:** active — Phase 2 generated Worker-profile core awaiting independent review; production wiring remains disabled<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 12:00<br>
+> **Updated:** 2026-08-30 12:30<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -856,15 +856,18 @@ Success metric หลัก:
 - credential projectionมี providerเดียว; ambient key/token/auth variablesถูก strip และ child Bash/toolsไม่ได้รับ secret
 - exact launch argsปิด extension/skill/prompt/theme/context discovery, pin tools/provider/model/sessionและ explicit extensions
 - unit/sentinel tests `12/12` รวม real child Piที่ไม่เห็น Default/project canaries; full suite `158/158`
+- producer checkpoint `077d5c7`; self-review correction `9baa988` bind cleanupกับ runtime root + expected profile digestและหยุดอ่าน untrusted filesก่อน path/permission gateผ่าน
 
 ## Exact next action
 
-ทำ independent security reviewของ pure checkpointก่อน wiring จากนั้น:
+ทำ independent security reviewของ commits `077d5c7..9baa988` ก่อน wiring จากนั้น:
 
-1. แก้ findingsและ commit atomic Worker-profile-core checkpoint
+1. แก้ review findingsและบันทึก correction evidence
 2. bind materialized profile digest, agent/home/session pathsและ environment keysเข้า agent-teams requested/observed readiness contract
 3. regenerate overlay/profile hashesและเพิ่ม missing/default-linked/stale profile startup probes
 4. แยก read-only/worktree-write execution adaptersและทดสอบ cleanup/retry race
 5. หลัง profile adapterผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
+
+Local `main`ยังไม่ push checkpointชุดนี้; external pushไม่จำเป็นต่อ reviewและจะขอ human decisionเมื่อถึง release checkpoint
 
 ห้ามโหลด agent-teams candidate, production-wire delegated Workerหรือข้าม manual Herdr confirmationจน Phase 2–3 production-path acceptanceผ่าน
