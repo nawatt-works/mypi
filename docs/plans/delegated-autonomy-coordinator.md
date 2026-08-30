@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** paused — Phase 2 pure registries complete; waiting for capability-package migration and Worker-profile discussion<br>
+> **Status:** active — Phase 2 Worker-profile design discussion; production wiring remains paused<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 09:10<br>
+> **Updated:** 2026-08-30 11:30<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -822,9 +822,7 @@ Success metric หลัก:
 
 ## Exact next action
 
-พัก production wiring และ Worker-profile implementationตามคำขอผู้ใช้ ดำเนิน [จัด My Pi เป็น Capability Packages และ Pinned Releases](capability-packages-and-pinned-releases.md) ในส่วนที่ไม่ขึ้นกับ Worker profileก่อน
-
-เมื่อ capability migration, stable aggregateและ pinned releaseพร้อม ให้กลับมาหารือ exact Worker profile topology, `PI_CODING_AGENT_DIR`, credential provisioningและ no-default-fallback acceptance แล้วจึงทำ Phase 2 ต่อ:
+[Capability Packages และ Pinned Releases](capability-packages-and-pinned-releases.md) Phase 0–6เสร็จแล้ว: `v0.2.0` ถูก pushและ Default Piใช้ exact Git refพร้อม rollback evidence ขั้นถัดไปคือหารือ exact Worker profile topology, `PI_CODING_AGENT_DIR`, credential provisioningและ no-default-fallback acceptanceก่อนแก้ incubator code แล้วจึงทำ Phase 2 ต่อ:
 
 1. แยก guardrail detection → policy resolution → UI rendering โดย normal manual sessionยังทำงานเดิม
 2. เพิ่ม atomic Worker policy reference/observed markerก่อนเลือก delegated resolver; unknown/headlessต้อง fail closed

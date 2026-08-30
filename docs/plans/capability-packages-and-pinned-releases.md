@@ -1,8 +1,8 @@
 # จัด My Pi เป็น Capability Packages และ Pinned Releases
 
-> **Status:** active — Phase 6 awaiting human tag/push/install decision<br>
+> **Status:** active — Phase 7 Worker-profile design handoff<br>
 > **Created:** 2026-08-30 09:10<br>
-> **Updated:** 2026-08-30 11:10<br>
+> **Updated:** 2026-08-30 11:30<br>
 > **Purpose:** แยก capability ตามสถานะและขอบเขตการติดตั้ง ให้ Default Pi โหลดเฉพาะของที่ stable จริงจาก pinned Git release โดยไม่ผูกการพัฒนากับ production working tree
 
 ## Goal and scope
@@ -380,13 +380,13 @@ Exit criteria: ผู้ใช้ clone exact commitแล้วติดตั�
 - [x] เลือก semantic versionแรกหลัง migrationเป็น `0.2.0` (breaking pre-1.0 layout change)
 - [x] ตรวจ staged migration, full tests, clean smoke, links, overlay applyและ release documentation
 - [x] สร้าง atomic migration/release-candidate commit `ae81d9d`
-- [ ] สร้าง local tag `v0.2.0` หลังผู้ใช้ยืนยัน version/ref
-- [ ] ให้ผู้ใช้ตรวจหรืออนุมัติ external push
-- [ ] push commit/tagตาม human-only boundary
-- [ ] เปลี่ยน Default Pi package sourceเป็น exact Git ref
-- [ ] ยืนยัน `pi list` และ runtime source provenance
-- [ ] ทดสอบ rollbackไป previous ref
-- [ ] ลบ Default local-path working-tree package referenceเมื่อ pinned installพร้อม
+- [x] สร้าง annotated tag `v0.2.0` ที่ final release commit `6c61b9d`
+- [x] ผู้ใช้อนุมัติ tag, external pushและ Default Pi switch
+- [x] push `main` และ `v0.2.0`; remote tag dereferenceตรง `6c61b9d0ddd50f0f5adf4761fd93979dae6bc0bf`
+- [x] เปลี่ยน Default Pi package sourceเป็น `git:git@github.com:nawatt-works/mypi.git@v0.2.0`
+- [x] `pi list`, pinned clone HEAD/tag/clean tree, observed commandsและ RPIV/Plannotator toolsตรง stable release
+- [x] isolated profileทดสอบ pinned → local rollback → pinnedสำเร็จ
+- [x] Default settingsไม่มี development local-path package referenceแล้วและ development checkoutยังอยู่เป็น rollback source
 
 Exit criteria: Default Pi โหลด exact remote Git refและการแก้ development working treeไม่เปลี่ยน runtimeหลัง restart/reload
 
@@ -492,17 +492,26 @@ Testsผ่านเพียงอย่างเดียวไม่ทำใ
 - temporary clean copyผ่าน `npm ci --omit=dev`, isolated Pi install/list, RPC session startup, stable commands, RPIV/Plannotator toolsและ Azure opt-in load
 - linksและ `git diff --check` ผ่าน; historical plans/notesเก็บ old path contextและเพิ่ม current migration notes
 - เลือก root aggregate version `0.2.0` สำหรับ breaking pre-1.0 layout change
-- atomic migration/release-candidate commitคือ `ae81d9d`; branch `main` อยู่ ahead `origin/main` และ remoteยังไม่มี `v0.2.0`
+- atomic migration checkpointคือ `ae81d9d`; release documentation checkpointคือ `6c61b9d`
+
+### 2026-08-30 — Pinned `v0.2.0` release activated
+
+- ผู้ใช้อนุมัติ annotated tag, pushและ Default Pi switch
+- `main` และ `v0.2.0`ถูก push; annotated tag dereferenceเป็น `6c61b9d0ddd50f0f5adf4761fd93979dae6bc0bf`
+- Default Pi settingsแทน development local pathด้วย `git:git@github.com:nawatt-works/mypi.git@v0.2.0`
+- installed clone clean, exact tag/HEADตรงและ runtimeเห็น stable commands `mypi-continuity`, `mypi-herdr-setup`, `mypi-herdr-status`, `mypi-updates`, `mypi-worker-status`
+- runtimeเห็น adapter tools `ask_user_question`, `plannotator_submit_plan`; ไม่เห็น orchestrationหรือ Azure tools
+- isolated rollback testสลับ pinned → development local path → pinnedสำเร็จโดยไม่ลบ development source
 
 ## Exact next action
 
-รอ human decisionสำหรับ Phase 6 release actions:
+กลับมาหารือ Worker-profile designตามที่พักไว้ โดยยังไม่ implement production wiring:
 
-1. ยืนยันว่าจะใช้ commit `ae81d9d` เป็น code checkpointและ tag docs follow-up commitร่วมด้วยภายใต้ `v0.2.0`
-2. เมื่อยืนยัน ให้สร้าง local annotated tagที่ final docs commit, push `main` และ tagไป `origin`
-3. เปลี่ยน Default Piเป็น `pi install git:git@github.com:nawatt-works/mypi.git@v0.2.0`
-4. ยืนยัน `pi list`, stable commands/toolsและ source provenanceจาก pinned clone
-5. ทดสอบ rollbackโดยยังไม่ลบ previous sourceจนยืนยันสำเร็จ
-6. หลัง pinned install/rollback verificationเสร็จ จึงกลับไป Worker-profile discussion
+1. กำหนด Default/dev/Worker profile topologyและว่า Worker profileเป็น per-run, per-workerหรือ immutable shared template
+2. กำหนด exact `PI_CODING_AGENT_DIR`, `HOME`, session/settings/models/trust stateและห้าม fallbackไป Default profile
+3. กำหนด provider credential provisioningโดยไม่ exposeผ่าน Worker tools/Bash/container
+4. กำหนด observed readiness/profile digestและ sentinel testsที่พิสูจน์ว่า Default settings/authไม่ถูกอ่าน
+5. แยก contractสำหรับ Pi-native agent-teamsกับ Herdr Pi Workerโดยคง authority sourceเดียว
+6. อัปเดต delegated-autonomy planก่อนแก้ incubator implementation
 
-ห้าม production-wire delegated Workers, ย้าย `pi-doc`, push tagหรือเปลี่ยน Default Pi settingsก่อนผู้ใช้ตัดสิน Phase 6 actions
+ห้าม production-wire delegated Workersหรือย้าย `pi-doc` จน Worker-profile decisionได้รับการยืนยัน

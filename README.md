@@ -158,15 +158,13 @@ Target release modelคือ exact Git refจาก remote:
 git@github.com:nawatt-works/mypi.git
 ```
 
-หลังสร้าง release tagแล้ว Default Piจะติดตั้งรูปแบบนี้:
+Stable releaseปัจจุบันคือ annotated tag `v0.2.0` ที่ commit `6c61b9d0ddd50f0f5adf4761fd93979dae6bc0bf`:
 
 ```sh
-pi install git:git@github.com:nawatt-works/mypi.git@vX.Y.Z
+pi install git:git@github.com:nawatt-works/mypi.git@v0.2.0
 ```
 
-Pinned refไม่เลื่อนเองจากการแก้ working treeหรือ `pi update --extensions` การเปลี่ยนรุ่นต้องระบุ refใหม่และ rollbackได้ด้วย previous ref
-
-ระหว่างที่ capability migrationยังไม่ถึง release phase ให้ใช้ isolated development profileและอย่าอ้างว่ามี stable tagที่ยังไม่ได้สร้าง
+Pinned refไม่เลื่อนเองจากการแก้ working treeหรือ `pi update --extensions` การเปลี่ยนรุ่นต้องระบุ refใหม่และ rollbackได้ด้วย previous ref Default Piที่ตรวจรับแล้วโหลด tagนี้จาก Pi Git package store; development checkoutใช้เฉพาะ isolated development profile
 
 ## Verification
 
