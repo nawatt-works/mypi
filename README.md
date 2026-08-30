@@ -113,8 +113,8 @@ Create/Update/Delete ไม่ fallbackไป Azure CLI, ต้องยืน�
 - mandate/policy/REVIEW pure registriesและ Phase 0 acceptanceผ่านแล้ว
 - agent-teams candidateยัง production disabled
 - root stable manifestไม่โหลด orchestration extensionหรือ skill
-- Worker profile, credential provisioningและ no-default-fallbackยังรอ design discussion
-- ห้ามตีความ package migrationเป็น Worker security acceptance
+- generated Worker profile, single-provider credential projection, no-default-fallbackและ real-provider forced-crash/retry acceptance implementแล้วใน incubator
+- leader-loss reconciliation, read-only/worktree-write adaptersและ final Phase 2–3 reviewยังไม่ครบ; ห้ามตีความสถานะนี้เป็น production activation
 
 Agent-teams artifactsอยู่ที่:
 

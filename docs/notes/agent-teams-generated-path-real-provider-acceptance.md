@@ -3,8 +3,8 @@
 > **Status:** PASS — production remains disabled<br>
 > **Executed:** 2026-08-30<br>
 > **Provider/model:** `openai-codex/gpt-5.4`, thinking `low`<br>
-> **Candidate commits:** `cb05e2f`, `5340500`<br>
-> **Profile digest:** `6cb191d99f13aa33d9b5c460816942501c84deed2e0cfed2bd6e2d4f3311b50b`
+> **Candidate commits:** `cb05e2f`, `5340500`, `d09c982`, `567826a`<br>
+> **Profile digest:** `dcf7b3d084e47726f3723ca1715ca441d5f7fbdf392c63f52ccdf90432bde897`
 
 ## Operator boundary
 
@@ -20,7 +20,7 @@ Startup correctionถัดมาย้าย Git worktreeออกจาก cre
 {
   "status": "PASS",
   "productionActivated": false,
-  "profileDigest": "6cb191d99f13aa33d9b5c460816942501c84deed2e0cfed2bd6e2d4f3311b50b",
+  "profileDigest": "dcf7b3d084e47726f3723ca1715ca441d5f7fbdf392c63f52ccdf90432bde897",
   "runtimeAuthorityDigest": "6d90012f628776f6f60ab88478c993452271d01e01fb1799491565e8c119937c",
   "credentialRevision": 1,
   "providerId": "openai-codex",
@@ -30,6 +30,7 @@ Startup correctionถัดมาย้าย Git worktreeออกจาก cre
     "generatedSpawnReadiness": true,
     "boundedWorktreeMutation": true,
     "noInteractiveRequests": true,
+    "forcedCrashCleanup": true,
     "stopCleanup": true,
     "sameNameReplacement": true,
     "noReusableCredentialState": true
@@ -53,18 +54,22 @@ trusted machine receipt
   → exact generated argv/environment
   → structured boundary readiness
   → real-provider nonce-bound artifact
-  → stop
+  → exact Worker PID SIGKILL
+  → generation-bound asynchronous cleanup
+  → immediate same-name retry serialized behind cleanup
   → same-name replacement with new profile/lease identities
+  → graceful stop
   → cleanup + no reusable credential state
 ```
 
 ## Verification
 
-- full repository suite `193/193`
+- full repository suite `194/194`
 - runtime/fault probes `10/10`
 - patched upstream typecheck/lint PASS
-- independent correction reviewหลัง real run: **PASS**, no High/Medium
+- rotation integration: active generated profile block, idle rotation revision `1→2`, stale setup/revision failก่อน lease/spawn, revisionใหม่สร้าง profile identityใหม่และ cleanupผ่าน
+- independent correction reviewหลัง real run: static behavior PASS; final evidence correction review pending
 
 ## Remaining gate
 
-ผลนี้ผ่าน generated spawn/readiness/work/stop/replacement path แต่ยังไม่เปิด production ต้องเพิ่ม forced-crash/retry reconciliation, credential rotation acceptanceและ final Phase 2–3 evidence reviewก่อน root import, releaseหรือ Default Pi switch
+ผลนี้ผ่าน generated spawn/readiness/work/forced-crash/immediate retry/stop/replacement path 8/8 และ rotation integrationยืนยัน active block → idle rotate → stale revision reject → new revision spawnแล้ว แต่ยังไม่เปิด production ต้องเพิ่ม leader-loss reconciliation, read-only/worktree-write adaptersและ final Phase 2–3 evidence reviewก่อน root import, releaseหรือ Default Pi switch

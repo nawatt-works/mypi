@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — Phase 2 crash/rotation reconciliation acceptance; production remains disabled<br>
+> **Status:** active — Phase 2 leader-loss reconciliation + execution adapters; production remains disabled<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 20:10<br>
+> **Updated:** 2026-08-30 21:00<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -897,17 +897,18 @@ Success metric หลัก:
 - full suite `193/193`, runtime/fault probes `10/10`, absent-machine blocker exit `78`
 - operator setupสำเร็จ; initial acceptance expose missing upstream lock, worktree/runtime overlapและ backend-tool readiness mismatch
 - corrections `cb05e2f`, `5340500`เพิ่ม exact acceptance dependency lock, sibling private worktree root, full tool readinessและ measured evidence
-- generated-path real-provider runสุดท้าย **PASS**: 7/7 checks, interactive requests `0`, generated profile removed, no reusable credential state
+- generated-path real-provider run `5340500` **PASS**: 7/7 checks, interactive requests `0`, generated profile removed, no reusable credential state
+- `d09c982`, `567826a`เพิ่ม exact PID SIGKILL, generation-bound cleanup, immediate same-name retry serializationและ rotation integration
+- final crash acceptance **PASS 8/8** profile `dcf7b3d0…`; full suite `194/194`; active rotate block → stale revision reject → new revision spawnผ่าน
 - evidenceอยู่ที่ [Agent-teams Generated-path Real-provider Acceptance](../notes/agent-teams-generated-path-real-provider-acceptance.md)
 - productionยัง disabled
 
 ## Exact next action
 
-1. เพิ่ม forced-crash/leader-loss/retry reconciliationโดย bind cleanupกับ exact generationและไม่ลบ replacement
-2. เพิ่ม credential rotation acceptance: active lease block, idle rotate, stale revision reject, new revision spawn
-3. แยก read-only/worktree-write execution adapters
-4. ขอ independent Phase 2–3 evidence reviewก่อน production importหรือ Default release
-5. หลัง profile pathผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
+1. เพิ่ม leader-loss reconciliationโดยไม่ kill PID reuseหรือเชื่อ stale runtime record
+2. แยก read-only/worktree-write execution adapters
+3. ขอ independent Phase 2–3 evidence reviewก่อน production importหรือ Default release
+4. หลัง profile pathผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
 
 External push, release/tagและ Default Pi switchเป็น human-only mutationsและยังไม่ทำ
 
