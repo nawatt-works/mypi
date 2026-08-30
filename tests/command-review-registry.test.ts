@@ -52,8 +52,10 @@ function reviewAnalysis(command = "rm -rf build/cache") {
 
 function setup() {
 	const entries: Array<{ type: "custom"; customType: string; data: any }> = [];
+	const control: { failReviewAction?: string } = {};
 	const pi = {
-		appendEntry(customType: string, data: unknown) {
+		appendEntry(customType: string, data: any) {
+			if (customType === COMMAND_REVIEW_ENTRY && control.failReviewAction === data?.action) throw new Error(`injected ${data.action} append failure`);
 			entries.push({ type: "custom", customType, data });
 		},
 	};
@@ -64,10 +66,11 @@ function setup() {
 		profileVersion: "1",
 		backend: "pi-agent-teams",
 		digest: PROFILE_DIGEST,
+		policyDigest: POLICY_DIGEST,
 		verified: true,
 	}, "2026-08-30T01:00:01.000Z");
 	const reviews = createCommandReviewRegistry(pi as any, authority);
-	return { pi, entries, authority, reviews };
+	return { pi, entries, authority, reviews, control };
 }
 
 test("issues an exact short-lived grant without storing the raw command", () => {
@@ -79,7 +82,7 @@ test("issues an exact short-lived grant without storing the raw command", () => 
 	assert.equal(grant.policyVersion, POLICY_DIGEST);
 	assert.match(grant.bindingDigest, /^[a-f0-9]{64}$/);
 	assert.equal(reviews.state("2026-08-30T01:01:30.000Z").records[0].status, "active");
-	assert.equal(authority.state().audit.at(-1)?.type, "review-grant-issued");
+	assert.equal(entries.filter((entry) => entry.customType === COMMAND_REVIEW_ENTRY).at(-1)?.data.action, "issue");
 	assert.ok(!JSON.stringify(entries).includes("rm -rf build/cache"));
 
 	grant.resources.push("tampered");
@@ -99,7 +102,7 @@ test("consumes a matching grant once and replay returns REVIEW without execution
 	assert.equal(first.reviewed, true);
 	assert.ok(first.grantId);
 	assert.equal(reviews.state("2026-08-30T01:01:31.000Z").records[0].status, "consumed");
-	assert.equal(authority.state().audit.at(-1)?.type, "review-grant-consumed");
+	assert.equal(entries.filter((entry) => entry.customType === COMMAND_REVIEW_ENTRY).at(-1)?.data.action, "consume");
 
 	const replay = reviews.consume(request(), analysis, "2026-08-30T01:01:32.000Z");
 	assert.equal(replay.outcome, "REVIEW");
@@ -118,13 +121,20 @@ test("finds grants from trusted context rather than a Worker-supplied bearer id"
 	for (const mismatch of [
 		request({ workerId: "worker-b" }),
 		request({ sessionId: "session-b" }),
-		request({ policyVersion: "c".repeat(64) }),
 		request({ cwd: "/repo/sub" }),
 	]) {
 		const mismatchDecision = reviews.consume(mismatch, analysis, "2026-08-30T01:01:30.000Z");
 		assert.equal(mismatchDecision.executionAllowed, false);
 		assert.equal(mismatchDecision.reviewed, false);
 	}
+	assert.throws(
+		() => reviews.consume(request({ policyVersion: "c".repeat(64) }), analysis, "2026-08-30T01:01:30.000Z"),
+		/not the authoritative profile policy/,
+	);
+	assert.throws(
+		() => reviews.issue(request({ policyVersion: "c".repeat(64) }), analysis, { now: "2026-08-30T01:01:30.000Z" }),
+		/not the authoritative profile policy/,
+	);
 	const differentCommand = reviewAnalysis("rm -rf build/other");
 	const decision = reviews.consume(request(), differentCommand, "2026-08-30T01:01:30.000Z");
 	assert.equal(decision.outcome, "REVIEW");
@@ -143,7 +153,7 @@ test("expired or revoked grants cannot execute", () => {
 	revokedSetup.reviews.revoke(grant.grantId, "2026-08-30T01:01:30.000Z");
 	assert.equal(revokedSetup.reviews.state("2026-08-30T01:01:31.000Z").records[0].status, "revoked");
 	assert.equal(revokedSetup.reviews.consume(request(), analysis, "2026-08-30T01:01:32.000Z").executionAllowed, false);
-	assert.equal(revokedSetup.authority.state().audit.at(-1)?.type, "review-grant-revoked");
+	assert.equal(revokedSetup.entries.filter((entry) => entry.customType === COMMAND_REVIEW_ENTRY).at(-1)?.data.action, "revoke");
 });
 
 test("never issues grants for ALLOW, HUMAN, DENY, unverified profiles, or non-digest policies", () => {
@@ -174,6 +184,17 @@ test("duplicate active exact-context grants and tampered history fail closed", (
 	const tampered = restoreCommandReviewRegistry([tamperedEntry], "2026-08-30T01:01:30.000Z");
 	assert.match(tampered.failClosedReason ?? "", /tampered/);
 	assert.deepEqual(tampered.records, []);
+});
+
+test("an append failure makes the registry fail closed before a grant can be retried", () => {
+	const { reviews, control, entries } = setup();
+	const analysis = reviewAnalysis();
+	reviews.issue(request(), analysis, { now: "2026-08-30T01:01:00.000Z" });
+	control.failReviewAction = "consume";
+	assert.throws(() => reviews.consume(request(), analysis, "2026-08-30T01:01:30.000Z"), /consume append failed/);
+	assert.match(reviews.state("2026-08-30T01:01:31.000Z").failClosedReason ?? "", /consume append failed/);
+	assert.throws(() => reviews.consume(request(), analysis, "2026-08-30T01:01:32.000Z"), /fail closed/);
+	assert.equal(entries.filter((entry) => entry.customType === COMMAND_REVIEW_ENTRY && entry.data.action === "consume").length, 0);
 });
 
 test("registry restored from bad history remains fail closed", () => {

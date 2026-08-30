@@ -195,7 +195,7 @@ export type CommandReviewRegistry = {
 
 export function createCommandReviewRegistry(
 	pi: Pick<ExtensionAPI, "appendEntry">,
-	authority: Pick<AuthorityRegistry, "state" | "recordAudit">,
+	authority: Pick<AuthorityRegistry, "state">,
 ): CommandReviewRegistry {
 	let records: CommandReviewRecord[] = [];
 	let failure: string | undefined;
@@ -222,6 +222,7 @@ export function createCommandReviewRegistry(
 			item.mandateId === request.mandateId && item.profileId === request.profileId && item.verified
 		);
 		if (!profile) throw new Error("command review profile is not a verified authority reference");
+		if (profile.policyDigest !== request.policyVersion) throw new Error("command review policy digest is not the authoritative profile policy");
 		return state;
 	};
 	const append = (event: ReviewRegistryEvent) => {
@@ -256,17 +257,16 @@ export function createCommandReviewRegistry(
 				status: "active",
 				snapshotDigest: sha256(probe),
 			};
-			append({ schemaVersion: 1, action: "issue", at: now, grant: probe, snapshotDigest: record.snapshotDigest });
-			authority.recordAudit({
-				type: "review-grant-issued",
-				actor: "coordinator",
-				workerId: request.workerId,
-				outcome: "REVIEW",
-				actionDigest: analysis.commandDigest,
-				details: { grantId: probe.grantId, findingCodes: probe.findingCodes, resources: probe.resources, expiresAt: probe.expiresAt },
-			}, now);
-			records = [...records, record];
-			return cloneGrant(probe);
+			try {
+				// This single append is both the trusted grant transition and its audit event.
+				// No second store write may fail after it and leave memory behind history.
+				append({ schemaVersion: 1, action: "issue", at: now, grant: probe, snapshotDigest: record.snapshotDigest });
+				records = [...records, record];
+				return cloneGrant(probe);
+			} catch (error) {
+				failure = `grant issue append failed: ${String(error)}`;
+				throw new Error(failure, { cause: error });
+			}
 		},
 
 		consume(request, analysis, nowValue) {
@@ -283,19 +283,16 @@ export function createCommandReviewRegistry(
 			const record = matches[0]!;
 			const decision = resolveCommandPolicy(request, analysis, { grant: record.grant, now });
 			if (!decision.executionAllowed || !decision.reviewed) return decision;
-			append({ schemaVersion: 1, action: "consume", at: now, grantId: record.grant.grantId });
-			authority.recordAudit({
-				type: "review-grant-consumed",
-				actor: "system",
-				workerId: request.workerId,
-				outcome: "ALLOW",
-				actionDigest: analysis.commandDigest,
-				details: { grantId: record.grant.grantId },
-			}, now);
-			records = records.map((item) => item.grant.grantId === record.grant.grantId
-				? { ...item, status: "consumed", consumedAt: now }
-				: item);
-			return decision;
+			try {
+				append({ schemaVersion: 1, action: "consume", at: now, grantId: record.grant.grantId });
+				records = records.map((item) => item.grant.grantId === record.grant.grantId
+					? { ...item, status: "consumed", consumedAt: now }
+					: item);
+				return decision;
+			} catch (error) {
+				failure = `grant consume append failed: ${String(error)}`;
+				throw new Error(failure, { cause: error });
+			}
 		},
 
 		revoke(grantId, nowValue) {
@@ -305,16 +302,13 @@ export function createCommandReviewRegistry(
 			const record = records.find((item) => item.grant.grantId === grantId);
 			if (!record || effectiveStatus(record, now) !== "active") throw new Error("review grant is missing or inactive");
 			if (record.grant.mandateId !== state.activeMandate?.id) throw new Error("review grant mandate does not match active authority");
-			append({ schemaVersion: 1, action: "revoke", at: now, grantId });
-			authority.recordAudit({
-				type: "review-grant-revoked",
-				actor: "coordinator",
-				workerId: record.grant.workerId,
-				outcome: "DENY",
-				actionDigest: record.grant.commandDigest,
-				details: { grantId },
-			}, now);
-			records = records.map((item) => item.grant.grantId === grantId ? { ...item, status: "revoked", revokedAt: now } : item);
+			try {
+				append({ schemaVersion: 1, action: "revoke", at: now, grantId });
+				records = records.map((item) => item.grant.grantId === grantId ? { ...item, status: "revoked", revokedAt: now } : item);
+			} catch (error) {
+				failure = `grant revoke append failed: ${String(error)}`;
+				throw new Error(failure, { cause: error });
+			}
 		},
 
 		restore(entries, nowValue) {

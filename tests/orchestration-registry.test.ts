@@ -326,11 +326,20 @@ test("keeps mandate, audit, and profile references in versioned session entries"
 		profileVersion: "1",
 		backend: "pi-agent-teams",
 		digest: "a".repeat(64),
+		policyDigest: "b".repeat(64),
 		verified: true,
 	}, "2026-08-30T01:02:00.000Z");
 	profile.profileId = "tampered";
 	assert.equal(registry.state().profiles[0].profileId, "pi-agent-teams-docker-strong-v1");
 	assert.equal((entries[2].data as any).profile.profileId, "pi-agent-teams-docker-strong-v1");
+	assert.throws(() => registry.recordProfile({
+		profileId: "pi-agent-teams-docker-strong-v1",
+		profileVersion: "2",
+		backend: "pi-agent-teams",
+		digest: "c".repeat(64),
+		policyDigest: "d".repeat(64),
+		verified: true,
+	}, "2026-08-30T01:02:01.000Z"), /already exists/);
 
 	const restored = restoreAuthorityRegistry(entries, { now: "2026-08-30T01:03:00.000Z" });
 	assert.equal(restored.failClosedReason, undefined);

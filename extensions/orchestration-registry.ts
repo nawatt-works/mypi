@@ -494,6 +494,7 @@ export type AuthorityProfileRef = {
 	profileVersion: string;
 	backend: "herdr" | "pi-agent-teams" | "piewf";
 	digest: string;
+	policyDigest: string;
 	verified: boolean;
 	observedAt: string;
 };
@@ -575,7 +576,7 @@ function validateProfileRef(value: unknown): value is AuthorityProfileRef {
 		typeof value.profileId === "string" && /^[a-z][a-z0-9._-]{0,127}$/.test(value.profileId) &&
 		typeof value.profileVersion === "string" && value.profileVersion.length > 0 && value.profileVersion.length <= 128 &&
 		(value.backend === "herdr" || value.backend === "pi-agent-teams" || value.backend === "piewf") &&
-		validHash(value.digest) && typeof value.verified === "boolean" && validIso(value.observedAt);
+		validHash(value.digest) && validHash(value.policyDigest) && typeof value.verified === "boolean" && validIso(value.observedAt);
 }
 
 export function restoreAuthorityRegistry(
@@ -587,6 +588,7 @@ export function restoreAuthorityRegistry(
 	const mandateIds = new Set<string>();
 	const audit: AuthorityAuditEvent[] = [];
 	const profiles: AuthorityProfileRef[] = [];
+	const profileKeys = new Set<string>();
 	const errors: string[] = [];
 
 	for (const rawEntry of entries) {
@@ -648,6 +650,12 @@ export function restoreAuthorityRegistry(
 				errors.push("profile entry is invalid");
 				continue;
 			}
+			const key = `${data.profile.mandateId}:${data.profile.profileId}`;
+			if (profileKeys.has(key)) {
+				errors.push(`duplicate profile authority reference: ${key}`);
+				continue;
+			}
+			profileKeys.add(key);
 			profiles.push({ ...data.profile });
 		} else {
 			errors.push("authority entry action is unknown");
@@ -764,6 +772,9 @@ export function createAuthorityRegistry(pi: Pick<ExtensionAPI, "appendEntry">): 
 			const active = requireActive();
 			const profile: AuthorityProfileRef = { ...input, mandateId: active.id, observedAt: timestamp(now) };
 			if (!validateProfileRef(profile)) throw new Error("profile reference is invalid");
+			if (state.profiles.some((item) => item.mandateId === active.id && item.profileId === profile.profileId)) {
+				throw new Error(`profile authority reference already exists: ${profile.profileId}`);
+			}
 			append({ schemaVersion: 1, action: "profile", profile });
 			state = { ...state, profiles: [...state.profiles, { ...profile }] };
 			return { ...profile };
