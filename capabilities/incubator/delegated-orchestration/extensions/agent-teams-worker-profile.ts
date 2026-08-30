@@ -9,6 +9,7 @@ import {
 	type MaterializedWorkerProfile,
 	type WorkerCredential,
 } from "./worker-profile-runtime.ts";
+import { verifyWorkerMachine, withWorkerMachineAuthorityLock } from "./worker-machine-setup.ts";
 
 const AGENT_TEAMS_TOOLS = ["read", "bash", "edit", "write", "team_message"] as const;
 const DIGEST = /^[a-f0-9]{64}$/;
@@ -26,6 +27,8 @@ export type AgentTeamsWorkerProfileConfiguration = {
 	teamsExtensionPath: string;
 	boundaryContractDigest: string;
 	runtimeAuthorityDigest: string;
+	machineSetupDigest: string;
+	credentialRevision: number;
 	workerProfileRuntimePath: string;
 	workerProfileRuntimeSha256: string;
 	agentTeamsWorkerProfilePath: string;
@@ -55,6 +58,8 @@ export type CredentialLeasePayload = {
 	runId: string;
 	workerId: string;
 	providerId: string;
+	machineSetupDigest: string;
+	credentialRevision: number;
 	readyNonceSha256: string;
 	issuedAt: number;
 	expiresAt: number;
@@ -176,7 +181,7 @@ async function loadPrivateFile(label: string, path: string): Promise<Buffer> {
 	return readFile(path);
 }
 
-function parseCredentialSource(raw: Buffer, providerId: string): WorkerCredential {
+function parseCredentialSource(raw: Buffer, providerId: string): { credential: WorkerCredential; revision: number } {
 	let value: unknown;
 	try {
 		value = JSON.parse(raw.toString("utf8"));
@@ -192,7 +197,7 @@ function parseCredentialSource(raw: Buffer, providerId: string): WorkerCredentia
 		!record.credential || typeof record.credential !== "object") {
 		throw new Error("Worker credential source identity does not match the requested provider");
 	}
-	return record.credential as WorkerCredential;
+	return { credential: record.credential as WorkerCredential, revision: Number(record.revision) };
 }
 
 export async function issueAgentTeamsCredentialLease(input: {
@@ -207,6 +212,20 @@ export async function issueAgentTeamsCredentialLease(input: {
 	const runId = requireIdentifier("runId", input.runId);
 	const workerId = requireIdentifier("workerId", input.workerId);
 	const readyNonce = requireDigest("readyNonce", input.readyNonce);
+	const machineSetupDigest = requireDigest("machineSetupDigest", input.configuration.machineSetupDigest);
+	if (!Number.isSafeInteger(input.configuration.credentialRevision) || input.configuration.credentialRevision < 1) {
+		throw new Error("credentialRevision must be a positive integer");
+	}
+	return withWorkerMachineAuthorityLock(runtimeRoot, async () => {
+	const machine = await verifyWorkerMachine({
+		runtimeRoot,
+		sourceAgentDir: input.configuration.defaultAgentDir,
+		providerId,
+		expectedSetupDigest: machineSetupDigest,
+	});
+	if (!machine.verified || !machine.manifest || machine.manifest.credentialRevision !== input.configuration.credentialRevision) {
+		throw new Error(`Worker machine is not verified for lease issuance: ${machine.mismatches.join(",") || "credential-revision"}`);
+	}
 	const authorityRoot = await canonicalPrivateDirectory("lease authority root", join(runtimeRoot, "lease-authority"));
 	const privateKeyPath = join(authorityRoot, "private.pem");
 	const privateKey = await loadPrivateFile("lease private key", privateKeyPath);
@@ -217,7 +236,8 @@ export async function issueAgentTeamsCredentialLease(input: {
 	});
 	const credentialSourceRoot = await canonicalPrivateDirectory("credential source root", join(runtimeRoot, "credential-source"));
 	const credentialSourcePath = join(credentialSourceRoot, `${providerId}.auth.json`);
-	const credential = parseCredentialSource(await loadPrivateFile("Worker credential source", credentialSourcePath), providerId);
+	const source = parseCredentialSource(await loadPrivateFile("Worker credential source", credentialSourcePath), providerId);
+	if (source.revision !== input.configuration.credentialRevision) throw new Error("Worker credential source revision drifted after machine verification");
 	const leasesRoot = await canonicalPrivateDirectory("credential lease root", join(runtimeRoot, "credential-leases"));
 	const runLeaseRootPath = join(leasesRoot, runId);
 	try {
@@ -235,10 +255,12 @@ export async function issueAgentTeamsCredentialLease(input: {
 		runId,
 		workerId,
 		providerId,
+		machineSetupDigest,
+		credentialRevision: source.revision,
 		readyNonceSha256: sha256(readyNonce),
 		issuedAt: now,
 		expiresAt: now + 60_000,
-		credential,
+		credential: source.credential,
 	};
 	let signature: Buffer;
 	try {
@@ -256,6 +278,7 @@ export async function issueAgentTeamsCredentialLease(input: {
 		throw new Error("Worker credential lease could not be issued", { cause: error });
 	}
 	return { leaseId: payload.leaseId, credentialLeasePath };
+	});
 }
 
 function parseSignedLease(raw: Buffer): SignedCredentialLease {
@@ -267,7 +290,7 @@ function parseSignedLease(raw: Buffer): SignedCredentialLease {
 	}
 	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("credential lease must be an object");
 	const expectedFields = [
-		"credential", "expiresAt", "issuedAt", "leaseId", "providerId", "readyNonceSha256",
+		"credential", "credentialRevision", "expiresAt", "issuedAt", "leaseId", "machineSetupDigest", "providerId", "readyNonceSha256",
 		"runId", "schemaVersion", "signature", "workerId",
 	].sort();
 	if (JSON.stringify(Object.keys(value).sort()) !== JSON.stringify(expectedFields)) throw new Error("credential lease has an invalid shape");
@@ -279,6 +302,8 @@ async function loadCredentialLease(input: {
 	defaultAgentDir: string;
 	credentialLeasePath: string;
 	providerId: string;
+	machineSetupDigest: string;
+	credentialRevision: number;
 	runId: string;
 	workerId: string;
 	readyNonce: string;
@@ -304,8 +329,9 @@ async function loadCredentialLease(input: {
 	const signed = parseSignedLease(raw);
 	if (signed.schemaVersion !== 1) throw new Error("unsupported credential lease schema");
 	const leaseId = requireIdentifier("leaseId", signed.leaseId);
-	if (signed.runId !== input.runId || signed.workerId !== input.workerId || signed.providerId !== input.providerId) {
-		throw new Error("credential lease identity does not match the requested Worker");
+	if (signed.runId !== input.runId || signed.workerId !== input.workerId || signed.providerId !== input.providerId ||
+		signed.machineSetupDigest !== input.machineSetupDigest || signed.credentialRevision !== input.credentialRevision) {
+		throw new Error("credential lease identity does not match the requested Worker or machine revision");
 	}
 	if (signed.readyNonceSha256 !== sha256(input.readyNonce)) throw new Error("credential lease nonce does not match the requested spawn");
 	if (!Number.isSafeInteger(signed.issuedAt) || !Number.isSafeInteger(signed.expiresAt) || signed.expiresAt <= signed.issuedAt) {
@@ -423,6 +449,8 @@ export async function materializeAgentTeamsWorkerProfile(input: {
 		defaultAgentDir,
 		credentialLeasePath: spawn.credentialLeasePath,
 		providerId,
+		machineSetupDigest: requireDigest("machineSetupDigest", configuration.machineSetupDigest),
+		credentialRevision: configuration.credentialRevision,
 		runId,
 		workerId,
 		readyNonce,

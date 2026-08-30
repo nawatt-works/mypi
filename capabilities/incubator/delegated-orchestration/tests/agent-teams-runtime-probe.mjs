@@ -1,10 +1,10 @@
 import { spawnSync } from "node:child_process";
-import { createHash, generateKeyPairSync } from "node:crypto";
 import { chmodSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { buildAgentTeamsProfile } from "../extensions/agent-teams-profile.ts";
+import { initializeWorkerMachine } from "../extensions/worker-machine-setup.ts";
 
 const checkout = resolve(process.argv[2] ?? "");
 if (!process.argv[2]) throw new Error("usage: node --experimental-strip-types tests/agent-teams-runtime-probe.mjs <patched-agent-teams-checkout>");
@@ -36,19 +36,16 @@ try {
 
 	const runtimeRoot = join(temporaryRoot, "worker-runtime");
 	const defaultAgentDir = join(temporaryRoot, "default", ".pi", "agent");
-	const leaseAuthorityRoot = join(runtimeRoot, "lease-authority");
-	for (const directory of [
-		runtimeRoot, defaultAgentDir, leaseAuthorityRoot, join(runtimeRoot, "coordination"),
-		join(runtimeRoot, "credential-leases"), join(runtimeRoot, "claimed-leases"),
-		join(runtimeRoot, "consumed-leases"), join(runtimeRoot, "credential-source"),
-	]) {
-		mkdirSync(directory, { recursive: true, mode: 0o700 });
-		chmodSync(directory, 0o700);
-	}
-	const { publicKey } = generateKeyPairSync("ed25519");
-	const publicKeyPem = publicKey.export({ type: "spki", format: "pem" });
-	const leasePublicKeyPath = join(leaseAuthorityRoot, "public.pem");
-	writeFileSync(leasePublicKeyPath, publicKeyPem, { mode: 0o600 });
+	mkdirSync(defaultAgentDir, { recursive: true, mode: 0o700 });
+	chmodSync(defaultAgentDir, 0o700);
+	const probeCredential = { type: "api_key", key: "runtime-probe-not-a-real-key" };
+	writeFileSync(join(defaultAgentDir, "auth.json"), `${JSON.stringify({ "openai-codex": probeCredential })}\n`, { mode: 0o600 });
+	const machine = await initializeWorkerMachine({
+		runtimeRoot,
+		sourceAgentDir: defaultAgentDir,
+		providerId: "openai-codex",
+		credential: probeCredential,
+	});
 	const profile = buildAgentTeamsProfile({
 		upstreamCommit: head.stdout.trim(),
 		patchedTeamsEntryPath: entryPath,
@@ -57,8 +54,10 @@ try {
 		providerId: "openai-codex",
 		modelId: "gpt-5.4-mini",
 		thinkingLevel: "low",
-		leasePublicKeyPath,
-		leasePublicKeySha256: createHash("sha256").update(publicKeyPem).digest("hex"),
+		leasePublicKeyPath: machine.leasePublicKeyPath,
+		leasePublicKeySha256: machine.leasePublicKeySha256,
+		machineSetupDigest: machine.setupDigest,
+		credentialRevision: machine.credentialRevision,
 		maxWorkers: 2,
 		environment: process.env,
 	});

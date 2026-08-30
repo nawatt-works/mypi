@@ -9,6 +9,7 @@ import {
 	chmod,
 	lstat,
 	mkdir,
+	open,
 	readdir,
 	readFile,
 	realpath,
@@ -29,6 +30,7 @@ const MACHINE_CHILDREN = [
 	"credential-leases",
 	"credential-source",
 	"lease-authority",
+	"locks",
 	"runs",
 ] as const;
 
@@ -214,6 +216,7 @@ async function readManifest(runtimeRoot: string): Promise<WorkerMachineManifest>
 
 async function verifyCredentialSource(input: {
 	runtimeRoot: string;
+	sourceAgentDir: string;
 	providerId: string;
 	revision: number;
 	credentialType: WorkerCredential["type"];
@@ -224,6 +227,11 @@ async function verifyCredentialSource(input: {
 	const source = parseCredentialSource((await requirePrivateFile("Worker credential source", join(root, entries[0]!))).content);
 	if (source.providerId !== input.providerId || source.revision !== input.revision || source.credential.type !== input.credentialType) {
 		throw new Error("Worker credential source identity does not match the machine manifest");
+	}
+	if (!input.sourceAgentDir) return;
+	const sourceCredential = await loadProviderCredential(input.sourceAgentDir, input.providerId);
+	if (canonicalJson(sourceCredential) !== canonicalJson(source.credential)) {
+		throw new Error("Worker credential source drifted from the explicit source profile");
 	}
 }
 
@@ -320,6 +328,7 @@ export async function verifyWorkerMachine(input: {
 	sourceAgentDir: string;
 	providerId: string;
 	expectedSetupDigest?: string;
+	allowSourceCredentialDrift?: boolean;
 }): Promise<WorkerMachineVerification> {
 	const mismatches: string[] = [];
 	let runtimeRoot: string;
@@ -364,14 +373,37 @@ export async function verifyWorkerMachine(input: {
 		if (!verify(null, challenge, publicKey, sign(null, challenge, privateKey))) mismatches.push("key-pair");
 		await verifyCredentialSource({
 			runtimeRoot,
+			sourceAgentDir,
 			providerId: manifest.providerId,
 			revision: manifest.credentialRevision,
 			credentialType: manifest.credentialType,
+			...(input.allowSourceCredentialDrift ? { sourceAgentDir: "" } : {}),
 		});
 	} catch (error) {
 		mismatches.push(`artifact:${error instanceof Error ? error.message : String(error)}`);
 	}
 	return { verified: mismatches.length === 0, mismatches, manifest: mismatches.length === 0 ? manifest : undefined };
+}
+
+export async function withWorkerMachineAuthorityLock<T>(runtimeRootInput: string, operation: () => Promise<T>): Promise<T> {
+	const runtimeRoot = await requireDirectory("runtimeRoot", runtimeRootInput, true);
+	const locksRoot = await requireDirectory("Worker machine locks root", join(runtimeRoot, "locks"), true);
+	const lockPath = join(locksRoot, "authority.lock");
+	let handle;
+	try {
+		handle = await open(lockPath, "wx", 0o600);
+		await handle.writeFile(`${process.pid}\n`, "utf8");
+	} catch (error) {
+		await handle?.close().catch(() => undefined);
+		if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("Worker machine authority is busy");
+		throw error;
+	}
+	try {
+		return await operation();
+	} finally {
+		await handle.close();
+		await rm(lockPath, { force: true });
+	}
 }
 
 async function hasWorkerState(runtimeRoot: string): Promise<boolean> {
@@ -391,7 +423,7 @@ async function hasWorkerState(runtimeRoot: string): Promise<boolean> {
 	return false;
 }
 
-export async function recoverWorkerMachine(input: {
+async function recoverWorkerMachineUnlocked(input: {
 	runtimeRoot: string;
 	sourceAgentDir: string;
 	providerId: string;
@@ -441,7 +473,17 @@ export async function recoverWorkerMachine(input: {
 	return verification.manifest;
 }
 
-export async function rotateWorkerCredential(input: {
+export async function recoverWorkerMachine(input: {
+	runtimeRoot: string;
+	sourceAgentDir: string;
+	providerId: string;
+	expectedSetupDigest: string;
+	now?: Date;
+}): Promise<WorkerMachineManifest> {
+	return withWorkerMachineAuthorityLock(input.runtimeRoot, () => recoverWorkerMachineUnlocked(input));
+}
+
+async function rotateWorkerCredentialUnlocked(input: {
 	runtimeRoot: string;
 	sourceAgentDir: string;
 	providerId: string;
@@ -449,7 +491,7 @@ export async function rotateWorkerCredential(input: {
 	credential: WorkerCredential;
 	now?: Date;
 }): Promise<WorkerMachineManifest> {
-	const verification = await verifyWorkerMachine(input);
+	const verification = await verifyWorkerMachine({ ...input, allowSourceCredentialDrift: true });
 	if (!verification.verified || !verification.manifest) throw new Error(`Worker machine is not verified: ${verification.mismatches.join(",")}`);
 	const manifest = verification.manifest;
 	if (await hasWorkerState(manifest.runtimeRoot)) throw new Error("Worker credential cannot rotate while Worker state exists");
@@ -481,4 +523,15 @@ export async function rotateWorkerCredential(input: {
 	const result = await verifyWorkerMachine({ ...input, expectedSetupDigest: next.setupDigest });
 	if (!result.verified || !result.manifest) throw new Error(`rotated Worker machine failed verification: ${result.mismatches.join(",")}`);
 	return result.manifest;
+}
+
+export async function rotateWorkerCredential(input: {
+	runtimeRoot: string;
+	sourceAgentDir: string;
+	providerId: string;
+	expectedSetupDigest: string;
+	credential: WorkerCredential;
+	now?: Date;
+}): Promise<WorkerMachineManifest> {
+	return withWorkerMachineAuthorityLock(input.runtimeRoot, () => rotateWorkerCredentialUnlocked(input));
 }

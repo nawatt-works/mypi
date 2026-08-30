@@ -77,6 +77,8 @@ export type AgentTeamsProfile = {
 	thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 	leasePublicKeyPath: string;
 	leasePublicKeySha256: string;
+	machineSetupDigest: string;
+	credentialRevision: number;
 	maxWorkers: number;
 	forceWorktree: true;
 	childTools: string[];
@@ -277,6 +279,8 @@ export function buildAgentTeamsProfile(input: {
 	thinkingLevel: "off" | "minimal" | "low" | "medium" | "high" | "xhigh";
 	leasePublicKeyPath: string;
 	leasePublicKeySha256: string;
+	machineSetupDigest: string;
+	credentialRevision: number;
 	maxWorkers: number;
 	environment: NodeJS.ProcessEnv;
 }): AgentTeamsProfile {
@@ -320,6 +324,8 @@ export function buildAgentTeamsProfile(input: {
 	if (sha256(readFileSync(leasePublicKeyPath)) !== leasePublicKeySha256) throw new Error("lease public key digest mismatch");
 	const providerId = requireIdentifier("providerId", input.providerId);
 	const modelId = requireIdentifier("modelId", input.modelId);
+	const machineSetupDigest = requireDigest("machineSetupDigest", input.machineSetupDigest);
+	if (!Number.isSafeInteger(input.credentialRevision) || input.credentialRevision < 1) throw new Error("credentialRevision must be a positive integer");
 	const injectedChildExtensions = [workerBoundaryPath];
 	const childExtensions = [...injectedChildExtensions, patchedTeamsEntryPath];
 	const boundaryContractDigest = sha256(JSON.stringify({
@@ -354,6 +360,8 @@ export function buildAgentTeamsProfile(input: {
 		thinkingLevel: input.thinkingLevel,
 		leasePublicKeyPath,
 		leasePublicKeySha256,
+		machineSetupDigest,
+		credentialRevision: input.credentialRevision,
 	}));
 	const leaderEnvironment = orderedLeaderEnvironment(input.environment, {
 		PI_TEAMS_CHILD_EXTENSIONS: injectedChildExtensions.join(delimiter),
@@ -378,6 +386,10 @@ export function buildAgentTeamsProfile(input: {
 		PI_TEAMS_WORKER_THINKING_LEVEL: input.thinkingLevel,
 		PI_TEAMS_LEASE_PUBLIC_KEY_PATH: leasePublicKeyPath,
 		PI_TEAMS_LEASE_PUBLIC_KEY_SHA256: leasePublicKeySha256,
+		PI_TEAMS_MACHINE_SETUP_DIGEST: machineSetupDigest,
+		PI_TEAMS_CREDENTIAL_REVISION: String(input.credentialRevision),
+		PI_TEAMS_WORKER_MACHINE_SETUP_PATH: workerMachineSetupPath,
+		PI_TEAMS_WORKER_MACHINE_SETUP_SHA256: artifact.toolchain.workerMachineSetupSha256,
 	});
 	const childEnvironmentKeys = [...new Set([
 		...Object.keys(leaderEnvironment).filter((key) => CHILD_PARENT_ENVIRONMENT_ALLOWLIST.has(key) || key.startsWith("LC_")),
@@ -401,6 +413,8 @@ export function buildAgentTeamsProfile(input: {
 		thinkingLevel: input.thinkingLevel,
 		leasePublicKeyPath,
 		leasePublicKeySha256,
+		machineSetupDigest,
+		credentialRevision: input.credentialRevision,
 		maxWorkers: input.maxWorkers,
 		forceWorktree: true as const,
 		childTools: [...EXACT_CHILD_BUILTIN_TOOLS, ...EXACT_CHILD_BACKEND_TOOLS],

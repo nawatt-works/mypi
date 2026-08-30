@@ -69,6 +69,8 @@ test("rejects source drift, missing paths, and worker ceilings outside the manag
 		thinkingLevel: "low" as const,
 		leasePublicKeyPath: join(teamsRoot, "lease-authority", "public.pem"),
 		leasePublicKeySha256: "a".repeat(64),
+		machineSetupDigest: "b".repeat(64),
+		credentialRevision: 1,
 	};
 	assert.throws(() => buildAgentTeamsProfile({
 		upstreamCommit: "wrong",
@@ -119,6 +121,8 @@ function requestedFixture(entry: string, teamsRoot: string): AgentTeamsProfile {
 		thinkingLevel: "low",
 		leasePublicKeyPath: "/runtime/lease-authority/public.pem",
 		leasePublicKeySha256: digest,
+		machineSetupDigest: digest,
+		credentialRevision: 1,
 		maxWorkers: 2,
 		forceWorktree: true,
 		childTools: ["read", "bash", "edit", "write", "team_message"],

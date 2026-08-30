@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { createHash, createPrivateKey, generateKeyPairSync, sign } from "node:crypto";
 import { chmod, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,7 @@ import {
 	type AgentTeamsWorkerSpawnIdentity,
 	type CredentialLeasePayload,
 } from "../extensions/agent-teams-worker-profile.ts";
+import { initializeWorkerMachine } from "../extensions/worker-machine-setup.ts";
 
 const SECRET = "agent-teams-worker-secret";
 const NOW = 2_000_000_000_000;
@@ -26,6 +27,8 @@ function issueLease(input: {
 	runId: string;
 	workerId: string;
 	providerId?: string;
+	machineSetupDigest?: string;
+	credentialRevision?: number;
 	readyNonce?: string;
 	issuedAt?: number;
 	expiresAt?: number;
@@ -37,6 +40,8 @@ function issueLease(input: {
 		runId: input.runId,
 		workerId: input.workerId,
 		providerId: input.providerId ?? "openai-codex",
+		machineSetupDigest: input.machineSetupDigest ?? "d".repeat(64),
+		credentialRevision: input.credentialRevision ?? 1,
 		readyNonceSha256: createHash("sha256").update(input.readyNonce ?? NONCE).digest("hex"),
 		issuedAt: input.issuedAt ?? NOW - 1_000,
 		expiresAt: input.expiresAt ?? NOW + 60_000,
@@ -60,26 +65,30 @@ async function fixture(t: TestContext) {
 	const leaseAuthorityRoot = join(runtimeRoot, "lease-authority");
 	const consumedLeasesRoot = join(runtimeRoot, "consumed-leases");
 	const claimedLeasesRoot = join(runtimeRoot, "claimed-leases");
-	const credentialSourceRoot = join(runtimeRoot, "credential-source");
-	for (const path of [
-		runtimeRoot, defaultAgentDir, credentialRoot, teamsRootDir, worktree,
-		leaseAuthorityRoot, consumedLeasesRoot, claimedLeasesRoot, credentialSourceRoot,
-	]) {
+	for (const path of [defaultAgentDir, worktree]) {
 		await mkdir(path, { recursive: true, mode: 0o700 });
 		await chmod(path, 0o700);
 	}
-	const { privateKey, publicKey } = generateKeyPairSync("ed25519");
-	const publicKeyPem = publicKey.export({ type: "spki", format: "pem" }).toString();
-	const leasePublicKeyPath = join(leaseAuthorityRoot, "public.pem");
-	await writeFile(leasePublicKeyPath, publicKeyPem, { mode: 0o600 });
-	await writeFile(join(leaseAuthorityRoot, "private.pem"), privateKey.export({ type: "pkcs8", format: "pem" }), { mode: 0o600 });
-	await writeFile(join(credentialSourceRoot, "openai-codex.auth.json"), `${JSON.stringify({
-		schemaVersion: 1,
+	await writeFile(join(defaultAgentDir, "auth.json"), `${JSON.stringify({ "openai-codex": CREDENTIAL }, null, 2)}\n`, { mode: 0o600 });
+	const machine = await initializeWorkerMachine({
+		runtimeRoot,
+		sourceAgentDir: defaultAgentDir,
 		providerId: "openai-codex",
-		revision: 1,
 		credential: CREDENTIAL,
-	}, null, 2)}\n`, { mode: 0o600 });
-	const leaseRaw = issueLease({ privateKey, leaseId: "lease-worker-a-1", runId: "run-1", workerId: "worker-a" });
+		now: new Date(NOW),
+	});
+	await mkdir(credentialRoot, { mode: 0o700 });
+	const privateKey = createPrivateKey(await readFile(join(leaseAuthorityRoot, "private.pem")));
+	const publicKeyPem = await readFile(join(leaseAuthorityRoot, "public.pem"), "utf8");
+	const leasePublicKeyPath = join(leaseAuthorityRoot, "public.pem");
+	const leaseRaw = issueLease({
+		privateKey,
+		leaseId: "lease-worker-a-1",
+		runId: "run-1",
+		workerId: "worker-a",
+		machineSetupDigest: machine.setupDigest,
+		credentialRevision: machine.credentialRevision,
+	});
 	await writeFile(credentialLeasePath, leaseRaw, { mode: 0o600 });
 	await writeFile(workerBoundaryPath, "export default function boundary() {}\n", { mode: 0o600 });
 	await writeFile(teamsExtensionPath, "export default function teams() {}\n", { mode: 0o600 });
@@ -95,6 +104,8 @@ async function fixture(t: TestContext) {
 		teamsExtensionPath,
 		boundaryContractDigest: "a".repeat(64),
 		runtimeAuthorityDigest: "c".repeat(64),
+		machineSetupDigest: machine.setupDigest,
+		credentialRevision: machine.credentialRevision,
 		workerProfileRuntimePath,
 		workerProfileRuntimeSha256: createHash("sha256").update(await readFile(workerProfileRuntimePath)).digest("hex"),
 		agentTeamsWorkerProfilePath,
@@ -103,6 +114,12 @@ async function fixture(t: TestContext) {
 		leasePublicKeyPath,
 		leasePublicKeySha256: createHash("sha256").update(publicKeyPem).digest("hex"),
 	};
+	const issueFixtureLease = (input: Omit<Parameters<typeof issueLease>[0], "privateKey" | "machineSetupDigest" | "credentialRevision">) => issueLease({
+		...input,
+		privateKey,
+		machineSetupDigest: machine.setupDigest,
+		credentialRevision: machine.credentialRevision,
+	});
 	const spawn: AgentTeamsWorkerSpawnIdentity = {
 		runId: "run-1",
 		workerId: "worker-a",
@@ -118,7 +135,7 @@ async function fixture(t: TestContext) {
 	};
 	return {
 		root, runtimeRoot, defaultAgentDir, credentialRoot, credentialLeasePath, teamsRootDir, worktree,
-		configuration, spawn, privateKey, publicKeyPem, leaseRaw, consumedLeasesRoot, claimedLeasesRoot,
+		configuration, spawn, privateKey, publicKeyPem, leaseRaw, issueLease: issueFixtureLease, consumedLeasesRoot, claimedLeasesRoot,
 	};
 }
 
@@ -166,7 +183,38 @@ test("lease issuance rejects a mismatched private key before creating a Worker l
 		spawn,
 		environment: { PATH: "/bin" },
 		now: NOW,
-	}), /private key does not match/);
+	}), /key-pair|private key does not match/);
+	await assert.rejects(() => lstat(f.credentialLeasePath), /ENOENT/);
+});
+
+test("lease issuance re-verifies the credential source against the explicit source profile", async (t) => {
+	const f = await fixture(t);
+	await rm(f.credentialLeasePath);
+	const sourcePath = join(f.runtimeRoot, "credential-source", "openai-codex.auth.json");
+	const source = JSON.parse(await readFile(sourcePath, "utf8"));
+	source.credential.access = "tampered-after-setup";
+	await writeFile(sourcePath, `${JSON.stringify(source)}\n`, { mode: 0o600 });
+	const { credentialLeasePath: _credentialLeasePath, ...spawn } = f.spawn;
+	await assert.rejects(() => provisionAgentTeamsWorkerProfile({
+		configuration: f.configuration,
+		spawn,
+		environment: { PATH: "/bin" },
+		now: NOW,
+	}), /drifted from the explicit source profile/);
+	await assert.rejects(() => lstat(f.credentialLeasePath), /ENOENT/);
+});
+
+test("lease issuance shares the machine authority lock with credential rotation", async (t) => {
+	const f = await fixture(t);
+	await rm(f.credentialLeasePath);
+	await writeFile(join(f.runtimeRoot, "locks", "authority.lock"), "rotation\n", { mode: 0o600 });
+	const { credentialLeasePath: _credentialLeasePath, ...spawn } = f.spawn;
+	await assert.rejects(() => provisionAgentTeamsWorkerProfile({
+		configuration: f.configuration,
+		spawn,
+		environment: { PATH: "/bin" },
+		now: NOW,
+	}), /authority is busy/);
 	await assert.rejects(() => lstat(f.credentialLeasePath), /ENOENT/);
 });
 
@@ -210,27 +258,37 @@ test("binds signed leases to run, Worker, provider, nonce, TTL, and authority ke
 	const cases: Array<{ name: string; raw: string; spawn?: Partial<AgentTeamsWorkerSpawnIdentity>; config?: Partial<AgentTeamsWorkerProfileConfiguration>; error: RegExp }> = [
 		{
 			name: "worker",
-			raw: issueLease({ privateKey: f.privateKey, leaseId: "lease-wrong-worker", runId: "run-1", workerId: "worker-other" }),
+			raw: f.issueLease({ leaseId: "lease-wrong-worker", runId: "run-1", workerId: "worker-other" }),
 			error: /identity does not match/,
 		},
 		{
 			name: "nonce",
-			raw: issueLease({ privateKey: f.privateKey, leaseId: "lease-wrong-nonce", runId: "run-1", workerId: "worker-a", readyNonce: "c".repeat(64) }),
+			raw: f.issueLease({ leaseId: "lease-wrong-nonce", runId: "run-1", workerId: "worker-a", readyNonce: "c".repeat(64) }),
 			error: /nonce does not match/,
 		},
 		{
+			name: "machine-digest",
+			raw: issueLease({ privateKey: f.privateKey, leaseId: "lease-wrong-machine", runId: "run-1", workerId: "worker-a", machineSetupDigest: "e".repeat(64), credentialRevision: f.configuration.credentialRevision }),
+			error: /machine revision/,
+		},
+		{
+			name: "credential-revision",
+			raw: issueLease({ privateKey: f.privateKey, leaseId: "lease-wrong-revision", runId: "run-1", workerId: "worker-a", machineSetupDigest: f.configuration.machineSetupDigest, credentialRevision: 2 }),
+			error: /machine revision/,
+		},
+		{
 			name: "expired",
-			raw: issueLease({ privateKey: f.privateKey, leaseId: "lease-expired", runId: "run-1", workerId: "worker-a", issuedAt: NOW - 120_000, expiresAt: NOW - 60_000 }),
+			raw: f.issueLease({ leaseId: "lease-expired", runId: "run-1", workerId: "worker-a", issuedAt: NOW - 120_000, expiresAt: NOW - 60_000 }),
 			error: /expired, future-dated, or exceeds/,
 		},
 		{
 			name: "future",
-			raw: issueLease({ privateKey: f.privateKey, leaseId: "lease-future", runId: "run-1", workerId: "worker-a", issuedAt: NOW + 60_000, expiresAt: NOW + 120_000 }),
+			raw: f.issueLease({ leaseId: "lease-future", runId: "run-1", workerId: "worker-a", issuedAt: NOW + 60_000, expiresAt: NOW + 120_000 }),
 			error: /expired, future-dated, or exceeds/,
 		},
 		{
 			name: "ttl",
-			raw: issueLease({ privateKey: f.privateKey, leaseId: "lease-long-ttl", runId: "run-1", workerId: "worker-a", issuedAt: NOW - 1_000, expiresAt: NOW + 600_000 }),
+			raw: f.issueLease({ leaseId: "lease-long-ttl", runId: "run-1", workerId: "worker-a", issuedAt: NOW - 1_000, expiresAt: NOW + 600_000 }),
 			error: /expired, future-dated, or exceeds/,
 		},
 	];
@@ -259,6 +317,8 @@ test("binds signed leases to run, Worker, provider, nonce, TTL, and authority ke
 		leaseId: "lease-wrong-key",
 		runId: "run-1",
 		workerId: "worker-a",
+		machineSetupDigest: f.configuration.machineSetupDigest,
+		credentialRevision: f.configuration.credentialRevision,
 	}), { mode: 0o600 });
 	await assert.rejects(() => materializeAgentTeamsWorkerProfile({
 		configuration: f.configuration,
@@ -319,8 +379,7 @@ test("keeps mutable state disjoint when the authority issues distinct Worker lea
 	const f = await fixture(t);
 	const first = await materializeAgentTeamsWorkerProfile({ configuration: f.configuration, spawn: f.spawn, environment: { PATH: "/bin" }, now: NOW });
 	const secondLease = join(f.credentialRoot, "worker-b.auth.json");
-	await writeFile(secondLease, issueLease({
-		privateKey: f.privateKey,
+	await writeFile(secondLease, f.issueLease({
 		leaseId: "lease-worker-b-1",
 		runId: "run-1",
 		workerId: "worker-b",
