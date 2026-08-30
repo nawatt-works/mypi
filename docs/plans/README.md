@@ -2,7 +2,7 @@
 
 > **Status:** reference<br>
 > **Created:** 2026-08-05 12:04<br>
-> **Updated:** 2026-08-31 01:50<br>
+> **Updated:** 2026-08-31 03:00<br>
 > **Purpose:** เก็บแผน implementation ที่เป็นเอกสารของ repository `my-pi` และมีประโยชน์สำหรับอ้างอิงย้อนหลัง
 
 ไฟล์ใน directory นี้เป็น project documentation ที่ย้ายมาจาก `.workbench/plans/` เพื่อให้มองเห็นได้จากเครื่องมือทั่วไป ไม่ใช่ default plan directory และไม่สร้างข้อกำหนดให้ AI tool, skill, workflow หรือ harness อื่น
@@ -12,7 +12,7 @@
 ## Current plans
 
 - [จัด My Pi เป็น Capability Packages และ Pinned Releases](capability-packages-and-pinned-releases.md) — completed; `v0.2.0` pinned releaseและ Worker-profile handoffเสร็จ
-- [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](delegated-autonomy-coordinator.md) — completed local disabled candidate; 18/18 + reviews PASS, external mutations deferred
+- [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](delegated-autonomy-coordinator.md) — completed local disabled candidate; latest guardrail-hardened path 19/19 + reviews PASS, external mutations deferred
 
 ## Decisions
 
@@ -24,6 +24,7 @@
 
 ## Change log
 
+- 2026-08-31 03:00 — เพิ่ม latest guardrail-hardened acceptance 19/19 โดย external decisionsเดิมไม่เปลี่ยน
 - 2026-08-31 01:50 — ปิด delegated-autonomy plan; human defer push/release/activation/Default switch
 - 2026-08-31 01:40 — explicit disabled production opt-inครบ review/acceptance; exact nextเป็น external mutation decisions
 - 2026-08-31 01:00 — resolver wiring/review/acceptanceครบ; exact next actionเป็น human production decision

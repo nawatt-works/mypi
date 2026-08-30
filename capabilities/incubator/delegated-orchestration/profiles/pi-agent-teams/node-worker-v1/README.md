@@ -126,7 +126,7 @@ Runtime ต้องเรียก imageด้วย immutable digestและ 
 - additional fault probes: provider/model unavailableไม่ register Worker; missing SBOM fail; Docker daemon/image unavailableออก code `78`
 - clean pinned checkoutผ่าน provenance verifier; source driftที่ pathเดิม fail closed; `git push`ได้ `HUMAN/remote-mutation` blockerโดยไม่มี dialog
 - historical Phase 0 Pi-native chainผ่าน tasks `5/5`, artifacts `7/7`, user approvals `0`, routine dialogs `0`, HUMAN side effects `0`; หลักฐานนี้ไม่ใช้แทน generated-path acceptance
-- generated-path real-provider acceptanceวัด exact read-only/worktree-write adapters, artifact/readiness/bounded mutation, Worker/leader crash, observed interactive requests `0`, stop/replacement cleanupและ no reusable credential state พร้อม delegated no-UI/exact REVIEW/HUMAN boundariesพร้อม disabled production opt-inครบ 18 checks
+- generated-path real-provider acceptanceวัด exact read-only/worktree-write adapters, artifact/readiness/bounded mutation, Worker/leader crash, observed interactive requests `0`, stop/replacement cleanupและ no reusable credential state พร้อม delegated no-UI/exact REVIEW/HUMAN boundariesพร้อม disabled production opt-inและ remote-mutation guardrailครบ 19 checks
 
 ## Boundaries และข้อจำกัด
 

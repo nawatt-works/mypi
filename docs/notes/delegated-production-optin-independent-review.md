@@ -2,7 +2,8 @@
 
 > **Status:** PASS — no High/Medium findings<br>
 > **Reviewed commits:** `53f40e3`, `6e893c2`<br>
-> **Activation:** disabled
+> **Activation:** disabled<br>
+> **Historical checkpoint:** ตัวเลข `18/18`/`214/214` ด้านล่างเป็น evidence ณ reviewนี้; latest guardrail-hardened evidenceอยู่ที่ [Safety Guardrails Four-layer Hardening Review](safety-guardrails-four-layer-hardening-review.md)
 
 ## Human decision
 

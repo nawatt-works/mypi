@@ -2,7 +2,7 @@
 
 > **Status:** complete — local disabled opt-in candidate; external mutations deferred<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-31 01:50<br>
+> **Updated:** 2026-08-31 03:00<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -912,12 +912,16 @@ Success metric หลัก:
 - production-candidate acceptance **PASS 16/16** profile `dc648f56…`; generation-bound resolverครบ
 - ผู้ใช้เลือก production importแบบ **explicit opt-in entry / disabled-by-default** เพื่อคง root stable-only
 - `53f40e3`, `6e893c2`เพิ่ม `./production` seamที่ absent/0 no-op, require explicit environment + trusted authorityเมื่อ exact 1 และไม่อยู่ใน `pi.extensions`
-- final production-candidate acceptance **PASS 18/18** profile `9635e19a…`; interactive requests `0`, production activation `false`, full suite `214/214`, runtime probes `10/10`
+- latest hardened production-candidate acceptance **PASS 19/19** profile `9445ad8b…`; interactive requests `0`, production activation `false`, full suite `227/227`, runtime probes `10/10`
 - production opt-in independent review **PASS**; auditอยู่ที่ [Delegated Production Opt-in Independent Review](../notes/delegated-production-optin-independent-review.md)
 - resolver auditอยู่ที่ [Delegated Guardrail Resolver Independent Review](../notes/delegated-guardrail-resolver-independent-review.md)
 - execution-adapter auditอยู่ที่ [Worker Execution Adapters Independent Review](../notes/worker-execution-adapters-independent-review.md)
 - evidenceอยู่ที่ [Agent-teams Generated-path Real-provider Acceptance](../notes/agent-teams-generated-path-real-provider-acceptance.md)
 - productionยัง disabled
+
+## Safety guardrail hardening follow-up
+
+หลังปิด planเดิม ผู้ใช้อนุมัติ local hardeningเพิ่ม 4 ชุด: immutable workspace authority, canonical secret/upload evidence, shared command/tool taxonomy และ runtime/grant/audit hardening งานผ่าน full `227/227`, runtime `10/10`, real-provider `19/19` และ final independent closure reviewโดย productionยัง disabled ดู [Safety Guardrails Four-layer Hardening Review](../notes/safety-guardrails-four-layer-hardening-review.md)
 
 ## Final human decisions
 

@@ -1,10 +1,10 @@
 # Agent-teams Generated-path Real-provider Acceptance
 
 > **Status:** PASS — production remains disabled<br>
-> **Executed:** 2026-08-30<br>
+> **Executed:** 2026-08-31<br>
 > **Provider/model:** `openai-codex/gpt-5.4`, thinking `low`<br>
-> **Candidate commits:** `cb05e2f`, `5340500`, `d09c982`, `567826a`, `d5273ed`, `637f0b0`, `89b91b6`, `6ef5705`, `3463b31`, `ef05fe8`, `e89dd0b`, `53f40e3`, `6e893c2`<br>
-> **Profile digest:** `9635e19adbec39827bc9a17ef967cb58e38ae25195147e4fed39786a09b04aa9`
+> **Candidate commits:** `cb05e2f`, `5340500`, `d09c982`, `567826a`, `d5273ed`, `637f0b0`, `89b91b6`, `6ef5705`, `3463b31`, `ef05fe8`, `e89dd0b`, `53f40e3`, `6e893c2`, `afd7ab4`, `d0610f2`, `f8bb328`, `ea9637d`, `c5b672b`<br>
+> **Profile digest:** `9445ad8b171af11d51dc0f1312c3b3f20fe45f076658f954f8bce8f1b02b83ad`
 
 ## Operator boundary
 
@@ -20,8 +20,8 @@ Startup correctionถัดมาย้าย Git worktreeออกจาก cre
 {
   "status": "PASS",
   "productionActivated": false,
-  "profileDigest": "9635e19adbec39827bc9a17ef967cb58e38ae25195147e4fed39786a09b04aa9",
-  "runtimeAuthorityDigest": "3247e228110755bddce47cb94a635b051ad713290471537c9e95bf1a1a512d4b",
+  "profileDigest": "9445ad8b171af11d51dc0f1312c3b3f20fe45f076658f954f8bce8f1b02b83ad",
+  "runtimeAuthorityDigest": "b4e2a62884957ba51f809c835eeaacea0425412ae8f57578c5e45a47347ae7d4",
   "credentialRevision": 1,
   "providerId": "openai-codex",
   "modelId": "gpt-5.4",
@@ -32,6 +32,7 @@ Startup correctionถัดมาย้าย Git worktreeออกจาก cre
     "delegatedResolverNoWorkerUi": true,
     "exactReviewConsumeOnce": true,
     "humanBoundaryPreserved": true,
+    "remoteMutationGuardrail": true,
     "productionOptInDisabled": true,
     "productionEntryComposed": true,
     "generatedSpawnReadiness": true,
@@ -66,7 +67,7 @@ trusted machine receipt
   → pure guardrail detector → delegated resolver → no Worker UI
   → Coordinator-owned exact workspace generation authority
   → exact REVIEW issue/consume once + replay reject
-  → HUMAN remote mutation remains blocked
+  → HUMAN remote mutation remains blockedทั้ง command-policyและ tool-call guardrail
   → disabled production entry no-op before authority inspection
   → exact opt-in composes resolver/orchestration once in disposable path
   → provisionAgentTeamsWorkerProfile
@@ -87,13 +88,13 @@ trusted machine receipt
 
 ## Verification
 
-- full repository suite `214/214`
+- full repository suite `227/227`
 - exact Docker runtime hardening contract bindใน leader/boundary digestและ negative drift coverageครบ
 - runtime/fault probes `10/10`
 - patched upstream typecheck/lint PASS
 - rotation integration: active generated profile block, idle rotation revision `1→2`, stale setup/revision failก่อน lease/spawn, revisionใหม่สร้าง profile identityใหม่และ cleanupผ่าน
-- final independent correction/evidence review: **PASS**, no High/Medium
+- final four-layer guardrail closure review: **PASS**, no High/Medium
 
 ## Remaining gate
 
-ผลนี้ผ่าน exact read-only/worktree-write adapters, delegated resolver, generated spawn/readiness/work/forced-crash/immediate retry/orderly stop/leader-loss self-clean/worktree retention/replacement path 18/18 และ rotation integrationยืนยัน active block → idle rotate → stale revision reject → new revision spawnแล้ว Disabled production opt-in reviewผ่านและ explicit entryถูก wireแล้วโดย root/manual behaviorไม่เปลี่ยน Production activation, push, release/tagและ Default Pi switchยังต้องขอ human decisionแยกกัน
+ผลนี้ผ่าน exact read-only/worktree-write adapters, delegated resolver, generated spawn/readiness/work/forced-crash/immediate retry/orderly stop/leader-loss self-clean/worktree retention/replacement path 19/19 และ rotation integrationยืนยัน active block → idle rotate → stale revision reject → new revision spawnแล้ว Disabled production opt-in reviewผ่านและ explicit entryถูก wireแล้วโดย root/manual behaviorไม่เปลี่ยน Production activation, push, release/tagและ Default Pi switchยังต้องขอ human decisionแยกกัน
