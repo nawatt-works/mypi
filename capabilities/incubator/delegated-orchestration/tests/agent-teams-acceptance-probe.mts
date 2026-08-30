@@ -166,6 +166,14 @@ async function waitForFile(path: string, timeout: number): Promise<Buffer> {
 	}
 }
 
+function verifyExactWorkerPid(workerPid: number, leaderPid: number): number {
+	if (!Number.isSafeInteger(workerPid) || workerPid <= 1) throw new Error("persisted generated Worker process identity is invalid");
+	const result = spawnSync("ps", ["-p", String(workerPid), "-o", "ppid="], { encoding: "utf8", timeout: 10_000 });
+	if (result.status !== 0) throw new Error("could not inspect the generated Worker process identity");
+	if (Number(result.stdout.trim()) !== leaderPid) throw new Error("persisted process is not owned by the exact acceptance leader");
+	return workerPid;
+}
+
 async function waitUntilAbsent(path: string, timeout = 15_000): Promise<void> {
 	const started = Date.now();
 	for (;;) {
@@ -208,12 +216,13 @@ try {
 	if (!ID.test(teamId)) throw new Error("leader did not expose a bounded session/team identity");
 	await leader.command(`/team spawn ${workerName} fresh worktree`);
 	const teamConfigPath = join(runtimeRoot, "coordination", teamId, "config.json");
-	type PersistedMember = { name?: string; status?: string; cwd?: string; meta?: { childProfile?: { generatedProfileDigest?: unknown; leaseId?: unknown } } };
+	type PersistedMember = { name?: string; status?: string; cwd?: string; meta?: { childProfile?: { generatedProfileDigest?: unknown; leaseId?: unknown; processId?: unknown } } };
 	const readPersistedMember = async (): Promise<PersistedMember> => {
 		const config = JSON.parse((await readFile(teamConfigPath, "utf8"))) as { members?: PersistedMember[] };
 		const member = config.members?.find((entry) => entry.name === workerName);
 		if (!member || member.status !== "online" || typeof member.cwd !== "string" ||
-			typeof member.meta?.childProfile?.generatedProfileDigest !== "string" || typeof member.meta.childProfile.leaseId !== "string") {
+			typeof member.meta?.childProfile?.generatedProfileDigest !== "string" || typeof member.meta.childProfile.leaseId !== "string" ||
+			!Number.isSafeInteger(member.meta.childProfile.processId)) {
 			throw new Error("Worker generated-profile readiness was not persisted");
 		}
 		return member;
@@ -239,8 +248,9 @@ try {
 	if (status.status !== 0 || status.stdout.trim() !== "?? generated-profile-acceptance.json") {
 		throw new Error("real-provider task mutated files outside its exact worktree artifact contract");
 	}
-	await leader.command(`/team kill ${workerName}`);
 	const firstWorkerRoot = join(runtimeRoot, "runs", teamId, "workers", workerName);
+	const workerPid = verifyExactWorkerPid(member.meta!.childProfile!.processId as number, leader.child.pid!);
+	process.kill(workerPid, "SIGKILL");
 	await waitUntilAbsent(firstWorkerRoot);
 	await leader.command(`/team spawn ${workerName} fresh worktree`);
 	const replacement = await readPersistedMember();
@@ -263,6 +273,7 @@ try {
 	checks.generatedSpawnReadiness = true;
 	checks.boundedWorktreeMutation = true;
 	checks.noInteractiveRequests = true;
+	checks.forcedCrashCleanup = true;
 	checks.stopCleanup = true;
 	checks.sameNameReplacement = true;
 	checks.noReusableCredentialState = true;

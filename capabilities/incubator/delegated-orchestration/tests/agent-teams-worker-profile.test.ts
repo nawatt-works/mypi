@@ -14,12 +14,13 @@ import {
 	type AgentTeamsWorkerSpawnIdentity,
 	type CredentialLeasePayload,
 } from "../extensions/agent-teams-worker-profile.ts";
-import { initializeWorkerMachine } from "../extensions/worker-machine-setup.ts";
+import { initializeWorkerMachine, rotateWorkerCredential } from "../extensions/worker-machine-setup.ts";
 
 const SECRET = "agent-teams-worker-secret";
 const NOW = 2_000_000_000_000;
 const NONCE = "b".repeat(64);
 const CREDENTIAL = { type: "oauth" as const, refresh: `refresh-${SECRET}`, access: `access-${SECRET}`, expires: NOW + 3_600_000 };
+const ROTATED_CREDENTIAL = { type: "oauth" as const, refresh: `refresh-rotated-${SECRET}`, access: `access-rotated-${SECRET}`, expires: NOW + 7_200_000 };
 
 function issueLease(input: {
 	privateKey: ReturnType<typeof generateKeyPairSync>["privateKey"];
@@ -154,6 +155,51 @@ test("provisions an identity-bound lease and profile atomically without exposing
 	const canonicalCredentialRoot = await realpath(f.credentialRoot);
 	await assert.rejects(() => lstat(join(canonicalCredentialRoot, "worker-a.auth.json")), /ENOENT/);
 	await cleanupAgentTeamsWorkerProfile({ worker, runtimeRoot: f.runtimeRoot, expectedProfileDigest: worker.profile.manifest.profileDigest });
+});
+
+test("blocks credential rotation while a generation is active and rejects stale revision before spawning the rotated generation", async (t) => {
+	const f = await fixture(t);
+	await rm(f.credentialLeasePath);
+	const { credentialLeasePath: _credentialLeasePath, ...spawn } = f.spawn;
+	const first = await provisionAgentTeamsWorkerProfile({
+		configuration: f.configuration,
+		spawn,
+		environment: { PATH: "/bin" },
+		now: NOW,
+	});
+	await writeFile(join(f.defaultAgentDir, "auth.json"), `${JSON.stringify({ "openai-codex": ROTATED_CREDENTIAL }, null, 2)}\n`, { mode: 0o600 });
+	await assert.rejects(() => rotateWorkerCredential({
+		runtimeRoot: f.runtimeRoot,
+		sourceAgentDir: f.defaultAgentDir,
+		providerId: "openai-codex",
+		expectedSetupDigest: f.configuration.machineSetupDigest,
+		credential: ROTATED_CREDENTIAL,
+		now: new Date(NOW + 10_000),
+	}), /cannot rotate while Worker state exists/);
+	await cleanupAgentTeamsWorkerProfile({ worker: first, runtimeRoot: f.runtimeRoot, expectedProfileDigest: first.profile.manifest.profileDigest });
+	const rotated = await rotateWorkerCredential({
+		runtimeRoot: f.runtimeRoot,
+		sourceAgentDir: f.defaultAgentDir,
+		providerId: "openai-codex",
+		expectedSetupDigest: f.configuration.machineSetupDigest,
+		credential: ROTATED_CREDENTIAL,
+		now: new Date(NOW + 10_000),
+	});
+	assert.equal(rotated.credentialRevision, 2);
+	await assert.rejects(() => provisionAgentTeamsWorkerProfile({
+		configuration: f.configuration,
+		spawn,
+		environment: { PATH: "/bin" },
+		now: NOW + 10_000,
+	}), /Worker machine is not verified for lease issuance/);
+	const second = await provisionAgentTeamsWorkerProfile({
+		configuration: { ...f.configuration, machineSetupDigest: rotated.setupDigest, credentialRevision: rotated.credentialRevision },
+		spawn,
+		environment: { PATH: "/bin" },
+		now: NOW + 10_000,
+	});
+	assert.notEqual(second.profile.manifest.profileDigest, first.profile.manifest.profileDigest);
+	await cleanupAgentTeamsWorkerProfile({ worker: second, runtimeRoot: f.runtimeRoot, expectedProfileDigest: second.profile.manifest.profileDigest });
 });
 
 test("atomic provisioning removes issued leases and partial profiles when materialization fails", async (t) => {
