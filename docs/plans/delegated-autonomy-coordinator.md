@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — Phase 2 guardrails/REVIEW registry<br>
+> **Status:** paused — Phase 2 pure registries complete; waiting for capability-package migration and Worker-profile discussion<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 08:40<br>
+> **Updated:** 2026-08-30 09:10<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -820,11 +820,13 @@ Success metric หลัก:
 
 ## Exact next action
 
-ดำเนิน Phase 2 แบบ incrementalและคง manual fallback:
+พัก production wiring และ Worker-profile implementationตามคำขอผู้ใช้ ดำเนิน [จัด My Pi เป็น Capability Packages และ Pinned Releases](capability-packages-and-pinned-releases.md) ในส่วนที่ไม่ขึ้นกับ Worker profileก่อน
+
+เมื่อ capability migration, stable aggregateและ pinned releaseพร้อม ให้กลับมาหารือ exact Worker profile topology, `PI_CODING_AGENT_DIR`, credential provisioningและ no-default-fallback acceptance แล้วจึงทำ Phase 2 ต่อ:
 
 1. แยก guardrail detection → policy resolution → UI rendering โดย normal manual sessionยังทำงานเดิม
 2. เพิ่ม atomic Worker policy reference/observed markerก่อนเลือก delegated resolver; unknown/headlessต้อง fail closed
 3. wire delegated Worker resolverให้ DENY/HUMANไม่เปิด dialog และ REVIEW executeได้เฉพาะ trusted registry consumeสำเร็จ
 4. เพิ่ม integration testsสำหรับ manual fallback, stale/missing policy, grant consume raceและ cleanupก่อนแตะ spawn
 
-ห้ามโหลด agent-teams candidateหรือข้าม manual Herdr confirmationจน Phase 2–3 production-path acceptanceผ่าน
+ห้ามโหลด agent-teams candidate, production-wire delegated Workerหรือข้าม manual Herdr confirmationจน Worker profile decisionและ Phase 2–3 production-path acceptanceผ่าน
