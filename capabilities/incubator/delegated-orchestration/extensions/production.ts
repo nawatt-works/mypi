@@ -34,12 +34,12 @@ export function registerDelegatedProductionCandidate(input: {
 	reviews: CommandReviewRegistry;
 	workspaces: DelegatedWorkspaceAuthority;
 	manualGuardrailsLoaded: false;
-	environment?: NodeJS.ProcessEnv;
+	environment: NodeJS.ProcessEnv;
 	layers?: PolicyLayers;
 	now?: () => string;
 	registerOrchestration?: (pi: ExtensionAPI) => void;
 }): DelegatedProductionRegistration {
-	if (!delegatedProductionRequested(input.environment ?? process.env)) return Object.freeze({ activated: false });
+	if (!delegatedProductionRequested(input.environment)) return Object.freeze({ activated: false });
 	if (input.manualGuardrailsLoaded !== false) throw new Error("delegated production requires the stable manual guardrail entry to be omitted");
 	const authorityState = input.authority.state();
 	if (authorityState.failClosedReason) throw new Error(`delegated production authority is fail closed: ${authorityState.failClosedReason}`);
@@ -49,6 +49,10 @@ export function registerDelegatedProductionCandidate(input: {
 	}
 	const reviewState = input.reviews.state(input.now?.());
 	if (reviewState.failClosedReason) throw new Error(`delegated production review registry is fail closed: ${reviewState.failClosedReason}`);
+	if (typeof input.workspaces.authorize !== "function" || typeof input.workspaces.registerVerified !== "function" ||
+		typeof input.workspaces.release !== "function" || typeof input.workspaces.list !== "function" || !Array.isArray(input.workspaces.list())) {
+		throw new Error("delegated production workspace authority contract is invalid");
+	}
 	const resolver = registerDelegatedGuardrails({
 		pi: input.pi,
 		authority: input.authority,

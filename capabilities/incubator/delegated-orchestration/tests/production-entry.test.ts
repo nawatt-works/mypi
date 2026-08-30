@@ -95,6 +95,18 @@ test("exact opt-in requires trusted authority and composes one resolver path", (
 	assert.equal(orchestrationRegistrations, 1);
 });
 
+test("exact opt-in rejects a non-authoritative workspace contract", () => {
+	const fixture = authorityFixture();
+	assert.throws(() => registerDelegatedProductionCandidate({
+		pi: {} as any,
+		authority: fixture.authority,
+		reviews: fixture.reviews,
+		workspaces: {} as any,
+		manualGuardrailsLoaded: false,
+		environment: { [DELEGATED_PRODUCTION_ENV]: "1" },
+	}), /workspace authority contract is invalid/);
+});
+
 test("exact opt-in fails closed without an active mandate", () => {
 	const fixture = authorityFixture();
 	fixture.authority.finishMandate("cancelled", "2026-08-31T00:00:02.000Z");
