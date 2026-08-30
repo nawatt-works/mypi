@@ -351,6 +351,11 @@ try {
 		{ cwd: await realpath(fixture), hasUI: true, ui: { async select() { delegatedUiRequests += 1; return "Allow once"; } } },
 	);
 	if (!secretDecision?.block || delegatedUiRequests !== 0) throw new Error("delegated guardrail opened Worker UI or failed to hard-deny secret access");
+	const remoteDecision = await guardrailHandlers.get("tool_call")?.(
+		{ toolName: "bash", input: { command: "git push origin main" } },
+		{ cwd: await realpath(fixture), hasUI: true, ui: { async select() { delegatedUiRequests += 1; return "Allow once"; } } },
+	);
+	if (!remoteDecision?.block || delegatedUiRequests !== 0) throw new Error("delegated guardrail opened Worker UI or failed to preserve remote HUMAN boundary");
 	const commandRequest: CommandPolicyRequest = {
 		workerId: workerName,
 		sessionId: teamId,
@@ -432,6 +437,7 @@ try {
 	checks.delegatedResolverNoWorkerUi = true;
 	checks.exactReviewConsumeOnce = true;
 	checks.humanBoundaryPreserved = true;
+	checks.remoteMutationGuardrail = true;
 	checks.productionOptInDisabled = true;
 	checks.productionEntryComposed = true;
 	checks.generatedSpawnReadiness = true;

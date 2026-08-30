@@ -567,7 +567,7 @@ export default function orchestration(pi: ExtensionAPI): void {
 					};
 				}
 				if (result.code !== 0) throw new Error(`acceptance subprocess exited ${result.code ?? "without a status"}; redacted failure evidence was appended to session audit`);
-				const expectedChecks = ["boundedWorktreeMutation", "delegatedResolverNoWorkerUi", "exactReadOnlyAdapter", "exactReviewConsumeOnce", "exactWorktreeWriteAdapter", "forcedCrashCleanup", "generatedSpawnReadiness", "humanBoundaryPreserved", "leaderLossCleanup", "leaderLossWorktreeRetained", "noInteractiveRequests", "noReusableCredentialState", "orderlyShutdownClassified", "productionEntryComposed", "productionOptInDisabled", "realProviderArtifact", "sameNameReplacement", "stopCleanup"];
+				const expectedChecks = ["boundedWorktreeMutation", "delegatedResolverNoWorkerUi", "exactReadOnlyAdapter", "exactReviewConsumeOnce", "exactWorktreeWriteAdapter", "forcedCrashCleanup", "generatedSpawnReadiness", "humanBoundaryPreserved", "leaderLossCleanup", "leaderLossWorktreeRetained", "noInteractiveRequests", "noReusableCredentialState", "orderlyShutdownClassified", "productionEntryComposed", "productionOptInDisabled", "realProviderArtifact", "remoteMutationGuardrail", "sameNameReplacement", "stopCleanup"];
 				const checks = evidence.checks && typeof evidence.checks === "object" && !Array.isArray(evidence.checks)
 					? evidence.checks as Record<string, unknown>
 					: {};
