@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — Phase 2 real-provider generated-path acceptance; production remains disabled<br>
+> **Status:** active — Phase 2 operator-run real-provider acceptance; production remains disabled<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 18:15<br>
+> **Updated:** 2026-08-30 19:15<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -889,15 +889,21 @@ Success metric หลัก:
 - full suiteล่าสุดก่อน final fsync correction `192/192`; final targeted setup/profile tests `22/22`; runtime probes `10/10`
 - productionยัง disabledและ real-provider acceptanceยัง exit `78`
 
+## Generated-path acceptance harness progress
+
+- `82ac9d2`เพิ่ม `/mypi-worker-acceptance`, pinned source runnerและ real-provider artifact flowผ่าน patched leader → generated Worker
+- corrections `df78477`, `48f9edd`, `51c6006`ยืนยัน same-name replacement generation, fresh-session verify receiptและ redacted inspectable failure envelopesทุก runner stage
+- independent correction reviewสุดท้าย **PASS**; auditอยู่ที่ [Agent-teams Generated-path Acceptance Harness Review](../notes/agent-teams-generated-path-acceptance-harness-review.md)
+- full suite `193/193`, runtime/fault probes `10/10`, absent-machine blocker exit `78`
+- real-provider runยัง BLOCKEDเพราะเครื่องยังไม่มี Worker machine setup; productionยัง disabled
+
 ## Exact next action
 
-สร้าง generated-path acceptanceใหม่โดยยังไม่ activate production:
-
-1. ใช้ verified machine receiptสร้าง `AgentTeamsProfile`กับ exact setup digest/revision
-2. แทน blockerด้วย disposable real-provider acceptance: spawn → readiness → work → stop → assert no lease/claim/generated auth/profile
-3. เพิ่ม retry/replacement/crash reconciliationและ credential refresh/rotation cases
+1. Operatorรัน `/mypi-worker-setup setup`ใน Development Pi profileเพื่อสร้าง trusted machine receiptโดยไม่ส่ง credentialผ่าน chat/argv/environment
+2. Operatorรัน `/mypi-worker-acceptance`ใน sessionเดียวกัน; เก็บ PASS/FAIL/BLOCKED receiptจาก generated-path run
+3. ถ้า PASS ให้เพิ่ม forced-crash/retry reconciliationและ credential rotation acceptance
 4. แยก read-only/worktree-write execution adapters
-5. ขอ independent reviewและ Phase 2–3 acceptanceก่อน production importหรือ Default release
+5. ขอ independent Phase 2–3 evidence reviewก่อน production importหรือ Default release
 6. หลัง profile pathผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
 
 External push, release/tagและ Default Pi switchเป็น human-only mutationsและยังไม่ทำ
