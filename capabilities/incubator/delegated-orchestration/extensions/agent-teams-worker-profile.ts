@@ -185,10 +185,11 @@ function parseCredentialSource(raw: Buffer, providerId: string): WorkerCredentia
 	}
 	if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Worker credential source must be an object");
 	const record = value as Record<string, unknown>;
-	if (JSON.stringify(Object.keys(record).sort()) !== JSON.stringify(["credential", "providerId", "schemaVersion"])) {
+	if (JSON.stringify(Object.keys(record).sort()) !== JSON.stringify(["credential", "providerId", "revision", "schemaVersion"])) {
 		throw new Error("Worker credential source has an invalid shape");
 	}
-	if (record.schemaVersion !== 1 || record.providerId !== providerId || !record.credential || typeof record.credential !== "object") {
+	if (record.schemaVersion !== 1 || record.providerId !== providerId || !Number.isSafeInteger(record.revision) || Number(record.revision) < 1 ||
+		!record.credential || typeof record.credential !== "object") {
 		throw new Error("Worker credential source identity does not match the requested provider");
 	}
 	return record.credential as WorkerCredential;

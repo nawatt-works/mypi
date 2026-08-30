@@ -20,7 +20,7 @@ index 2e6beda..0cd1522 100644
 @@ -241,0 +244 @@ export async function handleTeamCommand(opts: {
 +				suppressConfigBootstrap,
 diff --git a/extensions/teams/leader.ts b/extensions/teams/leader.ts
-index a3bc5c1..abd7ef3 100644
+index a3bc5c1..c256034 100644
 --- a/extensions/teams/leader.ts
 +++ b/extensions/teams/leader.ts
 @@ -0,0 +1 @@
@@ -93,13 +93,14 @@ index a3bc5c1..abd7ef3 100644
 -	}
 -}
 -
-@@ -140,0 +83,189 @@ async function teamDirHasAnyTasks(teamDir: string): Promise<boolean> {
+@@ -140,0 +83,191 @@ async function teamDirHasAnyTasks(teamDir: string): Promise<boolean> {
 +const MANAGED_PROFILE_ID = "pi-agent-teams-docker-strong-v1";
 +const MANAGED_UPSTREAM_COMMIT = "2c1776d2a68104aaadc1c622d8a704684c7c35d6";
 +const MANAGED_ENTRY_SHA256 = "4f7715812ac0529a5243c5044138510f9c88b8e070910ee3e00b9f465438756b";
-+const MANAGED_BOUNDARY_SHA256 = "f92f5d651359d2ad1a6d5af2e9bd435c12109af5f82c04858e55b62532067bf8";
++const MANAGED_BOUNDARY_SHA256 = "e367e828f45de8d5778a869f7f74de3beed2dffec9cfec207404083fb026be55";
 +const MANAGED_WORKER_PROFILE_RUNTIME_SHA256 = "654cbeeb5b8525c4cf03feded21d20fae7c7a788aacd6de6c9098de8325d67eb";
-+const MANAGED_AGENT_TEAMS_WORKER_PROFILE_SHA256 = "56ce32b96d9b5835df69d9e451f06ae3c109fcda66e5873456f4c2abaf2fe5e5";
++const MANAGED_WORKER_MACHINE_SETUP_SHA256 = "5594d8fd3d29ecd6662000529e5333a2643c5ee973ec5d5434985d0efba9ed13";
++const MANAGED_AGENT_TEAMS_WORKER_PROFILE_SHA256 = "0981c536d434efcc9a65ee0006a479f76d3d06ad120e0089eb6f8a0f72116787";
 +const MANAGED_COMMAND_POLICY_SHA256 = "d1696594a39fc8eba07ecea9f982abc1aaaaccc5e82abf1be6c8a250a923922f";
 +const MANAGED_SCOPED_TOOLS_SHA256 = "7941dcb47cf3c789096c9644f1df663e1c3612b429600ca6db2f0563b9606b72";
 +const MANAGED_IMAGE_DIGEST = "sha256:8b50f94e47e5085446081411ed152f84ebe0a146a575bba1720b56821db15ff8";
@@ -224,6 +225,7 @@ index a3bc5c1..abd7ef3 100644
 +		patchedTeamsEntrySha256: MANAGED_ENTRY_SHA256,
 +		workerBoundarySha256: MANAGED_BOUNDARY_SHA256,
 +		workerProfileRuntimeSha256: MANAGED_WORKER_PROFILE_RUNTIME_SHA256,
++		workerMachineSetupSha256: MANAGED_WORKER_MACHINE_SETUP_SHA256,
 +		agentTeamsWorkerProfileSha256: MANAGED_AGENT_TEAMS_WORKER_PROFILE_SHA256,
 +		commandPolicySha256: MANAGED_COMMAND_POLICY_SHA256,
 +		scopedWorkerToolsSha256: MANAGED_SCOPED_TOOLS_SHA256,
@@ -283,7 +285,7 @@ index a3bc5c1..abd7ef3 100644
 +	});
 +}
 +
-@@ -150,0 +282,30 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -150,0 +284,30 @@ export function runLeader(pi: ExtensionAPI): void {
 +	const suppressedConfigBootstrapTeams = new Set<string>();
 +	const childProfile = requireManagedChildProfile();
 +	const workerProfiles = new Map<string, ManagedMaterializedWorker>();
@@ -314,15 +316,15 @@ index a3bc5c1..abd7ef3 100644
 +		workerProfileCleanups.set(cleanupKey, cleanup);
 +		return cleanup;
 +	};
-@@ -226,0 +388 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -226,0 +390 @@ export function runLeader(pi: ExtensionAPI): void {
 +				await cleanupWorkerProfile(name);
-@@ -472,0 +635,5 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -472,0 +637,5 @@ export function runLeader(pi: ExtensionAPI): void {
 +		if (suppressedConfigBootstrapTeams.has(currentTeamId) && !fs.existsSync(teamDir)) {
 +			tasks = [];
 +			teamConfig = null;
 +			return;
 +		}
-@@ -475,2 +642,6 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -475,2 +644,6 @@ export function runLeader(pi: ExtensionAPI): void {
 -		tasks = nextTasks;
 -		teamConfig =
 +		const hasActiveTeammates = [...teammates.values()].some(
@@ -331,7 +333,7 @@ index a3bc5c1..abd7ef3 100644
 +		const bootstrapSuppressed = suppressedConfigBootstrapTeams.has(currentTeamId);
 +		const shouldBootstrap = !bootstrapSuppressed || nextTasks.length > 0 || hasActiveTeammates;
 +		const nextConfig =
-@@ -478,7 +649,12 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -478,7 +651,12 @@ export function runLeader(pi: ExtensionAPI): void {
 -			(await ensureTeamConfig(teamDir, {
 -				teamId: currentTeamId,
 -				taskListId: effectiveTaskListId,
@@ -351,12 +353,12 @@ index a3bc5c1..abd7ef3 100644
 +		tasks = nextTasks;
 +		teamConfig = nextConfig;
 +		style = nextConfig?.style ?? style;
-@@ -518,0 +695,2 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -518,0 +697,2 @@ export function runLeader(pi: ExtensionAPI): void {
 +		if (mode !== "fresh") return { ok: false, error: "Generated Worker profiles currently require fresh context mode" };
 +		if (opts.planRequired) return { ok: false, error: "Generated Worker profiles do not yet support plan-required mode" };
-@@ -519,0 +698 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -519,0 +700 @@ export function runLeader(pi: ExtensionAPI): void {
 +		if (childProfile.forceWorktree) workspaceMode = "worktree";
-@@ -528,12 +706,0 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -528,12 +708,0 @@ export function runLeader(pi: ExtensionAPI): void {
 -		// Spawn-time model / thinking overrides (optional).
 -		const thinkingLevel = opts.thinking ?? pi.getThinkingLevel();
 -
@@ -369,7 +371,7 @@ index a3bc5c1..abd7ef3 100644
 -		const { provider: childProvider, modelId: childModelId, warnings: modelWarnings } = modelResolution.value;
 -		warnings.push(...modelWarnings);
 -
-@@ -542,4 +709,31 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -542,4 +711,31 @@ export function runLeader(pi: ExtensionAPI): void {
 -		const teamSessionsDir = getTeamSessionsDir(teamDir);
 -		const session = await createSessionForTeammate(ctx, mode, teamSessionsDir);
 -		const { sessionFile, note } = session;
@@ -405,13 +407,13 @@ index a3bc5c1..abd7ef3 100644
 +		}
 +		const sessionFile = undefined;
 +		const note = "generated-profile:fresh";
-@@ -547,0 +742 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -547,0 +744 @@ export function runLeader(pi: ExtensionAPI): void {
 +		let ownedWorker: ManagedMaterializedWorker | undefined;
-@@ -578,0 +774,3 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -578,0 +776,3 @@ export function runLeader(pi: ExtensionAPI): void {
 +			void cleanupWorkerProfile(name, ownedWorker).catch((error) => {
 +				currentCtx?.ui.notify(`Worker profile cleanup failed for ${name}: ${error instanceof Error ? error.message : String(error)}`, "warning");
 +			});
-@@ -594,17 +792,2 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -594,17 +794,2 @@ export function runLeader(pi: ExtensionAPI): void {
 -		const tools = (pi.getActiveTools() ?? []).filter((t) => builtInToolSet.has(t));
 -		const argsForChild: string[] = [];
 -		if (sessionFile) argsForChild.push("--session", sessionFile);
@@ -431,14 +433,14 @@ index a3bc5c1..abd7ef3 100644
 -		}
 +		const tools = childProfile.tools.filter((tool) => builtInToolSet.has(tool));
 +		if (tools.length === 0) return { ok: false, error: "Verified child profile resolved to no active tools" };
-@@ -611,0 +795,2 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -611,0 +797,2 @@ export function runLeader(pi: ExtensionAPI): void {
 +		const teamsEntry = childProfile.patchedTeamsEntryPath;
 +		const extraExtensions = childProfile.extensions;
-@@ -613,3 +797,0 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -613,3 +799,0 @@ export function runLeader(pi: ExtensionAPI): void {
 -		const systemAppend = `You are ${strings.memberTitle.toLowerCase()} '${name}'. You collaborate with the ${strings.leaderTitle.toLowerCase()}. Prefer working from the shared task list.\n`;
 -		argsForChild.push("--append-system-prompt", systemAppend);
 -
-@@ -620,4 +802,11 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -620,4 +804,11 @@ export function runLeader(pi: ExtensionAPI): void {
 -			const res = await ensureWorktreeCwd({ leaderCwd: ctx.cwd, teamDir, teamId, agentName: name });
 -			childCwd = res.cwd;
 -			workspaceMode = res.mode;
@@ -454,10 +456,10 @@ index a3bc5c1..abd7ef3 100644
 +				teammateEventUnsubs.delete(name);
 +				return { ok: false, error: `Worker worktree setup failed: ${error instanceof Error ? error.message : String(error)}` };
 +			}
-@@ -625,0 +815,2 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -625,0 +817,2 @@ export function runLeader(pi: ExtensionAPI): void {
 +		const sessionName = `pi agent teams - ${strings.memberTitle.toLowerCase()} ${name}`;
 +		const readinessNonce = randomBytes(32).toString("hex");
-@@ -626,0 +818,19 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -626,0 +820,19 @@ export function runLeader(pi: ExtensionAPI): void {
 +			const adapter = await loadWorkerAdapter();
 +			const materialized = await adapter.provisionAgentTeamsWorkerProfile({
 +				configuration: childProfile.workerConfiguration,
@@ -477,7 +479,7 @@ index a3bc5c1..abd7ef3 100644
 +			});
 +			ownedWorker = materialized;
 +			workerProfiles.set(name, materialized);
-@@ -629,9 +839,16 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -629,9 +841,16 @@ export function runLeader(pi: ExtensionAPI): void {
 -				env: {
 -					PI_TEAMS_WORKER: "1",
 -					PI_TEAMS_TEAM_ID: teamId,
@@ -503,11 +505,11 @@ index a3bc5c1..abd7ef3 100644
 +					tools: [...tools].sort(),
 +					workspaceMode: "worktree",
 +					maxWorkers: Number(childProfile.maxWorkers),
-@@ -639 +856,2 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -639 +858,2 @@ export function runLeader(pi: ExtensionAPI): void {
 -				args: argsForChild,
 +				env: { ...materialized.profile.environment },
 +				args: materialized.childArgs,
-@@ -641,9 +859,2 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -641,9 +861,2 @@ export function runLeader(pi: ExtensionAPI): void {
 -		} catch (err) {
 -			teammates.delete(name);
 -			return { ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -519,7 +521,7 @@ index a3bc5c1..abd7ef3 100644
 -		try {
 +			// A second RPC round-trip closes the race where startup hooks fail immediately
 +			// after get_state but before the Worker is recorded as online.
-@@ -652 +863,14 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -652 +865,14 @@ export function runLeader(pi: ExtensionAPI): void {
 -			warnings.push(`Failed to set session name for ${name}: ${err instanceof Error ? err.message : String(err)}`);
 +			teammates.delete(name);
 +			const failures: unknown[] = [err];
@@ -535,10 +537,10 @@ index a3bc5c1..abd7ef3 100644
 +			}
 +			const detail = failures.map((failure) => failure instanceof Error ? failure.message : String(failure)).join("; ");
 +			return { ok: false, error: `Worker profile startup verification failed: ${detail}` };
-@@ -668 +892 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -668 +894 @@ export function runLeader(pi: ExtensionAPI): void {
 -		const childModel = formatProviderModel(childProvider, childModelId);
 +		const childModel = formatProviderModel(managedProvider, managedModelId);
-@@ -678,0 +903,14 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -678,0 +905,14 @@ export function runLeader(pi: ExtensionAPI): void {
 +				childProfile: {
 +					environment: "allowlist",
 +					environmentKeys: t.getEnvironmentKeys(),
@@ -553,9 +555,9 @@ index a3bc5c1..abd7ef3 100644
 +					forceWorktree: childProfile.forceWorktree,
 +					maxWorkers: workerCeiling.limit,
 +				},
-@@ -702,0 +941 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -702,0 +943 @@ export function runLeader(pi: ExtensionAPI): void {
 +		if (suppressedConfigBootstrapTeams.has(currentTeamId) && !fs.existsSync(teamDir)) return;
-@@ -1041,0 +1281,7 @@ export function runLeader(pi: ExtensionAPI): void {
+@@ -1041,0 +1283,7 @@ export function runLeader(pi: ExtensionAPI): void {
 +				suppressConfigBootstrap: (teamId) => {
 +					suppressedConfigBootstrapTeams.add(teamId);
 +					if (currentTeamId === teamId) {

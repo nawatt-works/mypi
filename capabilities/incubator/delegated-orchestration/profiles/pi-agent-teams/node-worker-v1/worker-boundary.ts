@@ -36,6 +36,7 @@ type WorkerProfile = {
 		sbomSpdxSha256: string;
 		workerBoundarySha256: string;
 		workerProfileRuntimeSha256: string;
+		workerMachineSetupSha256: string;
 		agentTeamsWorkerProfileSha256: string;
 		commandPolicySha256: string;
 		scopedWorkerToolsSha256: string;
@@ -122,6 +123,7 @@ function deriveBoundaryContractDigest(profile: WorkerProfile, boundaryPath: stri
 		patchedTeamsEntrySha256: profile.integration.patchedTeamsEntrySha256,
 		workerBoundarySha256: profile.toolchain.workerBoundarySha256,
 		workerProfileRuntimeSha256: profile.toolchain.workerProfileRuntimeSha256,
+		workerMachineSetupSha256: profile.toolchain.workerMachineSetupSha256,
 		agentTeamsWorkerProfileSha256: profile.toolchain.agentTeamsWorkerProfileSha256,
 		commandPolicySha256: profile.toolchain.commandPolicySha256,
 		scopedWorkerToolsSha256: profile.toolchain.scopedWorkerToolsSha256,
@@ -160,6 +162,7 @@ export function verifyWorkerProfileArtifacts(profile: WorkerProfile): void {
 	requireHash("SBOM", join(PROFILE_DIR, "sbom.spdx.json"), profile.toolchain.sbomSpdxSha256);
 	requireHash("Worker boundary", fileURLToPath(import.meta.url), profile.toolchain.workerBoundarySha256);
 	requireHash("Worker profile runtime", join(REPOSITORY_ROOT, "extensions", "worker-profile-runtime.ts"), profile.toolchain.workerProfileRuntimeSha256);
+	requireHash("Worker machine setup", join(REPOSITORY_ROOT, "extensions", "worker-machine-setup.ts"), profile.toolchain.workerMachineSetupSha256);
 	requireHash("agent-teams Worker profile adapter", join(REPOSITORY_ROOT, "extensions", "agent-teams-worker-profile.ts"), profile.toolchain.agentTeamsWorkerProfileSha256);
 	requireHash("command policy", join(REPOSITORY_ROOT, "extensions", "command-policy.ts"), profile.toolchain.commandPolicySha256);
 	requireHash("scoped Worker tools", join(REPOSITORY_ROOT, "extensions", "scoped-worker-tools.ts"), profile.toolchain.scopedWorkerToolsSha256);

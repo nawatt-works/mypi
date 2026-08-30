@@ -9,6 +9,7 @@
     "./command-policy": "./extensions/command-policy.ts",
     "./orchestration-policy": "./extensions/orchestration-policy.ts",
     "./worker-profile-runtime": "./extensions/worker-profile-runtime.ts",
+    "./worker-machine-setup": "./extensions/worker-machine-setup.ts",
     "./agent-teams-worker-profile": "./extensions/agent-teams-worker-profile.ts"
   },
   "dependencies": {

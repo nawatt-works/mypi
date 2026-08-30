@@ -121,6 +121,26 @@ test("requires every agreed artifact, and never accepts lifecycle movement inste
 	assert.equal(evaluateEvidence([{ description: "state moved", satisfied: true, required: false }]).complete, false);
 });
 
+test("registers Worker setup only as a secret-safe interactive command", async () => {
+	const runtime = fakePi();
+	orchestration(runtime.pi);
+	const command = runtime.commands.get("mypi-worker-setup");
+	assert.ok(command);
+	const notices: string[] = [];
+	await command.handler("super-secret-value", {
+		mode: "tui",
+		ui: { notify: (message: string) => notices.push(message) },
+	});
+	assert.ok(notices.some((message) => message.includes("ห้ามส่ง path หรือ secret")));
+	assert.ok(notices.every((message) => !message.includes("super-secret-value")));
+	const nonInteractive: string[] = [];
+	await command.handler("", {
+		mode: "print",
+		ui: { notify: (message: string) => nonInteractive.push(message) },
+	});
+	assert.ok(nonInteractive[0]?.includes("interactive TUI"));
+});
+
 test("keeps orchestration tools out of sessions that are not running under Herdr", () => {
 	const outside = fakePi({ activeTools: ["read", "mypi_spawn_worker"] });
 	withoutHerdrEnv(() => {

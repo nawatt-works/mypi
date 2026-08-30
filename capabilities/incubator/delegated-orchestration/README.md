@@ -20,6 +20,8 @@ Verifier bindกับ Coordinator-held profile digestก่อน follow path�
 
 Real child-Pi sentinelยืนยันว่า generated profileเห็นเฉพาะ explicit extension/providerและไม่โหลด Default/project canaries
 
-`extensions/agent-teams-worker-profile.ts` เพิ่ม adapter checkpointที่สร้าง exact child args/environmentจาก core, บังคับ trusted extensionsอยู่นอก worktree, coordination rootเฉพาะ, และรับ credentialผ่าน single-use per-run/per-Worker leaseใต้ private runtime root Leaseถูกลบหลัง auth projectionผ่าน verificationเพื่อไม่ให้ replay; setup/brokerที่ออก leaseยังไม่ implement
+`extensions/agent-teams-worker-profile.ts` สร้าง exact child args/environmentจาก core, บังคับ trusted extensionsอยู่นอก worktreeและรับ credentialผ่าน signed single-use per-run/per-Worker lease Leaseถูก claimก่อน materializationและถูกทำลายก่อน Workerพร้อม
 
-ขั้นนี้ยังเป็น pure/incubator checkpoint: adapterยังไม่ bindเข้า patched agent-teams spawn, ไม่มี `/mypi-worker-setup` และ production activationยัง disabled
+`extensions/worker-machine-setup.ts` เป็น idempotent setup/verify/rotate/recover service สร้าง private runtime hierarchy, Ed25519 lease authorityและ provider credential sourceนอก worktreeจาก credentialของ profileที่เรียกอย่าง explicit โดยไม่เก็บ secretใน manifest/digest/argv/environment/audit `/mypi-worker-setup`อยู่เฉพาะ incubator entrypoint, ใช้ TUI confirmationและรับเฉพาะ action `setup|verify|rotate` ไม่รับ pathหรือ secretเป็น argument
+
+Patched candidate bind generated profileเข้ากับ spawn/readinessแล้ว แต่ real-provider acceptanceของ pathใหม่ยังถูก blockด้วย exit `78` และ production activationยัง disabled

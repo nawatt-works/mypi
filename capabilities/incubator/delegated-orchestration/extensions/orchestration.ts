@@ -16,6 +16,16 @@ import {
 	type AssuranceState,
 } from "./orchestration-registry.ts";
 import { WORKER_SESSION_PREFIX, workerSessionName } from "@nawatt-works/mypi-runtime-mode";
+import {
+	defaultWorkerRuntimeRoot,
+	initializeWorkerMachine,
+	listProviderCredentials,
+	loadProviderCredential,
+	rotateWorkerCredential,
+	verifyWorkerMachine,
+	type ProviderCredentialInfo,
+	type WorkerMachineManifest,
+} from "./worker-machine-setup.ts";
 
 const PREVIEW_TOOL = "mypi_preview_worker";
 const SPAWN_TOOL = "mypi_spawn_worker";
@@ -338,6 +348,105 @@ export default function orchestration(pi: ExtensionAPI): void {
 		mode = restoreOrchestrateMode(branch);
 		// Outside Herdr there is nothing to orchestrate; keep normal sessions clean.
 		setToolsEnabled(isHerdrSession());
+	});
+
+	pi.registerCommand("mypi-worker-setup", {
+		description: "สร้าง ตรวจ หรือหมุนเวียน private Worker machine profile โดยไม่รับ secret ผ่าน command arguments",
+		handler: async (args, ctx) => {
+			if (ctx.mode !== "tui") {
+				ctx.ui.notify("/mypi-worker-setup ใช้ได้เฉพาะ interactive TUI เพื่อป้องกัน credential projection ผ่าน non-interactive channel", "error");
+				return;
+			}
+			const action = (typeof args === "string" ? args.trim() : "") || "setup";
+			if (!new Set(["setup", "verify", "rotate"]).has(action)) {
+				ctx.ui.notify("ใช้ /mypi-worker-setup [setup|verify|rotate] และห้ามส่ง path หรือ secret เป็น argument", "warning");
+				return;
+			}
+			const sourceAgentDir = process.env.PI_CODING_AGENT_DIR;
+			if (!sourceAgentDir || !isAbsolute(sourceAgentDir)) {
+				ctx.ui.notify("PI_CODING_AGENT_DIR ต้องเป็น absolute path ของ profile ที่กำลังรัน ห้าม fallback ไป Default Pi", "error");
+				return;
+			}
+			const runtimeRoot = defaultWorkerRuntimeRoot();
+			let credentials: ProviderCredentialInfo[];
+			try {
+				credentials = await listProviderCredentials(sourceAgentDir);
+			} catch (error) {
+				ctx.ui.notify(`อ่าน credential metadata ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`, "error");
+				return;
+			}
+			if (credentials.length === 0) {
+				ctx.ui.notify("profile นี้ไม่มี stored provider credential ให้ project แบบ file-backed", "error");
+				return;
+			}
+			const preferred = ctx.model ? credentials.find((entry) => entry.providerId === ctx.model?.provider) : undefined;
+			let selected = preferred;
+			if (!selected || credentials.length > 1) {
+				const value = await ctx.ui.select(
+					"เลือก provider credential ที่จะ project ให้ Workers (ไม่แสดงค่า secret)",
+					credentials.map((entry) => `${entry.providerId} (${entry.type})`),
+				);
+				if (!value) return;
+				selected = credentials.find((entry) => value === `${entry.providerId} (${entry.type})`);
+			}
+			if (!selected) {
+				ctx.ui.notify("เลือก provider credential ไม่สำเร็จ", "error");
+				return;
+			}
+			let verifiedExisting: WorkerMachineManifest | undefined;
+			for (const candidate of credentials) {
+				const result = await verifyWorkerMachine({ runtimeRoot, sourceAgentDir, providerId: candidate.providerId });
+				if (result.verified && result.manifest) {
+					verifiedExisting = result.manifest;
+					break;
+				}
+			}
+			if (action === "verify") {
+				if (!verifiedExisting) {
+					ctx.ui.notify(`Worker machine ที่ ${runtimeRoot} ไม่มี verified authority state`, "error");
+					return;
+				}
+				ctx.ui.notify(`Worker machine verified\nprovider: ${verifiedExisting.providerId} (${verifiedExisting.credentialType})\nrevision: ${verifiedExisting.credentialRevision}\nsetup: ${verifiedExisting.setupDigest}`, "info");
+				return;
+			}
+			if (verifiedExisting && verifiedExisting.providerId !== selected.providerId) {
+				ctx.ui.notify(`Worker machineผูกกับ ${verifiedExisting.providerId}; ห้ามเปลี่ยน providerด้วย setup/rotate เดิม`, "error");
+				return;
+			}
+			if (action === "rotate" && !verifiedExisting) {
+				ctx.ui.notify("ยังไม่มี verified Worker machine ให้ rotate", "error");
+				return;
+			}
+			const verb = action === "rotate" ? "หมุนเวียน" : verifiedExisting ? "ตรวจและคง" : "สร้าง";
+			const approved = await ctx.ui.confirm(
+				`${verb} Worker credential projection?`,
+				`provider: ${selected.providerId} (${selected.type})\nsource profile: ${sourceAgentDir}\nruntime: ${runtimeRoot}\n\nค่ credential จะไม่เข้า argv, environment, audit หรือ worktree`,
+			);
+			if (!approved) return;
+			try {
+				const credential = await loadProviderCredential(sourceAgentDir, selected.providerId);
+				const manifest = action === "rotate"
+					? await rotateWorkerCredential({
+						runtimeRoot,
+						sourceAgentDir,
+						providerId: selected.providerId,
+						expectedSetupDigest: verifiedExisting!.setupDigest,
+						credential,
+					})
+					: await initializeWorkerMachine({ runtimeRoot, sourceAgentDir, providerId: selected.providerId, credential });
+				pi.appendEntry("mypi-worker-machine-setup", {
+					action,
+					providerId: manifest.providerId,
+					credentialType: manifest.credentialType,
+					credentialRevision: manifest.credentialRevision,
+					runtimeRoot: manifest.runtimeRoot,
+					setupDigest: manifest.setupDigest,
+				});
+				ctx.ui.notify(`Worker machineพร้อมใช้งานใน incubator\nprovider: ${manifest.providerId} (${manifest.credentialType})\nrevision: ${manifest.credentialRevision}\nsetup: ${manifest.setupDigest}\nproduction activation: disabled`, "info");
+			} catch (error) {
+				ctx.ui.notify(`Worker machine setup ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`, "error");
+			}
+		},
 	});
 
 	pi.registerCommand("mypi-orchestrate", {

@@ -76,6 +76,7 @@ async function fixture(t: TestContext) {
 	await writeFile(join(credentialSourceRoot, "openai-codex.auth.json"), `${JSON.stringify({
 		schemaVersion: 1,
 		providerId: "openai-codex",
+		revision: 1,
 		credential: CREDENTIAL,
 	}, null, 2)}\n`, { mode: 0o600 });
 	const leaseRaw = issueLease({ privateKey, leaseId: "lease-worker-a-1", runId: "run-1", workerId: "worker-a" });

@@ -9,6 +9,7 @@ const PROFILE_DIR = join(REPOSITORY_ROOT, "profiles", "pi-agent-teams", "node-wo
 const PROFILE_PATH = join(PROFILE_DIR, "profile.json");
 const WORKER_BOUNDARY_PATH = join(PROFILE_DIR, "worker-boundary.ts");
 const WORKER_PROFILE_RUNTIME_PATH = join(REPOSITORY_ROOT, "extensions", "worker-profile-runtime.ts");
+const WORKER_MACHINE_SETUP_PATH = join(REPOSITORY_ROOT, "extensions", "worker-machine-setup.ts");
 const AGENT_TEAMS_WORKER_PROFILE_PATH = join(REPOSITORY_ROOT, "extensions", "agent-teams-worker-profile.ts");
 const PINNED_UPSTREAM_COMMIT = "2c1776d2a68104aaadc1c622d8a704684c7c35d6";
 const EXACT_CHILD_BUILTIN_TOOLS = ["read", "bash", "edit", "write"] as const;
@@ -66,6 +67,7 @@ export type AgentTeamsProfile = {
 	patchedTeamsEntryPath: string;
 	workerBoundaryPath: string;
 	workerProfileRuntimePath: string;
+	workerMachineSetupPath: string;
 	agentTeamsWorkerProfilePath: string;
 	runtimeRoot: string;
 	defaultAgentDir: string;
@@ -86,6 +88,7 @@ export type AgentTeamsProfile = {
 	overlayPatchSha256: string;
 	workerBoundarySha256: string;
 	workerProfileRuntimeSha256: string;
+	workerMachineSetupSha256: string;
 	agentTeamsWorkerProfileSha256: string;
 	commandPolicySha256: string;
 	scopedWorkerToolsSha256: string;
@@ -102,6 +105,7 @@ export type AgentTeamsObservedProfile = {
 	overlayPatchSha256: string;
 	workerBoundarySha256: string;
 	workerProfileRuntimeSha256: string;
+	workerMachineSetupSha256: string;
 	agentTeamsWorkerProfileSha256: string;
 	commandPolicySha256: string;
 	scopedWorkerToolsSha256: string;
@@ -150,6 +154,7 @@ type ProfileArtifact = {
 		observedLocalImageDigest: string;
 		workerBoundarySha256: string;
 		workerProfileRuntimeSha256: string;
+		workerMachineSetupSha256: string;
 		agentTeamsWorkerProfileSha256: string;
 		commandPolicySha256: string;
 		scopedWorkerToolsSha256: string;
@@ -284,15 +289,19 @@ export function buildAgentTeamsProfile(input: {
 	const patchedTeamsEntryPath = realpathSync(requestedTeamsEntryPath);
 	if (!existsSync(WORKER_BOUNDARY_PATH)) throw new Error(`Worker boundary is missing: ${WORKER_BOUNDARY_PATH}`);
 	const workerBoundaryPath = realpathSync(WORKER_BOUNDARY_PATH);
-	if (!existsSync(WORKER_PROFILE_RUNTIME_PATH) || !existsSync(AGENT_TEAMS_WORKER_PROFILE_PATH)) {
+	if (!existsSync(WORKER_PROFILE_RUNTIME_PATH) || !existsSync(WORKER_MACHINE_SETUP_PATH) || !existsSync(AGENT_TEAMS_WORKER_PROFILE_PATH)) {
 		throw new Error("Worker profile adapter modules are missing");
 	}
 	const workerProfileRuntimePath = realpathSync(WORKER_PROFILE_RUNTIME_PATH);
+	const workerMachineSetupPath = realpathSync(WORKER_MACHINE_SETUP_PATH);
 	const agentTeamsWorkerProfilePath = realpathSync(AGENT_TEAMS_WORKER_PROFILE_PATH);
 	const { artifact, raw } = loadProfileArtifact();
 	verifyPatchedTeamsSource(patchedTeamsEntryPath, artifact);
 	if (sha256(readFileSync(workerProfileRuntimePath)) !== artifact.toolchain.workerProfileRuntimeSha256) {
 		throw new Error("Worker profile runtime digest mismatch");
+	}
+	if (sha256(readFileSync(workerMachineSetupPath)) !== artifact.toolchain.workerMachineSetupSha256) {
+		throw new Error("Worker machine setup digest mismatch");
 	}
 	if (sha256(readFileSync(agentTeamsWorkerProfilePath)) !== artifact.toolchain.agentTeamsWorkerProfileSha256) {
 		throw new Error("agent-teams Worker profile adapter digest mismatch");
@@ -319,6 +328,7 @@ export function buildAgentTeamsProfile(input: {
 		patchedTeamsEntrySha256: artifact.integration.patchedTeamsEntrySha256,
 		workerBoundarySha256: artifact.toolchain.workerBoundarySha256,
 		workerProfileRuntimeSha256: artifact.toolchain.workerProfileRuntimeSha256,
+		workerMachineSetupSha256: artifact.toolchain.workerMachineSetupSha256,
 		agentTeamsWorkerProfileSha256: artifact.toolchain.agentTeamsWorkerProfileSha256,
 		commandPolicySha256: artifact.toolchain.commandPolicySha256,
 		scopedWorkerToolsSha256: artifact.toolchain.scopedWorkerToolsSha256,
@@ -332,6 +342,8 @@ export function buildAgentTeamsProfile(input: {
 		boundaryContractDigest,
 		workerProfileRuntimePath,
 		workerProfileRuntimeSha256: artifact.toolchain.workerProfileRuntimeSha256,
+		workerMachineSetupPath,
+		workerMachineSetupSha256: artifact.toolchain.workerMachineSetupSha256,
 		agentTeamsWorkerProfilePath,
 		agentTeamsWorkerProfileSha256: artifact.toolchain.agentTeamsWorkerProfileSha256,
 		runtimeRoot,
@@ -379,6 +391,7 @@ export function buildAgentTeamsProfile(input: {
 		patchedTeamsEntryPath,
 		workerBoundaryPath,
 		workerProfileRuntimePath,
+		workerMachineSetupPath,
 		agentTeamsWorkerProfilePath,
 		runtimeRoot,
 		defaultAgentDir,
@@ -399,6 +412,7 @@ export function buildAgentTeamsProfile(input: {
 		overlayPatchSha256: artifact.integration.overlayPatchSha256,
 		workerBoundarySha256: artifact.toolchain.workerBoundarySha256,
 		workerProfileRuntimeSha256: artifact.toolchain.workerProfileRuntimeSha256,
+		workerMachineSetupSha256: artifact.toolchain.workerMachineSetupSha256,
 		agentTeamsWorkerProfileSha256: artifact.toolchain.agentTeamsWorkerProfileSha256,
 		commandPolicySha256: artifact.toolchain.commandPolicySha256,
 		scopedWorkerToolsSha256: artifact.toolchain.scopedWorkerToolsSha256,
@@ -421,6 +435,7 @@ export function verifyAgentTeamsProfile(input: {
 	if (observed.overlayPatchSha256 !== requested.overlayPatchSha256) mismatches.push("overlay-digest");
 	if (observed.workerBoundarySha256 !== requested.workerBoundarySha256) mismatches.push("worker-boundary-digest");
 	if (observed.workerProfileRuntimeSha256 !== requested.workerProfileRuntimeSha256) mismatches.push("worker-profile-runtime-digest");
+	if (observed.workerMachineSetupSha256 !== requested.workerMachineSetupSha256) mismatches.push("worker-machine-setup-digest");
 	if (observed.agentTeamsWorkerProfileSha256 !== requested.agentTeamsWorkerProfileSha256) mismatches.push("agent-teams-worker-profile-digest");
 	if (observed.commandPolicySha256 !== requested.commandPolicySha256) mismatches.push("command-policy-digest");
 	if (observed.scopedWorkerToolsSha256 !== requested.scopedWorkerToolsSha256) mismatches.push("scoped-tools-digest");
@@ -471,5 +486,6 @@ export const AGENT_TEAMS_PROFILE_PATHS = Object.freeze({
 	profilePath: PROFILE_PATH,
 	workerBoundaryPath: WORKER_BOUNDARY_PATH,
 	workerProfileRuntimePath: WORKER_PROFILE_RUNTIME_PATH,
+	workerMachineSetupPath: WORKER_MACHINE_SETUP_PATH,
 	agentTeamsWorkerProfilePath: AGENT_TEAMS_WORKER_PROFILE_PATH,
 });
