@@ -1,8 +1,8 @@
 # จัด My Pi เป็น Capability Packages และ Pinned Releases
 
-> **Status:** active — Phase 6 release checkpoint preparation<br>
+> **Status:** active — Phase 6 awaiting human tag/push/install decision<br>
 > **Created:** 2026-08-30 09:10<br>
-> **Updated:** 2026-08-30 11:00<br>
+> **Updated:** 2026-08-30 11:10<br>
 > **Purpose:** แยก capability ตามสถานะและขอบเขตการติดตั้ง ให้ Default Pi โหลดเฉพาะของที่ stable จริงจาก pinned Git release โดยไม่ผูกการพัฒนากับ production working tree
 
 ## Goal and scope
@@ -379,7 +379,8 @@ Exit criteria: ผู้ใช้ clone exact commitแล้วติดตั�
 
 - [x] เลือก semantic versionแรกหลัง migrationเป็น `0.2.0` (breaking pre-1.0 layout change)
 - [x] ตรวจ staged migration, full tests, clean smoke, links, overlay applyและ release documentation
-- [ ] สร้าง local release commit/tag
+- [x] สร้าง atomic migration/release-candidate commit `ae81d9d`
+- [ ] สร้าง local tag `v0.2.0` หลังผู้ใช้ยืนยัน version/ref
 - [ ] ให้ผู้ใช้ตรวจหรืออนุมัติ external push
 - [ ] push commit/tagตาม human-only boundary
 - [ ] เปลี่ยน Default Pi package sourceเป็น exact Git ref
@@ -491,15 +492,17 @@ Testsผ่านเพียงอย่างเดียวไม่ทำใ
 - temporary clean copyผ่าน `npm ci --omit=dev`, isolated Pi install/list, RPC session startup, stable commands, RPIV/Plannotator toolsและ Azure opt-in load
 - linksและ `git diff --check` ผ่าน; historical plans/notesเก็บ old path contextและเพิ่ม current migration notes
 - เลือก root aggregate version `0.2.0` สำหรับ breaking pre-1.0 layout change
+- atomic migration/release-candidate commitคือ `ae81d9d`; branch `main` อยู่ ahead `origin/main` และ remoteยังไม่มี `v0.2.0`
 
 ## Exact next action
 
-สร้าง atomic migration commit แล้วเตรียม pinned release handoff:
+รอ human decisionสำหรับ Phase 6 release actions:
 
-1. commit staged capability migrationพร้อม manifests, lockfile, tests, scriptsและ docs
-2. บันทึก exact commitใน planและตรวจ clean working tree
-3. เสนอ local tag `v0.2.0` และ exact `pi install git:git@github.com:nawatt-works/mypi.git@v0.2.0` ให้ผู้ใช้ตรวจ
-4. push commit/tagและเปลี่ยน Default Pi settingsเฉพาะเมื่อผู้ใช้อนุมัติ human-only external mutation
-5. หลัง pinned install/rollback verificationเสร็จ จึงกลับไป Worker-profile discussion
+1. ยืนยันว่าจะใช้ commit `ae81d9d` เป็น code checkpointและ tag docs follow-up commitร่วมด้วยภายใต้ `v0.2.0`
+2. เมื่อยืนยัน ให้สร้าง local annotated tagที่ final docs commit, push `main` และ tagไป `origin`
+3. เปลี่ยน Default Piเป็น `pi install git:git@github.com:nawatt-works/mypi.git@v0.2.0`
+4. ยืนยัน `pi list`, stable commands/toolsและ source provenanceจาก pinned clone
+5. ทดสอบ rollbackโดยยังไม่ลบ previous sourceจนยืนยันสำเร็จ
+6. หลัง pinned install/rollback verificationเสร็จ จึงกลับไป Worker-profile discussion
 
 ห้าม production-wire delegated Workers, ย้าย `pi-doc`, push tagหรือเปลี่ยน Default Pi settingsก่อนผู้ใช้ตัดสิน Phase 6 actions
