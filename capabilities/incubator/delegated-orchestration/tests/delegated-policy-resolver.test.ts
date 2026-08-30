@@ -77,9 +77,10 @@ function request(): CommandPolicyRequest {
 }
 
 function guardrailRequest(category: GuardrailResolutionRequest["category"]): GuardrailResolutionRequest {
-	const kind = category === "external-upload" ? "external-upload" : category === "secret-read" ? "secret-read" : "external-write";
+	const kind = category === "external-upload" ? "external-upload" : category === "secret-read" ? "secret-read" : category === "remote-mutation" ? "remote-mutation" : "external-write";
 	return {
 		category,
+		workspaceRoot: "/repo",
 		cwd: "/repo",
 		hasUI: true,
 		findings: [{ kind, reason: "probe", target: category === "secret-read" ? "/repo/.env" : "/outside/file" }],
@@ -111,11 +112,18 @@ test("composed delegated guardrail path blocks without opening Worker UI", async
 	});
 	const result = await handlers.get("tool_call")?.(
 		{ toolName: "read", input: { path: ".env" } },
-		{ cwd: "/repo", hasUI: true, ui: { async select() { uiCalls += 1; return "Allow once"; } } },
+		{ cwd: process.cwd(), hasUI: true, ui: { async select() { uiCalls += 1; return "Allow once"; } } },
 	);
 	assert.equal(result?.block, true);
 	assert.equal(uiCalls, 0);
 	assert.match(result?.reason ?? "", /secret is hard denied/);
+});
+
+test("preserves human-only remote mutation boundaries without opening Worker UI", async () => {
+	const { resolver } = setup();
+	const decision = await resolver.resolve(guardrailRequest("remote-mutation"));
+	assert.equal(decision.outcome, "DENY");
+	assert.match(decision.reason, /human-only escalation required/);
 });
 
 test("denies external mutations outside the mandate instead of widening manual session scope", async () => {

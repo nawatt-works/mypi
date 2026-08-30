@@ -5,8 +5,8 @@ import type { MutationFinding } from "./detector.ts";
 import type { GuardrailResolution, GuardrailResolutionRequest } from "./resolution.ts";
 
 const SESSION_ALLOW_ONCE = "Allow once";
-const SESSION_ALLOW_SECRET = "Allow this secret file for this session";
-const SESSION_ALLOW_UPLOAD = "Allow this file upload for this session";
+const SESSION_ALLOW_SECRET = "Allow this secret file for this session (up to 1 hour)";
+const SESSION_ALLOW_UPLOAD = "Allow this file upload for this session (up to 1 hour)";
 const DENY = "Deny";
 
 export function displayGuardrailFinding(finding: MutationFinding): string {
@@ -30,6 +30,7 @@ export function displayGuardrailFinding(finding: MutationFinding): string {
 	}
 	if (finding.kind === "secret-read") return `${finding.reason}\n\nThe sensitive source could not be determined exactly.`;
 	if (finding.kind === "external-upload") return `${finding.reason}\n\nThe local source could not be determined exactly.`;
+	if (finding.kind === "remote-mutation") return finding.reason;
 	return `${finding.reason}\n\nThe destination cannot be proven to stay inside the workspace.`;
 }
 
@@ -39,8 +40,8 @@ export function guardrailSessionDirectoryKey(finding: MutationFinding): string |
 }
 
 function directoryPermissionLabel(keys: readonly string[]): string {
-	if (keys.length === 1) return `Allow ${keys[0]} for this session`;
-	return `Allow these directories for this session: ${keys.join(", ")}`;
+	if (keys.length === 1) return `Allow ${keys[0]} for this session (up to 1 hour)`;
+	return `Allow these directories for this session (up to 1 hour): ${keys.join(", ")}`;
 }
 
 export async function renderGuardrailHumanDecision(
@@ -50,9 +51,11 @@ export async function renderGuardrailHumanDecision(
 ): Promise<GuardrailResolution> {
 	const summary = request.findings.map(displayGuardrailFinding).join("\n\n");
 	if (request.category === "external-upload") {
-		const choice = await withHerdrBlocked(pi.events, "Local file upload approval", () =>
-			ctx.ui.select(`Local file upload requested\n\n${summary}`, [SESSION_ALLOW_ONCE, SESSION_ALLOW_UPLOAD, DENY]));
-		if (choice === SESSION_ALLOW_UPLOAD) return { outcome: "ALLOW_SESSION", reason: "user allowed exact upload files for this session" };
+		const includesSecretRead = request.findings.some((finding) => finding.kind === "secret-read");
+		const title = includesSecretRead ? "Sensitive local file upload requested" : "Local file upload requested";
+		const choice = await withHerdrBlocked(pi.events, includesSecretRead ? "Sensitive file upload approval" : "Local file upload approval", () =>
+			ctx.ui.select(`${title}\n\n${summary}`, [SESSION_ALLOW_ONCE, SESSION_ALLOW_UPLOAD, DENY]));
+		if (choice === SESSION_ALLOW_UPLOAD) return { outcome: "ALLOW_SESSION", reason: "user allowed exact upload files, including disclosed sensitive reads, for this session" };
 		if (choice === SESSION_ALLOW_ONCE) return { outcome: "ALLOW_ONCE", reason: "user allowed upload once" };
 		return { outcome: "DENY", reason: `User rejected uploading a local file.\n${summary}` };
 	}
@@ -62,6 +65,12 @@ export async function renderGuardrailHumanDecision(
 		if (choice === SESSION_ALLOW_SECRET) return { outcome: "ALLOW_SESSION", reason: "user allowed exact secret files for this session" };
 		if (choice === SESSION_ALLOW_ONCE) return { outcome: "ALLOW_ONCE", reason: "user allowed secret read once" };
 		return { outcome: "DENY", reason: `User rejected reading a secret file.\n${summary}` };
+	}
+	if (request.category === "remote-mutation") {
+		const choice = await withHerdrBlocked(pi.events, "External service mutation approval", () =>
+			ctx.ui.select(`External service mutation requested\n\n${summary}`, [SESSION_ALLOW_ONCE, DENY]));
+		if (choice === SESSION_ALLOW_ONCE) return { outcome: "ALLOW_ONCE", reason: "user allowed one external service mutation" };
+		return { outcome: "DENY", reason: `User rejected an external service mutation.\n${summary}` };
 	}
 	const directoryKeys = [...new Set(request.findings.map(guardrailSessionDirectoryKey).filter((key): key is string => Boolean(key)))];
 	const allowDirectoryChoice = directoryKeys.length ? directoryPermissionLabel(directoryKeys) : undefined;

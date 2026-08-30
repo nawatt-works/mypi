@@ -203,13 +203,16 @@ npm test
 
 ## Guardrails และขอบเขตการป้องกัน
 
-Safety Guardrails ลดความผิดพลาดจาก modelและป้องกันการเข้าถึงข้อมูลสำคัญโดยไม่ตั้งใจ ครอบคลุม built-in tools, shell commandsที่วิเคราะห์ pathได้, nested MCP/custom filesystem tools, local uploads, known PDF outputและ screenshot paths
+Safety Guardrails ลดความผิดพลาดจาก modelและป้องกันการเข้าถึงข้อมูลสำคัญโดยไม่ตั้งใจ ครอบคลุม built-in tools, bounded shell analysis, command-bearing MCP/custom tools, canonical secret aliases, compound sensitive uploads, remote service mutations, known PDF outputและ screenshot paths
 
-Temporary-file policy:
+Workspace/temporary policy:
 
-- ใช้ temporary directoryตาม harness/OS default
-- อนุญาตเขียนใต้ `os.tmpdir()` โดยไม่ถาม
+- freeze canonical Git worktree rootหรือ launch cwdตอนเริ่ม session โดยแยกจาก current execution cwd
+- subdirectoryและ siblingภายใน workspaceเดียวกันไม่ต้องขอ approvalซ้ำ
+- symlink/cwdที่ออกนอก immutable rootถูก blockหรือถามตาม mode
+- สร้าง private mode `0700` temporary rootต่อ session; ไม่อนุญาต `os.tmpdir()`ทั้งก้อนอีกต่อไป
 - `/dev/null` ใช้ทิ้ง outputได้ แต่ไม่ได้อนุญาต pathอื่นใต้ `/dev`
+- session grantsผูก exact resource, หมดอายุไม่เกิน 1 ชั่วโมงและ remote mutationไม่มี session-wide grant
 
 Guardrailsเป็น best-effort policy layer ไม่ใช่ security sandbox:
 

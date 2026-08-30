@@ -18,9 +18,9 @@ Profile นี้เป็น versioned Phase 0 candidate ภายใน incuba
 - `extensions/worker-machine-setup.ts`: SHA-256 `b19e344c889a93533da6afb0dcd89137a909600d84bace65c9f225eec4cedb16`
 - `extensions/agent-teams-worker-profile.ts`: SHA-256 `cebb9b81a5dccfed4248606c70f0a0fdaccbccfe0cde51147536596f7a75c191`
 - `extensions/worker-execution-adapters.ts`: SHA-256 `34f714bb9b520663bd16e2c682bc5e38e8e232fb1ece0f9adb79138f725435c9`
-- `extensions/command-policy.ts`: SHA-256 `c378c06e5dd0e9444e1c6c8752354bb00b6747dc0d7794cfb58703dd68a6e8ba`
-- `extensions/scoped-worker-tools.ts`: SHA-256 `c432f62225da80ea553966f4613e453554cde67442a7c94613ef2068421301cb`
-- `capabilities/global/safety-guardrails/extensions/detector.ts`: SHA-256 `d08b3ffd251e8d0e3428c463d95698e62ee3b7330e2f3c1a4463297bf15f92ea`
+- `extensions/command-policy.ts`: SHA-256 `65e33c738caa40ea5981a2da39fd0bc8af139d88e219b2a5540b05b8c991b25d`
+- `extensions/scoped-worker-tools.ts`: SHA-256 `f937ac471424fcb30a5bb9a7c07eeceb09e521c3421364df335f285c0085d18d`
+- `capabilities/global/safety-guardrails/extensions/detector.ts`: SHA-256 `63e87997de2575cdc1cc5eb83ec215e4f9d32f9f75f554fbdc6947cef33c386d`
 
 Observed local digestเป็นหลักฐานของ deterministic no-provenance manifest ที่ probe ไม่ใช่ cross-platform registry contract BuildKit provenance attestationทำ manifest-list digestเปลี่ยนต่อ build จึงปิดด้วย `--provenance=false`; provenanceที่ใช้คือ pinned base digest, exact Dockerfile และ committed SBOM หาก buildใหม่ได้ digestอื่น ห้ามเปลี่ยน `profile.json` อัตโนมัติ ต้องตรวจทุก artifactและ boundary probesใหม่ก่อน
 

@@ -45,6 +45,7 @@ function mutationAction(request: GuardrailResolutionRequest, state: Orchestratio
 	const common = { mandateId: mandate.id, authorityCwd: mandate.cwd };
 	if (request.category === "external-upload") return { ...common, kind: "upload", target: "local-file" };
 	if (request.category === "secret-read") return { ...common, kind: "secret", operation: "read" };
+	if (request.category === "remote-mutation") return { ...common, kind: "external-mutation", category: "push-deploy-publish" };
 	return { ...common, kind: "filesystem", operation: "write", targetScope: "external" };
 }
 

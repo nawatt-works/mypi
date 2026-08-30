@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { basename, isAbsolute, relative, resolve } from "node:path";
+import { isRemoteMutationCommand } from "@nawatt-works/mypi-safety-guardrails/detector";
 
 /**
  * Pure Phase 0 command-policy fixture. It has no Pi registration or execution
@@ -821,42 +822,13 @@ function detectGit(args: readonly ShellToken[], state: AnalysisState): void {
 }
 
 function detectRemoteMutation(commandName: string, args: readonly ShellToken[], state: AnalysisState): void {
-	const rawValues = args.map((token) => token.value);
-	const values = rawValues.map((value) => value.toLowerCase());
-	const firstVerb = values.find((value) => !value.startsWith("-"));
-	let remote = false;
-	if (["npm", "pnpm", "yarn"].includes(commandName) && values.includes("publish")) remote = true;
-	if (commandName === "docker" && values.some((value) => ["push", "login", "context"].includes(value))) remote = true;
-	if (commandName === "kubectl" && values.some((value) => ["apply", "create", "delete", "patch", "replace", "rollout", "scale", "set"].includes(value))) remote = true;
-	if (commandName === "terraform" && values.some((value) => ["apply", "destroy", "import"].includes(value))) remote = true;
-	if (commandName === "gh" && ["release", "repo", "pr"].includes(firstVerb ?? "") && values.some((value) => ["create", "delete", "merge"].includes(value))) remote = true;
-	if (commandName === "curl") {
-		for (let index = 0; index < rawValues.length; index += 1) {
-			const value = rawValues[index]!;
-			if (["-d", "-F", "-T", "--data", "--data-binary", "--data-raw", "--form", "--upload-file"].includes(value) ||
-				/^(?:--data(?:-binary|-raw)?|--form|--upload-file)=/.test(value)) remote = true;
-			if (value === "-X" || value === "--request") {
-				const method = (rawValues[index + 1] ?? "").toUpperCase();
-				if (method && !["GET", "HEAD", "OPTIONS"].includes(method)) remote = true;
-			}
-			const joinedMethod = value.match(/^(?:-X|--request=)(.+)$/)?.[1]?.toUpperCase();
-			if (joinedMethod && !["GET", "HEAD", "OPTIONS"].includes(joinedMethod)) remote = true;
-		}
-	}
-	if (commandName === "wget" && rawValues.some((value) =>
-		/^(?:--method=(?!GET|HEAD|OPTIONS)|--post-data(?:=|$)|--post-file(?:=|$))/i.test(value)
-	)) remote = true;
-	if (["aws", "az", "gcloud"].includes(commandName) && values.some((value) =>
-		["apply", "create", "delete", "deploy", "destroy", "publish", "put", "remove", "rm", "set", "update"].includes(value)
-	)) remote = true;
-	if (remote) {
-		addFinding(state, {
-			code: "remote-mutation",
-			outcome: "HUMAN",
-			reason: "command may mutate an external service and is human-only",
-			resource: `remote:${commandName}`,
-		});
-	}
+	if (!isRemoteMutationCommand(commandName, args.map((token) => token.value))) return;
+	addFinding(state, {
+		code: "remote-mutation",
+		outcome: "HUMAN",
+		reason: "command may mutate an external service and is human-only",
+		resource: `remote:${commandName}`,
+	});
 }
 
 function detectHardline(commandName: string, args: readonly ShellToken[], normalized: string, state: AnalysisState): void {
@@ -1009,13 +981,29 @@ function analyzeNested(command: string, state: AnalysisState, depth: number): vo
 				analyzeNested(payload.value, state, depth + 1);
 			}
 		}
-		if (INLINE_INTERPRETERS.has(commandName) && view.args.some((token) => ["-c", "-e", "--eval"].includes(token.value))) {
+		const hasInlineInterpreterPayload = INLINE_INTERPRETERS.has(commandName) &&
+			view.args.some((token) => ["-c", "-e", "-E", "--eval"].includes(token.value));
+		if (hasInlineInterpreterPayload) {
 			addFinding(state, {
 				code: "dynamic-code-execution",
 				outcome: "REVIEW",
 				reason: "inline interpreter code can bypass shell-string classification",
 				resource: `interpreter:${commandName}`,
 			});
+		}
+		const isFileInterpreter = SHELL_CARRIERS.has(commandName) || INLINE_INTERPRETERS.has(commandName);
+		if (isFileInterpreter && !hasInlineInterpreterPayload && !view.args.some((token) => /^-[^-]*c/.test(token.value))) {
+			const script = view.args.find((token) => token.value !== "--" && !token.value.startsWith("-"));
+			if (script) {
+				addFinding(state, {
+					code: "dynamic-code-execution",
+					outcome: script.dynamic ? "DENY" : "REVIEW",
+					reason: script.dynamic
+						? "interpreter script identity is dynamic and cannot be bound to an exact review"
+						: "executing a file or module through an interpreter requires exact review",
+					resource: script.dynamic ? `interpreter:${commandName}` : expandPolicyPath(script.value, state) ?? `interpreter:${commandName}:${script.value}`,
+				});
+			}
 		}
 		if (commandName === "find" && view.args.some((token) => token.value === "-delete" || token.value === "-exec")) {
 			const roots = view.args.filter((token) => !token.value.startsWith("-")).slice(0, 1);

@@ -147,6 +147,17 @@ test("routes remote mutation to HUMAN and remote code execution to DENY", () => 
 		"kubectl apply -f deployment.yaml",
 		"terraform destroy -auto-approve",
 		"curl -X POST https://example.com/action",
+		"gh workflow run ci.yml",
+		"aws s3 cp artifact.zip s3://release-bucket/artifact.zip",
+		"az storage blob upload --file artifact.zip",
+		"gcloud storage cp artifact.zip gs://release-bucket/artifact.zip",
+		"vercel deploy --prod",
+		"netlify deploy --prod",
+		"wrangler deploy",
+		"firebase deploy",
+		"helm upgrade app chart/",
+		"cargo publish",
+		"twine upload dist/*",
 	]) {
 		const result = analyze(command);
 		assert.equal(result.recommendedOutcome, "HUMAN", command);
@@ -239,6 +250,12 @@ test("requires REVIEW for substitutions, nested shells, and inline interpreters"
 		"sh -c 'printf ok > result.txt'",
 		"node -e 'console.log(1)'",
 		"./scripts/check.sh",
+		"bash ./scripts/check.sh",
+		"sh scripts/deploy.sh",
+		"python3 scripts/deploy.py",
+		"node scripts/release.mjs",
+		"ruby scripts/release.rb",
+		"python -m pytest",
 	]) {
 		const result = analyze(command);
 		assert.equal(result.recommendedOutcome, "REVIEW", command);

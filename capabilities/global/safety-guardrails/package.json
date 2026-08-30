@@ -7,9 +7,11 @@
   "keywords": ["pi-package"],
   "exports": {
     ".": "./extensions/index.ts",
+    "./audit": "./extensions/audit.ts",
     "./detector": "./extensions/detector.ts",
     "./resolution": "./extensions/resolution.ts",
-    "./ui": "./extensions/ui.ts"
+    "./ui": "./extensions/ui.ts",
+    "./workspace": "./extensions/workspace.ts"
   },
   "dependencies": {
     "@nawatt-works/mypi-herdr-integration": "0.1.0"

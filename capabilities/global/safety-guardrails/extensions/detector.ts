@@ -2,7 +2,7 @@ import { existsSync, realpathSync } from "node:fs";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
-export type MutationKind = "external-write" | "unknown-write" | "secret-read" | "external-upload";
+export type MutationKind = "external-write" | "unknown-write" | "secret-read" | "external-upload" | "remote-mutation";
 
 export type MutationFinding = {
 	kind: MutationKind;
@@ -20,6 +20,7 @@ type ShellState = {
 	cwd?: string;
 	cwdExpression?: string;
 	vars: Map<string, string | undefined>;
+	allowedWriteRoots: readonly string[];
 };
 
 const DIRECT_MUTATION_TOOLS = new Set([
@@ -40,6 +41,10 @@ const SESSION_ALLOW_SECRET = "Allow this secret file for this session";
 const SESSION_ALLOW_UPLOAD = "Allow this file upload for this session";
 const DENY = "Deny";
 const STARTUP_TEMPORARY_DIRECTORY = tmpdir();
+const MAX_SHELL_CHARACTERS = 32_768;
+const MAX_SHELL_SEGMENTS = 128;
+const MAX_SHELL_TOKENS = 1_024;
+const MAX_SHELL_NESTING = 16;
 
 const PATH_FIELD_PATTERN = /(?:^|[_-])(?:path|paths|file|files|filename|directory|dir|destination|dest|target|source|src|uri)(?:$|[_-])/i;
 const DESTINATION_FIELD_PATTERN = /(?:^|[_-])(?:destination|dest|target|output|out|to|new[_-]?path|save[_-]?path)(?:$|[_-])/i;
@@ -49,6 +54,7 @@ const FILE_MUTATION_CONTEXT_PATTERN = /(?:^|[_-])(?:file|directory|folder|path|f
 const FILE_UPLOAD_TOOL_PATTERN = /(?:^|[_-])(?:upload|attach|send[_-]?file)(?:$|[_-])/i;
 const SENSITIVE_ENV_NAME_PATTERN = /(?:^|_)(?:API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIALS?|PRIVATE[_-]?KEY|AUTH)(?:_|$)/i;
 const LOCAL_VIDEO_EXTENSION_PATTERN = /\.(?:mp4|mov|webm|avi|mpeg|mpg|wmv|flv|3gp|3gpp)$/i;
+const COMMAND_TOOL_PATTERN = /(?:^|[_:-])(?:(?:bash|shell|terminal)(?:[_:-](?:exec(?:ute)?|run|command|cmd))?|(?:exec(?:ute)?|run)[_-]?(?:command|cmd)?|command[_-]?(?:exec(?:ute)?|run))(?:$|[_:-])/i;
 
 const SHELL_CONTENT_READ_COMMANDS = new Set([
 	".",
@@ -192,8 +198,8 @@ export function resolvePolicyPath(input: string, cwd: string): string {
 	return canonicalizeMissingPath(isAbsolute(expanded) ? expanded : resolve(cwd, expanded));
 }
 
-export function isInsideWorkspace(input: string, cwd: string): boolean {
-	const workspace = canonicalizeMissingPath(cwd);
+export function isInsideWorkspace(input: string, cwd: string, workspaceRoot = cwd): boolean {
+	const workspace = canonicalizeMissingPath(workspaceRoot);
 	const target = resolvePolicyPath(input, cwd);
 	const rel = relative(workspace, target);
 	return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
@@ -214,11 +220,17 @@ export function isHarnessTemporaryPath(input: string, cwd: string): boolean {
 	return isSameOrInside(target, root);
 }
 
-function isPermittedWriteTarget(input: string, cwd: string): boolean {
+function isPermittedWriteTarget(
+	input: string,
+	cwd: string,
+	workspaceRoot = cwd,
+	allowedWriteRoots: readonly string[] = [],
+): boolean {
+	const target = resolvePolicyPath(input, cwd);
 	return (
-		isInsideWorkspace(input, cwd) ||
-		isHarnessTemporaryPath(input, cwd) ||
-		isNullDevicePath(input, cwd)
+		isInsideWorkspace(target, cwd, workspaceRoot) ||
+		allowedWriteRoots.some((root) => isSameOrInside(target, resolvePolicyPath(root, cwd))) ||
+		isNullDevicePath(target, cwd)
 	);
 }
 
@@ -233,13 +245,20 @@ export function isSensitivePath(input: string): boolean {
 	return SENSITIVE_FILE_PATTERNS.some((pattern) => pattern.test(name));
 }
 
+export function isSensitivePolicyPath(input: string, cwd: string): boolean {
+	if (isSensitivePath(input)) return true;
+	return isSensitivePath(resolvePolicyPath(input, cwd));
+}
+
 function secretReadFinding(rawTarget: string, state: ShellState, reason: string): MutationFinding | undefined {
 	const expanded = expandKnownVariables(normalizeFileReference(rawTarget), state);
-	if (expanded === undefined || !state.cwd || !isSensitivePath(expanded)) return;
+	if (expanded === undefined || !state.cwd) return;
+	const target = resolvePolicyPath(expanded, state.cwd);
+	if (!isSensitivePath(expanded) && !isSensitivePath(target)) return;
 	return {
 		kind: "secret-read",
 		reason,
-		target: resolvePolicyPath(expanded, state.cwd),
+		target,
 	};
 }
 
@@ -461,7 +480,7 @@ function externalFinding(
 		};
 	}
 	const target = resolvePolicyPath(expanded, state.cwd);
-	if (isPermittedWriteTarget(target, workspace)) return;
+	if (isPermittedWriteTarget(target, state.cwd, workspace, state.allowedWriteRoots)) return;
 	return { kind: "external-write", reason, target, targetLabel };
 }
 
@@ -485,6 +504,58 @@ function mutationOperands(command: string, args: string[]): string[] {
 		default:
 			return positional;
 	}
+}
+
+export function isRemoteMutationCommand(commandName: string, rawArgs: readonly string[]): boolean {
+	const command = commandName.toLowerCase();
+	const values = rawArgs.map((value) => value.toLowerCase());
+	const firstVerb = values.find((value) => !value.startsWith("-"));
+	if (["npm", "pnpm", "yarn"].includes(command) && values.includes("publish")) return true;
+	if (command === "docker" && values.some((value) => ["push", "login", "context"].includes(value))) return true;
+	if (command === "kubectl" && values.some((value) => ["apply", "create", "delete", "patch", "replace", "rollout", "scale", "set"].includes(value))) return true;
+	if (command === "terraform" && values.some((value) => ["apply", "destroy", "import"].includes(value))) return true;
+	if (command === "git" && values.includes("push")) return true;
+	if (command === "gh" && (
+		(["release", "repo", "pr"].includes(firstVerb ?? "") && values.some((value) => ["create", "delete", "merge"].includes(value))) ||
+		(firstVerb === "workflow" && values.includes("run")) ||
+		(firstVerb === "api" && rawArgs.some((value, index) => {
+			if (["-X", "--method"].includes(value)) return !["GET", "HEAD", "OPTIONS"].includes((rawArgs[index + 1] ?? "").toUpperCase());
+			const method = value.match(/^--(?:method|request)=(.+)$/i)?.[1]?.toUpperCase();
+			return Boolean(method && !["GET", "HEAD", "OPTIONS"].includes(method));
+		}))
+	)) return true;
+	if (command === "curl") {
+		for (let index = 0; index < rawArgs.length; index += 1) {
+			const value = rawArgs[index]!;
+			if (["-d", "-F", "-T", "--data", "--data-binary", "--data-raw", "--form", "--upload-file"].includes(value) ||
+				/^(?:--data(?:-binary|-raw)?|--form|--upload-file)=/.test(value)) return true;
+			if (["-X", "--request"].includes(value)) {
+				const method = (rawArgs[index + 1] ?? "").toUpperCase();
+				if (method && !["GET", "HEAD", "OPTIONS"].includes(method)) return true;
+			}
+			const method = value.match(/^(?:-X|--request=)(.+)$/)?.[1]?.toUpperCase();
+			if (method && !["GET", "HEAD", "OPTIONS"].includes(method)) return true;
+		}
+	}
+	if (command === "wget" && rawArgs.some((value) =>
+		/^(?:--method=(?!GET|HEAD|OPTIONS)|--post-data(?:=|$)|--post-file(?:=|$))/i.test(value)
+	)) return true;
+	if (["aws", "az", "gcloud"].includes(command) && values.some((value) =>
+		["apply", "copy", "cp", "create", "delete", "deploy", "destroy", "publish", "put", "remove", "rm", "set", "sync", "update", "upload"].includes(value)
+	)) return true;
+	if (["vercel", "netlify", "wrangler", "firebase", "flyctl", "heroku", "railway", "serverless", "sls"].includes(command) &&
+		values.some((value) => ["deploy", "destroy", "publish", "remove", "rollback", "promote"].includes(value))) return true;
+	if (command === "helm" && values.some((value) => ["install", "rollback", "uninstall", "upgrade"].includes(value))) return true;
+	if ((command === "cargo" && values.includes("publish")) ||
+		(command === "twine" && values.includes("upload")) ||
+		(command === "gem" && values.includes("push")) ||
+		(command === "dotnet" && values.includes("push"))) return true;
+	return false;
+}
+
+function remoteMutationFinding(command: string, args: string[]): MutationFinding | undefined {
+	if (!isRemoteMutationCommand(command, args)) return;
+	return { kind: "remote-mutation", reason: `${command} may mutate an external service and requires explicit human approval` };
 }
 
 function analyzeSegment(segment: string, state: ShellState, workspace: string): MutationFinding[] {
@@ -515,14 +586,23 @@ function analyzeSegment(segment: string, state: ShellState, workspace: string): 
 	}
 	if (cursor >= tokens.length) return findings;
 
-	const command = basename(tokens[cursor]!);
+	const command = basename(tokens[cursor]!).toLowerCase();
 	const args = tokens.slice(cursor + 1).filter((arg) => !/^(?:\d*)?[<>]/.test(arg));
+	const remoteFinding = remoteMutationFinding(command, args);
+	if (remoteFinding) findings.push(remoteFinding);
 
-	const referencedEnvironmentVariables = segment.matchAll(
-		/\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))/g,
-	);
-	for (const match of referencedEnvironmentVariables) {
-		const name = match[1] ?? match[2] ?? "";
+	const referencedEnvironmentNames = new Set<string>();
+	for (const match of segment.matchAll(/\$([A-Za-z_][A-Za-z0-9_]*)/g)) referencedEnvironmentNames.add(match[1]!);
+	for (const match of segment.matchAll(/\$\{([^}]*)\}/g)) {
+		const expression = match[1] ?? "";
+		const name = expression.match(/^!?([A-Za-z_][A-Za-z0-9_]*)/)?.[1];
+		if (name) referencedEnvironmentNames.add(name);
+		if (expression.startsWith("!")) findings.push({
+			kind: "secret-read",
+			reason: "shell performs indirect environment-variable expansion",
+		});
+	}
+	for (const name of referencedEnvironmentNames) {
 		if (SENSITIVE_ENV_NAME_PATTERN.test(name)) {
 			findings.push({
 				kind: "secret-read",
@@ -640,7 +720,7 @@ function analyzeSegment(segment: string, state: ShellState, workspace: string): 
 				arg === "--output-document" ||
 				arg.startsWith("--output-document=")
 			));
-		if (writesUsingRemoteName && state.cwd && !isPermittedWriteTarget(state.cwd, workspace)) {
+		if (writesUsingRemoteName && state.cwd && !isPermittedWriteTarget(state.cwd, state.cwd, workspace, state.allowedWriteRoots)) {
 			findings.push({
 				kind: "external-write",
 				reason: `${command} downloads into a directory outside workspace`,
@@ -733,25 +813,63 @@ function analyzeSegment(segment: string, state: ShellState, workspace: string): 
 	return findings;
 }
 
-export function analyzeShellMutations(command: string, cwd: string, workspace = cwd): MutationFinding[] {
+function analyzeShellMutationsUnfinalized(
+	command: string,
+	cwd: string,
+	workspace = cwd,
+	allowedWriteRoots: readonly string[] = [],
+	depth = 0,
+): MutationFinding[] {
+	if (command.length > MAX_SHELL_CHARACTERS || depth > MAX_SHELL_NESTING) {
+		return [{ kind: "unknown-write", reason: "shell command exceeds the guardrail parser complexity budget" }];
+	}
+	const nestedCommands = extractCommandSubstitutions(command);
+	const segments = splitShellSegments(command);
+	const tokenCount = segments.reduce((count, segment) => count + tokenizeShell(segment).length, 0);
+	if (segments.length > MAX_SHELL_SEGMENTS || tokenCount > MAX_SHELL_TOKENS || nestedCommands.length > MAX_SHELL_SEGMENTS) {
+		return [{ kind: "unknown-write", reason: "shell command exceeds the guardrail parser complexity budget" }];
+	}
 	const state: ShellState = {
 		cwd: resolvePolicyPath(cwd, cwd),
 		vars: new Map(),
+		allowedWriteRoots,
 	};
 	const findings: MutationFinding[] = [];
-	for (const nested of extractCommandSubstitutions(command)) {
-		findings.push(...analyzeShellMutations(nested, state.cwd ?? cwd, workspace));
+	for (const nested of nestedCommands) {
+		findings.push(...analyzeShellMutationsUnfinalized(nested, state.cwd ?? cwd, workspace, allowedWriteRoots, depth + 1));
 	}
-	for (const segment of splitShellSegments(command)) {
+	for (const segment of segments) {
 		findings.push(...analyzeSegment(segment, state, workspace));
 	}
 	return deduplicateFindings(findings);
 }
 
+export function analyzeShellMutations(
+	command: string,
+	cwd: string,
+	workspace = cwd,
+	allowedWriteRoots: readonly string[] = [],
+): MutationFinding[] {
+	return finalizeFindings(analyzeShellMutationsUnfinalized(command, cwd, workspace, allowedWriteRoots));
+}
+
+function finalizeFindings(findings: MutationFinding[]): MutationFinding[] {
+	const completed = [...findings];
+	for (const finding of findings) {
+		if (finding.kind !== "external-upload" || !finding.target || !isSensitivePath(finding.target)) continue;
+		completed.push({
+			kind: "secret-read",
+			reason: "external upload reads a sensitive local file",
+			target: finding.target,
+		});
+	}
+	return deduplicateFindings(completed);
+}
+
 function deduplicateFindings(findings: MutationFinding[]): MutationFinding[] {
 	const seen = new Set<string>();
 	return findings.filter((finding) => {
-		const key = `${finding.kind}:${finding.target ?? ""}:${finding.targetExpression ?? ""}:${finding.detail ?? ""}:${finding.reason}`;
+		const key = `${finding.kind}:${finding.target ?? ""}:${finding.targetExpression ?? ""}:${finding.detail ?? ""}`;
 		if (seen.has(key)) return false;
 		seen.add(key);
 		return true;
@@ -812,14 +930,22 @@ function analyzePathAwareCustomTool(
 	toolName: string,
 	input: Record<string, unknown>,
 	cwd: string,
+	workspaceRoot: string,
+	allowedWriteRoots: readonly string[],
 ): MutationFinding[] {
 	const normalizedToolName = normalizedFieldName(toolName);
 	const pathArguments = collectPathArguments(input).filter(({ value }) => isLocalReference(value));
 	const findings: MutationFinding[] = [];
+	const hasCommandField = Object.hasOwn(input, "command") || Object.hasOwn(input, "cmd");
+	if (COMMAND_TOOL_PATTERN.test(toolName) || hasCommandField) {
+		const command = input.command ?? input.cmd;
+		if (typeof command === "string") findings.push(...analyzeShellMutationsUnfinalized(command, cwd, workspaceRoot, allowedWriteRoots));
+		else findings.push({ kind: "unknown-write", reason: `${toolName} executes commands, but its command arguments could not be inspected` });
+	}
 
 	if (READ_TOOL_PATTERN.test(normalizedToolName)) {
 		for (const { value } of pathArguments) {
-			if (!isSensitivePath(value)) continue;
+			if (!isSensitivePolicyPath(value, cwd)) continue;
 			findings.push({
 				kind: "secret-read",
 				reason: `${toolName} reads a secret file`,
@@ -829,7 +955,7 @@ function analyzePathAwareCustomTool(
 	}
 
 	if (FILE_UPLOAD_TOOL_PATTERN.test(normalizedToolName)) {
-		const state: ShellState = { cwd, vars: new Map() };
+		const state: ShellState = { cwd, vars: new Map(), allowedWriteRoots: [] };
 		const uploadSources = pathArguments.filter(({ field, value }) => {
 			return (
 				/(?:^|_)(?:local_path|file_path|source|src|file|files)(?:_|$)/.test(field) ||
@@ -875,7 +1001,7 @@ function analyzePathAwareCustomTool(
 	}
 
 	for (const { value } of destinations) {
-		if (isPermittedWriteTarget(value, cwd)) continue;
+		if (isPermittedWriteTarget(value, cwd, workspaceRoot, allowedWriteRoots)) continue;
 		findings.push({
 			kind: "external-write",
 			reason: `${toolName} modifies a path outside workspace`,
@@ -885,7 +1011,7 @@ function analyzePathAwareCustomTool(
 	return deduplicateFindings(findings);
 }
 
-function analyzeApplyPatch(input: Record<string, unknown>, cwd: string): MutationFinding[] {
+function analyzeApplyPatch(input: Record<string, unknown>, cwd: string, workspaceRoot: string, allowedWriteRoots: readonly string[]): MutationFinding[] {
 	const patch = input.patch ?? input.input;
 	if (typeof patch !== "string") {
 		return [{
@@ -904,7 +1030,7 @@ function analyzeApplyPatch(input: Record<string, unknown>, cwd: string): Mutatio
 		}];
 	}
 	return deduplicateFindings(paths.flatMap((path): MutationFinding[] => {
-		if (isPermittedWriteTarget(path, cwd)) return [];
+		if (isPermittedWriteTarget(path, cwd, workspaceRoot, allowedWriteRoots)) return [];
 		return [{
 			kind: "external-write",
 			reason: "apply_patch modifies a path outside workspace",
@@ -913,7 +1039,7 @@ function analyzeApplyPatch(input: Record<string, unknown>, cwd: string): Mutatio
 	}));
 }
 
-function analyzeFetchContent(input: Record<string, unknown>, cwd: string): MutationFinding[] {
+function analyzeFetchContent(input: Record<string, unknown>, cwd: string, workspaceRoot: string, allowedWriteRoots: readonly string[]): MutationFinding[] {
 	const rawUrls: unknown[] = [input.url];
 	if (Array.isArray(input.urls)) rawUrls.push(...input.urls);
 	const urls = rawUrls.filter((value): value is string => typeof value === "string");
@@ -931,7 +1057,7 @@ function analyzeFetchContent(input: Record<string, unknown>, cwd: string): Mutat
 			url.startsWith("~/") ||
 			url.startsWith("file://");
 		if (isExplicitLocalFile) {
-			if (isSensitivePath(normalized)) {
+			if (isSensitivePolicyPath(normalized, cwd)) {
 				findings.push({
 					kind: "secret-read",
 					reason: "fetch_content reads a secret local file",
@@ -954,10 +1080,11 @@ function analyzeFetchContent(input: Record<string, unknown>, cwd: string): Mutat
 				(parsed.protocol === "http:" || parsed.protocol === "https:") &&
 				parsed.pathname.toLowerCase().endsWith(".pdf")
 			) {
-				findings.push({
+				const target = join(homedir(), "Downloads");
+				if (!isPermittedWriteTarget(target, cwd, workspaceRoot, allowedWriteRoots)) findings.push({
 					kind: "external-write",
 					reason: "fetch_content PDF extraction writes Markdown outside workspace",
-					target: join(homedir(), "Downloads"),
+					target,
 					targetIsDirectory: true,
 				});
 			}
@@ -968,10 +1095,12 @@ function analyzeFetchContent(input: Record<string, unknown>, cwd: string): Mutat
 	return deduplicateFindings(findings);
 }
 
-export function analyzeToolCall(
+function analyzeToolCallUnfinalized(
 	toolName: string,
 	input: Record<string, unknown>,
 	cwd: string,
+	workspaceRoot: string,
+	allowedWriteRoots: readonly string[],
 ): MutationFinding[] {
 	if (CONTENT_READ_TOOLS.has(toolName)) {
 		const rawPaths = [input.path, input.filePath, input.target];
@@ -979,7 +1108,7 @@ export function analyzeToolCall(
 
 		return deduplicateFindings(
 			rawPaths.flatMap((rawPath): MutationFinding[] => {
-				if (typeof rawPath !== "string" || !isSensitivePath(rawPath)) return [];
+				if (typeof rawPath !== "string" || !isSensitivePolicyPath(rawPath, cwd)) return [];
 				return [{
 					kind: "secret-read",
 					reason: `${toolName} reads a secret file`,
@@ -1003,7 +1132,7 @@ export function analyzeToolCall(
 			return [{ kind: "unknown-write", reason: `${toolName} target path is missing or dynamic` }];
 		}
 		return deduplicateFindings(destinations.flatMap(({ value }): MutationFinding[] => {
-			if (isPermittedWriteTarget(value, cwd)) return [];
+			if (isPermittedWriteTarget(value, cwd, workspaceRoot, allowedWriteRoots)) return [];
 			return [{
 				kind: "external-write",
 				reason: `${toolName} modifies a path outside workspace`,
@@ -1013,43 +1142,37 @@ export function analyzeToolCall(
 	}
 
 	if (toolName === "bash" && typeof input.command === "string") {
-		return analyzeShellMutations(input.command, cwd);
+		return analyzeShellMutationsUnfinalized(input.command, cwd, workspaceRoot, allowedWriteRoots);
 	}
 	if (toolName === "exec_command" && typeof input.cmd === "string") {
 		const workdir = typeof input.workdir === "string" ? resolvePolicyPath(input.workdir, cwd) : cwd;
-		return analyzeShellMutations(input.cmd, workdir, cwd);
+		return analyzeShellMutationsUnfinalized(input.cmd, workdir, workspaceRoot, allowedWriteRoots);
 	}
 
 	if (toolName === "apply_patch") {
-		return analyzeApplyPatch(input, cwd);
+		return analyzeApplyPatch(input, cwd, workspaceRoot, allowedWriteRoots);
 	}
 
 	if (toolName === "mcp" && typeof input.tool === "string") {
 		const nestedInput = parseNestedToolArguments(input.args);
 		if (!nestedInput) {
-			const nestedToolName = normalizedFieldName(input.tool);
-			return (
-				FILE_MUTATION_TOOL_PATTERN.test(nestedToolName) &&
-				FILE_MUTATION_CONTEXT_PATTERN.test(nestedToolName)
-			)
-				? [{
-					kind: "unknown-write",
-					reason: `MCP tool ${input.tool} has arguments that guardrails cannot inspect`,
-				}]
-				: [];
+			return [{
+				kind: "unknown-write",
+				reason: `MCP tool ${input.tool} has arguments that guardrails cannot inspect`,
+			}];
 		}
 		if (normalizedFieldName(input.tool).endsWith("apply_patch")) {
-			return analyzeApplyPatch(nestedInput, cwd);
+			return analyzeApplyPatch(nestedInput, cwd, workspaceRoot, allowedWriteRoots);
 		}
-		return analyzePathAwareCustomTool(`mcp:${input.tool}`, nestedInput, cwd);
+		return analyzePathAwareCustomTool(`mcp:${input.tool}`, nestedInput, cwd, workspaceRoot, allowedWriteRoots);
 	}
 
 	if (toolName === "fetch_content") {
-		return analyzeFetchContent(input, cwd);
+		return analyzeFetchContent(input, cwd, workspaceRoot, allowedWriteRoots);
 	}
 
 	if (toolName === "chrome_devtools_screenshot" && typeof input.savePath === "string") {
-		if (isPermittedWriteTarget(input.savePath, cwd)) return [];
+		if (isPermittedWriteTarget(input.savePath, cwd, workspaceRoot, allowedWriteRoots)) return [];
 		return [{
 			kind: "external-write",
 			reason: "chrome_devtools_screenshot saves an image outside workspace",
@@ -1057,6 +1180,16 @@ export function analyzeToolCall(
 		}];
 	}
 
-	return analyzePathAwareCustomTool(toolName, input, cwd);
+	return analyzePathAwareCustomTool(toolName, input, cwd, workspaceRoot, allowedWriteRoots);
+}
+
+export function analyzeToolCall(
+	toolName: string,
+	input: Record<string, unknown>,
+	cwd: string,
+	workspaceRoot = cwd,
+	allowedWriteRoots: readonly string[] = [],
+): MutationFinding[] {
+	return finalizeFindings(analyzeToolCallUnfinalized(toolName, input, cwd, workspaceRoot, allowedWriteRoots));
 }
 

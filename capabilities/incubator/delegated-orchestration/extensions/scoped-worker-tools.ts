@@ -1,11 +1,9 @@
 import { constants } from "node:fs";
 import {
-	access as fsAccess,
 	lstat,
 	mkdir as fsMkdir,
-	readFile as fsReadFile,
+	open as fsOpen,
 	realpath,
-	writeFile as fsWriteFile,
 } from "node:fs/promises";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 import { isSensitivePath } from "@nawatt-works/mypi-safety-guardrails/detector";
@@ -117,39 +115,51 @@ export function createScopedToolOperations(policy: ScopedWorkerPathPolicy): {
 	};
 } {
 	const validator = createScopedPathValidator(policy);
+	const noFollow = constants.O_NOFOLLOW ?? 0;
+	const readScoped = async (absolutePath: string): Promise<Buffer> => {
+		const evidence = await validator.assertPath(absolutePath, "read");
+		const handle = await fsOpen(evidence.canonicalPath, constants.O_RDONLY | noFollow);
+		try {
+			return await handle.readFile();
+		} finally {
+			await handle.close();
+		}
+	};
+	const writeScoped = async (absolutePath: string, content: string): Promise<void> => {
+		const evidence = await validator.assertPath(absolutePath, "write");
+		const handle = await fsOpen(evidence.canonicalPath, constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | noFollow, 0o666);
+		try {
+			await handle.writeFile(content, "utf8");
+		} finally {
+			await handle.close();
+		}
+	};
+	const accessScoped = async (absolutePath: string, access: ScopedPathAccess): Promise<void> => {
+		const evidence = await validator.assertPath(absolutePath, access);
+		const flags = access === "read" ? constants.O_RDONLY : constants.O_RDWR;
+		const handle = await fsOpen(evidence.canonicalPath, flags | noFollow);
+		await handle.close();
+	};
 	return {
 		read: {
-			async readFile(absolutePath) {
-				await validator.assertPath(absolutePath, "read");
-				return fsReadFile(absolutePath);
-			},
+			readFile: readScoped,
 			async access(absolutePath) {
-				await validator.assertPath(absolutePath, "read");
-				await fsAccess(absolutePath, constants.R_OK);
+				await accessScoped(absolutePath, "read");
 			},
 		},
 		write: {
-			async writeFile(absolutePath, content) {
-				await validator.assertPath(absolutePath, "write");
-				await fsWriteFile(absolutePath, content, "utf8");
-			},
+			writeFile: writeScoped,
 			async mkdir(absolutePath) {
+				const evidence = await validator.assertPath(absolutePath, "write");
+				await fsMkdir(evidence.canonicalPath, { recursive: true });
 				await validator.assertPath(absolutePath, "write");
-				await fsMkdir(absolutePath, { recursive: true });
 			},
 		},
 		edit: {
-			async readFile(absolutePath) {
-				await validator.assertPath(absolutePath, "read");
-				return fsReadFile(absolutePath);
-			},
-			async writeFile(absolutePath, content) {
-				await validator.assertPath(absolutePath, "write");
-				await fsWriteFile(absolutePath, content, "utf8");
-			},
+			readFile: readScoped,
+			writeFile: writeScoped,
 			async access(absolutePath) {
-				await validator.assertPath(absolutePath, "write");
-				await fsAccess(absolutePath, constants.R_OK | constants.W_OK);
+				await accessScoped(absolutePath, "write");
 			},
 		},
 	};
