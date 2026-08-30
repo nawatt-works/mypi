@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** disabled production opt-in wired — awaiting external mutation decisions<br>
+> **Status:** complete — local disabled opt-in candidate; external mutations deferred<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-31 01:40<br>
+> **Updated:** 2026-08-31 01:50<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -919,13 +919,13 @@ Success metric หลัก:
 - evidenceอยู่ที่ [Agent-teams Generated-path Real-provider Acceptance](../notes/agent-teams-generated-path-real-provider-acceptance.md)
 - productionยัง disabled
 
-## Exact next action
+## Final human decisions
 
-1. ขอ human decisionแยกกันสำหรับ push, release/tag, production activationและ Default Pi switch
-2. หากยังไม่อนุมัติ external mutation ให้คง local commitsและ disabled opt-in state
-3. เมื่ออนุมัติรายการใด ให้ทำเฉพาะรายการนั้นและเก็บ exact release/activation evidence
-4. Default Pi switchต้องชี้ immutable releaseที่ผ่าน verificationเท่านั้น
+ผู้ใช้ตัดสินใจหลัง candidateผ่าน review/acceptance:
 
-External push, release/tagและ Default Pi switchเป็น human-only mutationsและยังไม่ทำ
+- push: **คง local**
+- release/tag: **ยังไม่ release**
+- production activation: **คง disabled**
+- Default Pi: **คง pinned `v0.2.0`**
 
-ห้ามโหลด agent-teams candidate, production-wire delegated Workerหรือข้าม manual Herdr confirmationจน Phase 2–3 production-path acceptanceผ่าน
+ไม่มี external mutationเกิดขึ้น Local candidateพร้อมให้ resumeภายหลังจาก commitsและ audit artifactsเดิม หากผู้ใช้เปลี่ยน decision ต้อง verify current tree/release targetใหม่ก่อนทำเฉพาะรายการที่อนุมัติ
