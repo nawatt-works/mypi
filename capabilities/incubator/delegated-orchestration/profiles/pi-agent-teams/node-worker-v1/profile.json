@@ -11,7 +11,7 @@
     "observedLocalImageDigest": "sha256:8b50f94e47e5085446081411ed152f84ebe0a146a575bba1720b56821db15ff8",
     "dockerfileSha256": "a391813a89ea2dc8ff004f9ca80a06ada2fdce618ff5a5d06b9615fb17e6ba35",
     "sbomSpdxSha256": "7fc73a1a025052371f5f801e0dfff8a6304c6b21df0b1398a78c7be8e9240961",
-    "workerBoundarySha256": "2513ca35b99f0dd878c5f4b1acae6eca81ee849b9ab8aeddcd1f27878c24adc1",
+    "workerBoundarySha256": "397fdfa781d13cf7a06f1f80b2ed667d54b3fe15bd554483f20d7095d9cea39a",
     "workerProfileRuntimeSha256": "654cbeeb5b8525c4cf03feded21d20fae7c7a788aacd6de6c9098de8325d67eb",
     "workerMachineSetupSha256": "b19e344c889a93533da6afb0dcd89137a909600d84bace65c9f225eec4cedb16",
     "agentTeamsWorkerProfileSha256": "cebb9b81a5dccfed4248606c70f0a0fdaccbccfe0cde51147536596f7a75c191",
@@ -22,9 +22,9 @@
   "integration": {
     "upstreamRepository": "https://github.com/tmustier/pi-agent-teams.git",
     "upstreamCommit": "2c1776d2a68104aaadc1c622d8a704684c7c35d6",
-    "overlayPatchSha256": "0c3a50cdec3265953a03881f5d9ef5dd020fc4f165f10a1598f1d74380d12641",
+    "overlayPatchSha256": "eb620bc97f6b63d59bcb9fd9b86a4a77fee95fbd0ecae0276d1e90d718fd688a",
     "patchedTeamsEntrySha256": "4f7715812ac0529a5243c5044138510f9c88b8e070910ee3e00b9f465438756b",
-    "patchedTeamsSourceSha256": "a6d77447c5eb7a7359b8220902662f31e934232a15962c5f9eddaafbf782e3f2"
+    "patchedTeamsSourceSha256": "624a037d31acf1549c4c5b86372f762282e54a38c11ecb14f3de7bde72c34c95"
   },
   "runtime": {
     "pull": "never",

@@ -12,6 +12,7 @@ import {
 } from "../extensions/agent-teams-profile.ts";
 import {
 	loadWorkerProfile,
+	validateWorkerProfile,
 	verifyWorkerProfileArtifacts,
 } from "../profiles/pi-agent-teams/node-worker-v1/worker-boundary.ts";
 
@@ -47,6 +48,22 @@ async function fixture(t: TestContext): Promise<{
 test("verifies every Worker boundary artifact against the committed profile manifest", () => {
 	const profile = loadWorkerProfile();
 	assert.doesNotThrow(() => verifyWorkerProfileArtifacts(profile));
+});
+
+test("rejects drift in every Docker runtime hardening field", () => {
+	const profile = loadWorkerProfile();
+	for (const runtime of [
+		{ ...profile.runtime, capDrop: [] },
+		{ ...profile.runtime, noNewPrivileges: false },
+		{ ...profile.runtime, pidsLimit: 65 },
+		{ ...profile.runtime, memory: "1g" },
+		{ ...profile.runtime, cpus: 2 },
+		{ ...profile.runtime, tmpfs: "/tmp:rw" },
+		{ ...profile.runtime, mounts: ["worker-worktree:/workspace:ro"] },
+		{ ...profile.runtime, prohibitedMounts: [] },
+	]) {
+		assert.throws(() => validateWorkerProfile({ ...profile, runtime } as typeof profile), /exact Docker runtime contract/);
+	}
 });
 
 test("hashes the complete patched source tree deterministically and detects drift", async (t) => {

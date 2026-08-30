@@ -28,7 +28,7 @@ import {
 const PROFILE_DIR = dirname(fileURLToPath(import.meta.url));
 const REPOSITORY_ROOT = join(PROFILE_DIR, "..", "..", "..");
 
-type WorkerProfile = {
+export type WorkerProfile = {
 	schemaVersion: 1;
 	profileId: string;
 	status: "phase0-candidate";
@@ -58,11 +58,15 @@ type WorkerProfile = {
 		network: "none";
 		readOnlyRoot: true;
 		user: "node";
-		pidsLimit: number;
+		capDrop: ["ALL"];
+		noNewPrivileges: true;
+		pidsLimit: 64;
 		memory: string;
 		cpus: number;
 		tmpfs: string;
 		workdir: "/workspace";
+		mounts: ["worker-worktree:/workspace:rw"];
+		prohibitedMounts: ["host-home", "host-tmp", "docker-socket"];
 	};
 	executionAdapters: typeof WORKER_EXECUTION_ADAPTERS;
 };
@@ -102,19 +106,26 @@ function requireHash(label: string, path: string, expected: string): void {
 	if (observed !== expected) throw new Error(`${label} digest mismatch: expected ${expected}, observed ${observed}`);
 }
 
-export function loadWorkerProfile(): WorkerProfile {
-	const profile = JSON.parse(readFileSync(join(PROFILE_DIR, "profile.json"), "utf8")) as WorkerProfile;
+export function validateWorkerProfile(profile: WorkerProfile): WorkerProfile {
 	if (profile.schemaVersion !== 1 || profile.status !== "phase0-candidate") throw new Error("unsupported Worker profile schema/status");
 	if (profile.profileId !== "pi-agent-teams-docker-strong-v1") throw new Error("unexpected Worker profile id");
 	if (profile.platform !== "linux/arm64") throw new Error("unexpected Worker profile platform");
-	if (profile.runtime.pull !== "never" || profile.runtime.network !== "none" || profile.runtime.readOnlyRoot !== true) {
-		throw new Error("Worker profile weakens required Docker boundary");
+	if (profile.runtime.pull !== "never" || profile.runtime.network !== "none" || profile.runtime.readOnlyRoot !== true ||
+		profile.runtime.user !== "node" || JSON.stringify(profile.runtime.capDrop) !== JSON.stringify(["ALL"]) ||
+		profile.runtime.noNewPrivileges !== true || profile.runtime.pidsLimit !== 64 || profile.runtime.memory !== "512m" ||
+		profile.runtime.cpus !== 1 || profile.runtime.tmpfs !== "/tmp:rw,noexec,nosuid,size=64m" || profile.runtime.workdir !== "/workspace" ||
+		JSON.stringify(profile.runtime.mounts) !== JSON.stringify(["worker-worktree:/workspace:rw"]) ||
+		JSON.stringify(profile.runtime.prohibitedMounts) !== JSON.stringify(["host-home", "host-tmp", "docker-socket"])) {
+		throw new Error("Worker profile weakens the exact Docker runtime contract");
 	}
-	if (profile.runtime.user !== "node" || profile.runtime.workdir !== "/workspace") throw new Error("unexpected Worker runtime identity");
 	if (JSON.stringify(profile.executionAdapters) !== JSON.stringify(WORKER_EXECUTION_ADAPTERS)) {
 		throw new Error("unexpected Worker execution adapter contracts");
 	}
 	return profile;
+}
+
+export function loadWorkerProfile(): WorkerProfile {
+	return validateWorkerProfile(JSON.parse(readFileSync(join(PROFILE_DIR, "profile.json"), "utf8")) as WorkerProfile);
 }
 
 function deriveBoundaryContractDigest(profile: WorkerProfile, boundaryPath: string, maxWorkers: number): string {
@@ -130,6 +141,7 @@ function deriveBoundaryContractDigest(profile: WorkerProfile, boundaryPath: stri
 		scopedWorkerToolsSha256: profile.toolchain.scopedWorkerToolsSha256,
 		workerExecutionAdaptersSha256: profile.toolchain.workerExecutionAdaptersSha256,
 		imageDigest: profile.toolchain.observedLocalImageDigest,
+		runtime: profile.runtime,
 		executionAdapters: profile.executionAdapters,
 		childExtensions: [boundaryPath],
 		maxWorkers,

@@ -16,6 +16,11 @@ const WORKER_EXECUTION_ADAPTER_PATH = join(REPOSITORY_ROOT, "extensions", "worke
 const PINNED_UPSTREAM_COMMIT = "2c1776d2a68104aaadc1c622d8a704684c7c35d6";
 const EXACT_CHILD_BUILTIN_TOOLS = ["read", "bash", "edit", "write"] as const;
 const EXACT_CHILD_BACKEND_TOOLS = ["team_message"] as const;
+const EXACT_DOCKER_RUNTIME = Object.freeze({
+	pull: "never", network: "none", readOnlyRoot: true, user: "node", capDrop: ["ALL"], noNewPrivileges: true,
+	pidsLimit: 64, memory: "512m", cpus: 1, tmpfs: "/tmp:rw,noexec,nosuid,size=64m", workdir: "/workspace",
+	mounts: ["worker-worktree:/workspace:rw"], prohibitedMounts: ["host-home", "host-tmp", "docker-socket"],
+});
 const CHILD_PARENT_ENVIRONMENT_ALLOWLIST = new Set([
 	"PATH", "HOME", "USER", "LOGNAME", "SHELL", "TMPDIR", "TMP", "TEMP", "LANG", "TERM",
 	"COLORTERM", "NO_COLOR", "FORCE_COLOR", "CI",
@@ -168,6 +173,21 @@ type ProfileArtifact = {
 		commandPolicySha256: string;
 		scopedWorkerToolsSha256: string;
 	};
+	runtime: {
+		pull: "never";
+		network: "none";
+		readOnlyRoot: true;
+		user: "node";
+		capDrop: ["ALL"];
+		noNewPrivileges: true;
+		pidsLimit: 64;
+		memory: "512m";
+		cpus: 1;
+		tmpfs: "/tmp:rw,noexec,nosuid,size=64m";
+		workdir: "/workspace";
+		mounts: ["worker-worktree:/workspace:rw"];
+		prohibitedMounts: ["host-home", "host-tmp", "docker-socket"];
+	};
 	integration: {
 		upstreamCommit: string;
 		overlayPatchSha256: string;
@@ -261,6 +281,7 @@ function loadProfileArtifact(): { artifact: ProfileArtifact; raw: Buffer } {
 	const artifact = JSON.parse(raw.toString("utf8")) as ProfileArtifact;
 	if (artifact.schemaVersion !== 1 || artifact.status !== "phase0-candidate") throw new Error("unsupported agent-teams profile artifact");
 	if (artifact.profileId !== "pi-agent-teams-docker-strong-v1") throw new Error("unexpected agent-teams profile id");
+	if (JSON.stringify(artifact.runtime) !== JSON.stringify(EXACT_DOCKER_RUNTIME)) throw new Error("agent-teams Docker runtime contract drift");
 	if (artifact.integration.upstreamCommit !== PINNED_UPSTREAM_COMMIT) throw new Error("agent-teams upstream pin drift");
 	return { artifact, raw };
 }
@@ -351,6 +372,7 @@ export function buildAgentTeamsProfile(input: {
 		scopedWorkerToolsSha256: artifact.toolchain.scopedWorkerToolsSha256,
 		workerExecutionAdaptersSha256: artifact.toolchain.workerExecutionAdaptersSha256,
 		imageDigest: artifact.toolchain.observedLocalImageDigest,
+		runtime: EXACT_DOCKER_RUNTIME,
 		executionAdapters: WORKER_EXECUTION_ADAPTERS,
 		childExtensions: injectedChildExtensions,
 		maxWorkers: input.maxWorkers,
