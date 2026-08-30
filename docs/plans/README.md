@@ -2,7 +2,7 @@
 
 > **Status:** reference<br>
 > **Created:** 2026-08-05 12:04<br>
-> **Updated:** 2026-08-30 09:20<br>
+> **Updated:** 2026-08-30 10:00<br>
 > **Purpose:** เก็บแผน implementation ที่เป็นเอกสารของ repository `my-pi` และมีประโยชน์สำหรับอ้างอิงย้อนหลัง
 
 ไฟล์ใน directory นี้เป็น project documentation ที่ย้ายมาจาก `.workbench/plans/` เพื่อให้มองเห็นได้จากเครื่องมือทั่วไป ไม่ใช่ default plan directory และไม่สร้างข้อกำหนดให้ AI tool, skill, workflow หรือ harness อื่น
@@ -11,7 +11,7 @@
 
 ## Current plans
 
-- [จัด My Pi เป็น Capability Packages และ Pinned Releases](capability-packages-and-pinned-releases.md) — active; เป็นแผนหลักก่อนกลับไปออกแบบ Worker profileและ production wiring
+- [จัด My Pi เป็น Capability Packages และ Pinned Releases](capability-packages-and-pinned-releases.md) — active; Phase 0 inventoryครบและรอ grouping reviewก่อน package contract/bulk move
 - [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](delegated-autonomy-coordinator.md) — paused หลัง pure registriesผ่าน; exact nextชี้กลับมาที่ capability migration
 
 ## Decisions
@@ -23,6 +23,7 @@
 
 ## Change log
 
+- 2026-08-30 10:00 — capability Phase 0 inventoryครบ, baseline `142/142`; exact nextคือยืนยัน package grouping
 - 2026-08-30 09:20 — รวม global, project opt-inและ incubator lanesไว้ใต้ `capabilities/`
 - 2026-08-30 09:10 — เพิ่ม current plan linksและเปิด capability-package/pinned-release migrationเป็นงานหลักก่อน Worker profile
 - 2026-08-22 16:15 — เปลี่ยนจาก planning policy เป็น project documentation reference และย้ายมา `docs/plans/`

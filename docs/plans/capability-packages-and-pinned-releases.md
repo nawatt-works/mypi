@@ -2,7 +2,7 @@
 
 > **Status:** active — planning and inventory<br>
 > **Created:** 2026-08-30 09:10<br>
-> **Updated:** 2026-08-30 09:20<br>
+> **Updated:** 2026-08-30 10:00<br>
 > **Purpose:** แยก capability ตามสถานะและขอบเขตการติดตั้ง ให้ Default Pi โหลดเฉพาะของที่ stable จริงจาก pinned Git release โดยไม่ผูกการพัฒนากับ production working tree
 
 ## Goal and scope
@@ -208,6 +208,95 @@ Root packageทำหน้าที่ aggregate stable global resources ไม
 
 การจัด lane จริงต้องเกิดหลังอ่าน import graph, Pi manifest, testsและ runtime couplingครบ
 
+## Phase 0 inventory result
+
+### Root production closure ปัจจุบัน
+
+Root `package.json#pi` โหลด extension entry 9 รายการ, themesทั้ง directoryและ skillทั้ง directory Root local transitive closureปัจจุบันคือ:
+
+```text
+extensions/worker-mode.ts
+extensions/dependency-update-notifier.ts
+extensions/herdr-client.ts
+extensions/herdr-integration.ts
+extensions/guardrails.ts
+extensions/steering-choice.ts
+extensions/planning-workflow.ts
+extensions/orchestration-policy.ts
+extensions/orchestration-registry.ts
+extensions/orchestration.ts
+```
+
+จุดสำคัญคือ `orchestration-policy.ts` อยู่ใน production closureแล้วผ่าน `orchestration.ts` → `orchestration-registry.ts` แม้ไม่ได้อยู่ใน manifestโดยตรง ส่วน command policy/review registry, harness profiles, scoped toolsและ agent-teams profileยังอยู่นอก root closure
+
+Third-party resourcesที่ root manifestโหลดตรง:
+
+- `@juicesharp/rpiv-ask-user-question` — requested range `^2.7.0`, lockfile/installed `2.8.0`
+- `@plannotator/pi-extension` — requested range `^0.27.6`, lockfile/installed `0.27.9`
+- `typebox` — runtime dependency requested `^1.3.11`, lockfile/installed `1.3.22`
+- Pi peer/installed runtimeที่ตรวจ inventory: `@earendil-works/pi-coding-agent 0.84.4`
+
+### Proposed capability ownership
+
+| Target package | Lane | Owned resources | Dependencies/coupling | Proposed status |
+|---|---|---|---|---|
+| `runtime-mode` | `capabilities/global/` | `worker-mode.ts` และ testsหลัก | sharedโดย dependency updates, steering, planningและ orchestration | stable review candidate |
+| `dependency-updates` | `capabilities/global/` | `dependency-update-notifier.ts` | depends `runtime-mode`; ต้องแก้ repository/package root discoveryหลังย้าย | stable review candidate |
+| `herdr-integration` | `capabilities/global/` | `herdr-client.ts`, `herdr-integration.ts` | guardrailsและ orchestrationใช้ client; RPIV blocked bridgeเป็น optional event coupling | stable review candidate |
+| `safety-guardrails` | `capabilities/global/` | `guardrails.ts` และ manual guardrail tests | depends `herdr-integration`เพื่อ blocked events | stable review candidate |
+| `interactive-steering` | `capabilities/global/` | `steering-choice.ts` | depends `runtime-mode` | stable review candidate |
+| `planning-continuity` | `capabilities/global/` | `planning-workflow.ts` | depends `runtime-mode`; Plannotatorผ่าน event busและทำงานแบบ unavailableได้ | stable review candidate |
+| `structured-questions` | `capabilities/global/` | root adapter/manifest ownershipของ `@juicesharp/rpiv-ask-user-question` | external package; ต้องตัดสิน dependency placementใน workspace | stable third-party candidate |
+| `planning-review` | `capabilities/global/` | root adapter/manifest ownershipของ `@plannotator/pi-extension` | external package; planning continuityส่ง eventแบบ optional | stable third-party candidate |
+| `ui-themes` | `capabilities/global/` | `cffy-dark`, `cffy-sky`, `modern-dark` | ไม่มี code import | stable review candidate |
+| `azure-devops` | `capabilities/project-opt-in/` | Azure extension source, READMEและ tests | `typebox`, project trust/config, PAT/CLI boundary | stable project-opt-in candidate |
+| `delegated-orchestration` | `capabilities/incubator/` | `orchestration.ts`, orchestration registry/policy, command policy/review registry, harness profiles, scoped tools, agent-teams profile/profile artifacts/probes และ `herdr-orchestration` Skill | depends `runtime-mode`, `herdr-integration`, `safety-guardrails`; Worker profileยัง unresolved | candidate; production disabled |
+
+ข้อเสนอให้รวม manual Herdr orchestrationและ delegated workไว้ใน `delegated-orchestration` packageเดียวทั้งชุดตาม decisionที่ไม่ split capabilityเพื่อรักษา stable subset ดังนั้น stable root releaseรอบแรกจะไม่มี orchestration tools/skill จน packageนี้ผ่าน promotion gate
+
+### Test ownership
+
+- package-local testsควรย้ายตาม owner
+- `worker-mode.test.ts` ปัจจุบันทดสอบ runtime mode, steeringและdependency notifierร่วมกัน จึงเป็น aggregate cross-capability testจนกว่าจะมีเหตุผลให้แยก
+- root `tests/` หลัง migrationเก็บ architecture, aggregate integrationและclean-install testsเท่านั้น
+- agent-teams runtime/acceptance probesย้ายพร้อม `delegated-orchestration` และยังคง opt-in
+- baselineก่อนย้ายผ่าน `142/142`
+
+### Commands, tools and collision surface
+
+Stable candidate commandsที่ตรวจพบใช้ prefixตามข้อกำหนดทั้งหมด:
+
+```text
+/mypi-worker-status
+/mypi-updates
+/mypi-herdr-status
+/mypi-herdr-setup
+/mypi-continuity
+/mypi-azure-devops-config
+```
+
+Incubator orchestration commands/toolsและ Azure toolsมี namesไม่ชนกับ stable candidatesที่ตรวจพบ RPIV/Plannotator ownershipยังต้องตรวจ observed package resourcesใน clean-install smokeเพราะ sourceอยู่ใน external dependencies
+
+### Path and digest contracts ที่จะเสียจากการย้าย
+
+1. `dependency-update-notifier.ts` และ `herdr-integration.ts` derive `SETUP_ROOT` จาก parentของ source file; ย้ายเข้า nested packageแล้ว cwdจะไม่ใช่ root aggregate ต้องเปลี่ยนเป็น package/release root contractที่ชัดเจน
+2. `agent-teams-profile.ts` derive repository rootและ profile directoryจากตำแหน่งไฟล์; pathใหม่ทำให้ profile discoveryเสีย
+3. `worker-boundary.ts` ใช้ relative importsกลับ `extensions/` และคำนวณ repository rootจาก depthคงที่; ต้องเปลี่ยนพร้อม package move
+4. `profile.json` pin SHA-256ของ Worker boundary, command policy, scoped toolsและ overlay; source/import path changeทำให้ digestบางรายการเปลี่ยน
+5. overlay patchมี trusted boundary hash/contract logic; boundary content changeต้อง regenerate patch digestและ rerun clean apply-check
+6. runtime/acceptance probes hardcode repository `profiles/` และ `extensions/` paths
+7. testsทั้งหมด import sourceผ่าน `../extensions`, `../local` หรือ `../profiles`
+8. root README, capability READMEs, plansและnotesมี historical/current linksจำนวนมาก Historical evidenceต้องคง old commit/path context ส่วน current instructionsต้องเปลี่ยน
+9. root third-party manifest entriesอ้าง `./node_modules/...`; nested capability manifestsจะใช้ pathนี้ไม่ได้โดยอัตโนมัติถ้า workspace install/hoistingไม่ตรง ต้องพิสูจน์ด้วย clean install
+10. dependency notifierตั้งใจตรวจ root package dependencies การแยก package versionsต้องกำหนดว่าตรวจ aggregateหรือทุก workspace package
+
+### Inventory conclusion
+
+- ทุก tracked extension, skill, theme, profileและ project-opt-in resourceมี proposed capability ownerแล้ว
+- ไม่มี untracked project extension/skill sourceที่ต้องย้าย; `.pi/` และ `.agents/` มีเพียง untracked `.DS_Store`
+- root production closureและ external resource ownershipถูก enumerateแล้ว
+- ยังไม่ย้ายไฟล์จนกว่าผู้ใช้ตรวจ grouping โดยเฉพาะ granularityของ stable global packagesและการรวม orchestrationทั้งชุด
+
 ## Implementation phases
 
 ### Phase 0 — Freeze decisions and inventory
@@ -218,9 +307,10 @@ Root packageทำหน้าที่ aggregate stable global resources ไม
 - [x] ยืนยันไม่ split capabilityเพื่อช่วย stable subset
 - [x] ยืนยัน pinned Git release + isolated development profile
 - [x] ยืนยันพัก Worker profileและไม่ย้าย `pi-doc`
-- [ ] สร้าง complete current resource/import/dependency graph
-- [ ] จัด capability ownershipและ laneให้ทุก extension/skill/theme/third-party resource
-- [ ] ระบุ path/hash contracts ที่จะเสียเมื่อย้ายไฟล์
+- [x] สร้าง complete current resource/import/dependency graph
+- [x] จัด proposed capability ownershipและ laneให้ทุก extension/skill/theme/third-party resource
+- [x] ระบุ path/hash contracts ที่จะเสียเมื่อย้ายไฟล์
+- [ ] ให้ผู้ใช้ตรวจและยืนยัน capability groupingก่อน bulk move
 
 Exit criteria: ไม่มี current global resourceหรือ transitive importที่ยังไม่มี capability ownerและ proposed lane
 
@@ -263,7 +353,7 @@ Exit criteria: trusted fixture projectเปิด Azure DevOps packageได้
 
 ### Phase 4 — Consolidate incubator capabilities
 
-- [ ] สร้าง `capabilities/incubator/delegated-autonomy/`
+- [ ] สร้าง `capabilities/incubator/delegated-orchestration/`
 - [ ] ย้าย orchestration/delegated resourcesทั้ง capabilityตาม ownershipที่ inventoryตัดสิน
 - [ ] ไม่ split stable manual subsetออกมาเพียงเพื่อ global release
 - [ ] ย้าย tests/profiles/probesพร้อม source owner
@@ -378,18 +468,26 @@ Testsผ่านเพียงอย่างเดียวไม่ทำใ
 
 ### 2026-08-30 — Capability lanesรวมใต้ rootเดียว
 
-- ยืนยันให้ global, project opt-inและ incubatorอยู่ใต้ `capabilities/` ทั้งหมด
+- ยืนยันให้ global, project opt inและ incubatorอยู่ใต้ `capabilities/` ทั้งหมด
 - semantic lanesคือ `capabilities/global/`, `capabilities/project-opt-in/` และ `capabilities/incubator/`
 - `lab/`, `docs/` และ aggregate testsยังอยู่นอก capability root
 
+### 2026-08-30 — Phase 0 inventory complete
+
+- enumerate root manifestและ local transitive production closureครบ
+- map tracked resourcesเป็น stable global candidates 9 packages, project-opt-in Azure package 1 และ incubator delegated-orchestration package 1
+- ระบุ cross-capability dependencies, aggregate tests, external package ownershipและ path/digest contractsแล้ว
+- baseline full suiteผ่าน `142/142`
+- ยังไม่ย้ายไฟล์; รอผู้ใช้ยืนยัน groupingตาม Phase 0 gate
+
 ## Exact next action
 
-ทำ Phase 0 inventoryก่อนย้ายไฟล์:
+ให้ผู้ใช้ตรวจ proposed capability ownershipใน Phase 0 inventory โดยเฉพาะ:
 
-1. enumerate root Pi manifest resourcesและ transitive local imports
-2. map extension/skill/theme/third-party resourceทุกตัวไป capability owner
-3. เสนอ `capabilities/global/`, `capabilities/project-opt-in/` หรือ `capabilities/incubator/` laneพร้อมเหตุผลและ blockers
-4. ระบุ path-bound hash/profile/test contractsที่จะเสียจากการย้าย
-5. ให้ผู้ใช้ตรวจ capability groupingก่อนเริ่ม bulk move
+1. stable global granularity: แยก `runtime-mode`, `dependency-updates`, `herdr-integration`, `safety-guardrails`, `interactive-steering`, `planning-continuity`, `structured-questions`, `planning-review`, `ui-themes`
+2. รวม manual Herdr orchestration + delegated policy/profile/probes + orchestration Skillเป็น `capabilities/incubator/delegated-orchestration/` ทั้งชุด
+3. Azure DevOpsเป็น `capabilities/project-opt-in/azure-devops/`
 
-ห้าม production-wire delegated Workers, ย้าย `pi-doc`, push tagหรือเปลี่ยน Default Pi settingsในขั้น inventory
+เมื่อ groupingได้รับการยืนยัน ให้ทำ Phase 1 package/workspace/aggregate contractและ architecture testsก่อน bulk move
+
+ห้าม production-wire delegated Workers, ย้าย `pi-doc`, push tagหรือเปลี่ยน Default Pi settingsในขั้นนี้
