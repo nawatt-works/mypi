@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-07-27 08:55<br>
-> **Updated:** 2026-08-30 12:30<br>
+> **Updated:** 2026-08-30 13:05<br>
 > **Purpose:** แสดงภาพรวมของ design notes และ implementation history ที่ repository `my-pi` เป็นเจ้าของ
 
 `docs/` เป็น project documentation ของ repository นี้ ไม่ใช่ workspace-wide artifact store และไม่ใช่ default path สำหรับ plan, note หรือ output จาก AI tool/skill/harness อื่น
@@ -12,7 +12,7 @@
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
 | 2026-08-30 12:00 | 2026-08-30 09:10 | completed | [จัด My Pi เป็น Capability Packages และ Pinned Releases](plans/capability-packages-and-pinned-releases.md) | `v0.2.0` pinned releaseผ่านและ Worker-profile decisions handoffไป delegated planแล้ว |
-| 2026-08-30 12:30 | 2026-08-28 15:32 | active — Phase 2 review | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | profile core `077d5c7` + authority-cleanup correction `9baa988`, tests `158/158`; production disabledและรอ independent review |
+| 2026-08-30 13:05 | 2026-08-28 15:32 | active — Phase 2 adapter | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | profile correction `aba088a`ผ่าน independent reviewและ tests `160/160`; ถัดไป bind agent-teams readinessโดย productionยัง disabled |
 | 2026-08-28 15:32 | 2026-08-25 09:19 | superseded | [Pi Coordinator บน Herdr](plans/pi-herdr-coordinator.md) | เก็บ implementation/probe history; authority contract และ Phase 3 เดิมถูกแทนด้วย delegated-autonomy plan |
 | 2026-08-23 11:19 | 2026-08-22 12:40 | superseded | [แยก Workflow Plan, Continuity Ledger และ Plannotator Review](plans/flexible-planning-continuity.md) | implementation รุ่น managed fallback; ต่อมาถูกแทนด้วย pointer-only และ dual session/workspace tracking |
 | 2026-08-30 10:30 | 2026-08-09 11:10 | complete | [ย้ายและขยาย Azure DevOps extension](plans/azure-devops-extension-crud.md) | เพิ่ม opt-in Work Item CRUD; capabilityปัจจุบันอยู่ `capabilities/project-opt-in/azure-devops/` และ root stable manifestไม่โหลด |
@@ -23,6 +23,7 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
+| 2026-08-30 13:05 | 2026-08-30 12:45 | complete review | [Generated Worker Profile Core Independent Review](notes/worker-profile-core-independent-review.md) | initial FAILเรื่อง ambient Default fallback; correction `aba088a`ปิด findingsและ re-review PASS |
 | 2026-08-30 08:10 | 2026-08-28 17:05 | complete gate | [Phase 0 Probes — Delegated Autonomy Harness Profiles](notes/delegated-autonomy-phase0-probes.md) | agent-teams Pi-native chain artifacts `7/7`, approvals/dialogs/HUMAN side effects `0`; external lanes manual-only, piewf no-go |
 | 2026-08-29 21:43 | 2026-08-29 21:43 | complete review | [Independent agent-teams Atomic Review](notes/agent-teams-atomic-independent-review.md) | verdict PASS-WITH-FOLLOWUPS ต่อ `ead8778`; provenanceและ missing-env findingsถูกแก้ใน `43967a8` และรอ re-review |
 | 2026-08-28 19:13 | 2026-08-28 19:07 | complete evaluation | [Independent piewf Phase 0 Evaluation](notes/piewf-phase0-evaluation.md) | ตรวจ source/tests/license/install ของ piewf แยกใน Worker worktree และรับเข้า main หลัง Coordinator verification |
@@ -34,6 +35,7 @@
 
 ## Change log
 
+- 2026-08-30 13:05 — independent Worker-profile review FAIL ambient fallback; correction `aba088a` + regressionsผ่าน `160/160` และ correction re-review PASS
 - 2026-08-30 12:30 — commit generated Worker-profile core `077d5c7` และ authority-bound cleanup correction `9baa988`; local only, รอ independent reviewก่อน agent-teams wiring
 - 2026-08-30 12:20 — ผู้ใช้ยืนยันให้ My Piสร้าง Worker profileอัตโนมัติ; generated profile materializer/verifier/cleanupและ real child no-fallback sentinelผ่าน, full suite `158/158`; productionยัง disabled
 - 2026-08-30 11:30 — push annotated `v0.2.0`, เปลี่ยน Default Piเป็น exact Git ref, verify clone/commands/toolsและ isolated rollbackผ่าน; พร้อมกลับไป Worker-profile discussion

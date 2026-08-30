@@ -2,7 +2,7 @@
 
 > **Status:** reference<br>
 > **Created:** 2026-08-05 12:04<br>
-> **Updated:** 2026-08-30 12:30<br>
+> **Updated:** 2026-08-30 13:05<br>
 > **Purpose:** เก็บแผน implementation ที่เป็นเอกสารของ repository `my-pi` และมีประโยชน์สำหรับอ้างอิงย้อนหลัง
 
 ไฟล์ใน directory นี้เป็น project documentation ที่ย้ายมาจาก `.workbench/plans/` เพื่อให้มองเห็นได้จากเครื่องมือทั่วไป ไม่ใช่ default plan directory และไม่สร้างข้อกำหนดให้ AI tool, skill, workflow หรือ harness อื่น
@@ -12,7 +12,7 @@
 ## Current plans
 
 - [จัด My Pi เป็น Capability Packages และ Pinned Releases](capability-packages-and-pinned-releases.md) — completed; `v0.2.0` pinned releaseและ Worker-profile handoffเสร็จ
-- [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](delegated-autonomy-coordinator.md) — active Phase 2; local profile-core/correction commitsพร้อม independent reviewและ production wiringยัง disabled
+- [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](delegated-autonomy-coordinator.md) — active Phase 2; generated profile coreผ่าน correction reviewและเริ่ม agent-teams adapter binding, productionยัง disabled
 
 ## Decisions
 
@@ -24,6 +24,7 @@
 
 ## Change log
 
+- 2026-08-30 13:05 — Worker profile correction `aba088a`ปิด independent findingsและ re-review PASS; เริ่ม adapter binding
 - 2026-08-30 12:30 — generated Worker profile commits `077d5c7`, `9baa988`ผ่าน `158/158`; รอ independent review
 - 2026-08-30 12:20 — ปิด capability migration planและเริ่ม generated Worker-profile coreใน delegated Phase 2; tests `158/158`
 - 2026-08-30 11:30 — `v0.2.0` push/Default pinned activation/rollback verificationผ่าน; งานถัดไปคือ Worker-profile design
