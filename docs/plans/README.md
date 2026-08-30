@@ -2,7 +2,7 @@
 
 > **Status:** reference<br>
 > **Created:** 2026-08-05 12:04<br>
-> **Updated:** 2026-08-30 11:30<br>
+> **Updated:** 2026-08-30 12:20<br>
 > **Purpose:** เก็บแผน implementation ที่เป็นเอกสารของ repository `my-pi` และมีประโยชน์สำหรับอ้างอิงย้อนหลัง
 
 ไฟล์ใน directory นี้เป็น project documentation ที่ย้ายมาจาก `.workbench/plans/` เพื่อให้มองเห็นได้จากเครื่องมือทั่วไป ไม่ใช่ default plan directory และไม่สร้างข้อกำหนดให้ AI tool, skill, workflow หรือ harness อื่น
@@ -11,11 +11,12 @@
 
 ## Current plans
 
-- [จัด My Pi เป็น Capability Packages และ Pinned Releases](capability-packages-and-pinned-releases.md) — active; `v0.2.0` pinned releaseเสร็จและเข้าสู่ Phase 7 Worker-profile design handoff
-- [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](delegated-autonomy-coordinator.md) — active design discussionหลัง capability release; production wiringพักรอ Worker-profile decisions
+- [จัด My Pi เป็น Capability Packages และ Pinned Releases](capability-packages-and-pinned-releases.md) — completed; `v0.2.0` pinned releaseและ Worker-profile handoffเสร็จ
+- [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](delegated-autonomy-coordinator.md) — active Phase 2; generated Worker-profile coreพร้อม reviewและ production wiringยัง disabled
 
 ## Decisions
 
+- 2026-08-30 — My Piเป็นผู้ materialize isolated profileต่อ Workerจาก verified template; ผู้ใช้ไม่สร้าง profileเองและ missing stateห้าม fallbackไป Default
 - 2026-08-30 — ใช้ capability packageเป็นหน่วย ownership/deployment, stable-only global release, `capabilities/{global,project-opt-in,incubator}` และ pinned Git release
 - 2026-08-22 — ย้าย project-owned plan history จาก hidden `.workbench/plans/` มา `docs/plans/`
 - 2026-08-22 — ยกเลิกสถานะของ directory นี้ในฐานะ fallback กลางสำหรับ plan
@@ -23,6 +24,7 @@
 
 ## Change log
 
+- 2026-08-30 12:20 — ปิด capability migration planและเริ่ม generated Worker-profile coreใน delegated Phase 2; tests `158/158`
 - 2026-08-30 11:30 — `v0.2.0` push/Default pinned activation/rollback verificationผ่าน; งานถัดไปคือ Worker-profile design
 - 2026-08-30 11:10 — บันทึก atomic capability checkpoint `ae81d9d`; Phase 6รอ human release actions
 - 2026-08-30 11:00 — Phase 5 verificationผ่านครบและเลือก root release version `0.2.0`

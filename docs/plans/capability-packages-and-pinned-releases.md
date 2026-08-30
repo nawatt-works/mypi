@@ -1,8 +1,8 @@
 # จัด My Pi เป็น Capability Packages และ Pinned Releases
 
-> **Status:** active — Phase 7 Worker-profile design handoff<br>
+> **Status:** completed — pinned capability release active; Worker-profile work handed off<br>
 > **Created:** 2026-08-30 09:10<br>
-> **Updated:** 2026-08-30 11:30<br>
+> **Updated:** 2026-08-30 12:00<br>
 > **Purpose:** แยก capability ตามสถานะและขอบเขตการติดตั้ง ให้ Default Pi โหลดเฉพาะของที่ stable จริงจาก pinned Git release โดยไม่ผูกการพัฒนากับ production working tree
 
 ## Goal and scope
@@ -394,11 +394,11 @@ Exit criteria: Default Pi โหลด exact remote Git refและการแ
 
 หลัง Phase 1–6 ส่วนที่ทำได้โดยไม่พึ่ง Worker profileเสร็จ:
 
-- [ ] กลับมาหารือ Default/dev/Worker profile topology
-- [ ] ตัดสิน exact `PI_CODING_AGENT_DIR`, `HOME`, settings, models, authและ trust provisioning
-- [ ] ตัดสิน provider credential boundary
-- [ ] สร้าง no-default-fallbackและ sentinel acceptance requirements
-- [ ] อัปเดต delegated-autonomy planก่อน production wiring
+- [x] ยืนยัน Default pinned / isolated development / generated per-Worker topology
+- [x] ยืนยัน My Pi materialize `PI_CODING_AGENT_DIR`, synthetic `HOME`, session/settings/models/auth/trust stateเอง; ผู้ใช้ไม่สร้าง profileเอง
+- [x] ยืนยัน minimal provider-specific credential projection; ห้าม copy Default authหรือส่ง secretเข้า Worker tools/Bash
+- [x] ยืนยัน missing/malformed/symlink/default canariesต้อง fail closedและมี sentinel acceptanceก่อน activation
+- [x] handoff implementationไป delegated-autonomy planก่อน production wiring
 
 แผนนี้ไม่ถือว่า Worker profileได้รับการแก้จนกว่าจะมี decisionและ evidenceชุดใหม่
 
@@ -503,15 +503,14 @@ Testsผ่านเพียงอย่างเดียวไม่ทำใ
 - runtimeเห็น adapter tools `ask_user_question`, `plannotator_submit_plan`; ไม่เห็น orchestrationหรือ Azure tools
 - isolated rollback testสลับ pinned → development local path → pinnedสำเร็จโดยไม่ลบ development source
 
-## Exact next action
+## Completion handoff
 
-กลับมาหารือ Worker-profile designตามที่พักไว้ โดยยังไม่ implement production wiring:
+ผู้ใช้ยืนยัน Worker-profile designเมื่อ 2026-08-30:
 
-1. กำหนด Default/dev/Worker profile topologyและว่า Worker profileเป็น per-run, per-workerหรือ immutable shared template
-2. กำหนด exact `PI_CODING_AGENT_DIR`, `HOME`, session/settings/models/trust stateและห้าม fallbackไป Default profile
-3. กำหนด provider credential provisioningโดยไม่ exposeผ่าน Worker tools/Bash/container
-4. กำหนด observed readiness/profile digestและ sentinel testsที่พิสูจน์ว่า Default settings/authไม่ถูกอ่าน
-5. แยก contractสำหรับ Pi-native agent-teamsกับ Herdr Pi Workerโดยคง authority sourceเดียว
-6. อัปเดต delegated-autonomy planก่อนแก้ incubator implementation
+- releaseเป็นเจ้าของ immutable verified templates
+- My Pi materialize mutable profileแยกต่อ Workerโดยอัตโนมัติ
+- setupครั้งเดียวทำ machine preflight/image/credential provisioning; ผู้ใช้ไม่แก้ profile JSONเอง
+- missing profile/auth/modelต้อง fail closedโดยไม่ fallbackไป Default
+- production implementation, runtime probesและ promotion gateติดตามต่อใน [Delegated Autonomy Coordinator](delegated-autonomy-coordinator.md)
 
-ห้าม production-wire delegated Workersหรือย้าย `pi-doc` จน Worker-profile decisionได้รับการยืนยัน
+ห้ามย้าย `pi-doc`; delegated production wiringยังขึ้นกับ Phase 2–3 acceptanceของ delegated plan

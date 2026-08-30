@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — Phase 2 Worker-profile design discussion; production wiring remains paused<br>
+> **Status:** active — Phase 2 generated Worker-profile implementation; production wiring remains disabled<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 11:30<br>
+> **Updated:** 2026-08-30 12:00<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -202,6 +202,31 @@ Hermes Agent `tools/approval.py` ให้ patternที่ใช้ได้: u
 My Piจะใช้เป็น requirements/adversarial tests ไม่ copy moduleหรือ regexทั้งก้อน Guardrailไม่ใช่ sandbox และ smart LLMไม่ใช่ authority Unknown/headless Workerต้อง fail closedต่างจาก historical Hermes auto-approve Permanent command-name/glob allowlistถูก reject; delegated REVIEWต้อง bind exact command digest + Worker/session + mandate/profile/policy version + canonical resource scope + expiry
 
 Pi Worker Docker mount worktreeจาก hostจึงยังต้องผ่าน command policy ห้ามถือว่า containerเพียงอย่างเดียวทำให้ `rm -rf /workspace`, history destruction หรือ policy-file tamperingปลอดภัย Initial hardline/mandate denyต้องไม่มี bypass ส่วน generated-path cleanupอนุญาตได้ด้วย narrow task-scoped capability
+
+### D13 — ผู้ใช้ไม่สร้าง Worker profileเอง; My Pi materialize จาก verified template
+
+ผู้ใช้ยืนยัน topology และ operator experienceดังนี้:
+
+- Default Piใช้ pinned stable release; Development Piใช้ isolated development profile
+- releaseเป็นเจ้าของ immutable, versioned Worker profile templates
+- machine setupทำ preflight/image/provider provisioningครั้งเดียวโดย explicit operator action
+- ทุก Workerได้ synthetic `HOME`, explicit `PI_CODING_AGENT_DIR`, isolated session directory, minimal settings/trustและ credential projectionของ providerเดียว
+- mutable profile materializeแยกต่อ Worker; ห้าม share session/auth refresh stateหรือ fallbackไป `$HOME/.pi/agent`
+- ผู้ใช้เลือกเพียง enablement, provider/model, limitsและ retention ไม่เขียน `profile.json`, environment allowlistหรือ digestเอง
+- missing/malformed/default-linked profileต้อง fail startup; manual modeเป็น rollback
+- custom toolchainต้องเป็น versioned profile packageที่ผ่าน verification ไม่ใช่ machine-local ad hoc config
+
+Credential valuesห้ามเข้า profile digest/audit, Worker tools, Bash containerหรือ child environment inventory Manifestบันทึกได้เฉพาะ provider id/typeและ non-secret provenance Strongest targetคือ short-lived token/broker; initial implementationอาจใช้ minimal provider-specific `auth.json` projection mode `0600`นอก worktreeโดยไม่ copy Default authทั้งไฟล์
+
+Recommended materialization topology:
+
+```text
+immutable template
+  → private run root
+    → per-Worker synthetic HOME
+    → per-Worker PI_CODING_AGENT_DIR + auth/settings/trust
+    → per-Worker session/temp roots + worktree binding
+```
 
 ## Target architecture
 
@@ -611,11 +636,14 @@ Tasks:
 - [x] bind REVIEW grantกับ command digest, Worker/session, unique mandate id, verified profile, authoritative combined policy digest, cwd/workspace, finding/resource scope และ expiry; trusted session registry consume-once/revoke/restore fail closed
 - [ ] ให้ normal interactive session คง behavior เดิมใน manual mode
 - [ ] ให้ delegated Worker ไม่เปิด dialog
-- [ ] ส่ง policy reference ตอน spawn แบบ atomic และยืนยัน Worker โหลด profile จริง
-- [ ] แยก read-only/worktree-write profiles
+- [ ] ส่ง policy reference ตอน spawn แบบ atomic และยืนยัน Worker โหลด profileจริง
+- [x] เพิ่ม generated per-Worker runtime profile materializer + authority-bound verifier + identity-bound cleanup โดยไม่รับ Default fallback
+- [x] สร้าง synthetic `HOME`, explicit `PI_CODING_AGENT_DIR`/session dir, minimal settingsและ explicit untrusted-project state
+- [x] project minimal provider credentialเพียง providerเดียวโดย secretไม่เข้า manifest/digest/env/tools
+- [ ] แยก read-only/worktree-write profilesใน execution adapter (template contractรองรับทั้งสอง modeแล้ว)
 - [ ] จำกัด active tools/extensions/skills ตาม profile
 - [ ] เพิ่ม OS sandboxed bash baseline และบันทึก limitation ของ direct tools
-- [ ] cleanup temporary policy artifacts
+- [x] cleanup generated profileต้อง match canonical root + disk manifest identity; run-level retention/reaperยัง deferถึง adapter wiring
 
 REVIEW registry evidence:
 
@@ -820,13 +848,23 @@ Success metric หลัก:
 - docs, migration, tests และ real acceptance ครบ
 - ไม่มีการอ้าง security guarantee เกิน enforcement ที่ตรวจได้
 
+## Phase 2 progress — generated Worker profile core
+
+- เพิ่ม `extensions/worker-profile-runtime.ts` เป็น pure/incubator materializer, verifierและ cleanup; ยังไม่มี production entrypoint
+- private runtime hierarchyใช้ non-recursive canonical children, mode `0700`; files `0600`
+- manifest/profile digestไม่มี credential values และ verifierต้องรับ Coordinator-held expected digestก่อน follow path
+- credential projectionมี providerเดียว; ambient key/token/auth variablesถูก strip และ child Bash/toolsไม่ได้รับ secret
+- exact launch argsปิด extension/skill/prompt/theme/context discovery, pin tools/provider/model/sessionและ explicit extensions
+- unit/sentinel tests `12/12` รวม real child Piที่ไม่เห็น Default/project canaries; full suite `158/158`
+
 ## Exact next action
 
-[Capability Packages และ Pinned Releases](capability-packages-and-pinned-releases.md) Phase 0–6เสร็จแล้ว: `v0.2.0` ถูก pushและ Default Piใช้ exact Git refพร้อม rollback evidence ขั้นถัดไปคือหารือ exact Worker profile topology, `PI_CODING_AGENT_DIR`, credential provisioningและ no-default-fallback acceptanceก่อนแก้ incubator code แล้วจึงทำ Phase 2 ต่อ:
+ทำ independent security reviewของ pure checkpointก่อน wiring จากนั้น:
 
-1. แยก guardrail detection → policy resolution → UI rendering โดย normal manual sessionยังทำงานเดิม
-2. เพิ่ม atomic Worker policy reference/observed markerก่อนเลือก delegated resolver; unknown/headlessต้อง fail closed
-3. wire delegated Worker resolverให้ DENY/HUMANไม่เปิด dialog และ REVIEW executeได้เฉพาะ trusted registry consumeสำเร็จ
-4. เพิ่ม integration testsสำหรับ manual fallback, stale/missing policy, grant consume raceและ cleanupก่อนแตะ spawn
+1. แก้ findingsและ commit atomic Worker-profile-core checkpoint
+2. bind materialized profile digest, agent/home/session pathsและ environment keysเข้า agent-teams requested/observed readiness contract
+3. regenerate overlay/profile hashesและเพิ่ม missing/default-linked/stale profile startup probes
+4. แยก read-only/worktree-write execution adaptersและทดสอบ cleanup/retry race
+5. หลัง profile adapterผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
 
-ห้ามโหลด agent-teams candidate, production-wire delegated Workerหรือข้าม manual Herdr confirmationจน Worker profile decisionและ Phase 2–3 production-path acceptanceผ่าน
+ห้ามโหลด agent-teams candidate, production-wire delegated Workerหรือข้าม manual Herdr confirmationจน Phase 2–3 production-path acceptanceผ่าน
