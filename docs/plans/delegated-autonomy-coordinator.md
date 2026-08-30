@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — delegated resolver wiring; production remains disabled<br>
+> **Status:** ready for human production decision — production remains disabled<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 23:45<br>
+> **Updated:** 2026-08-31 01:00<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -907,16 +907,20 @@ Success metric หลัก:
 - `3463b31`, `be6f3dc` exact-validateและ bind Docker runtime hardeningทุก fieldใน authority digestพร้อม negative coverage
 - final generated-path acceptance **PASS 13/13** profile `050ed48b…`; interactive requests `0`, no reusable credential state, full suite `199/199`, runtime probes `10/10`
 - final Phase 2–3 independent correction review **PASS**; auditอยู่ที่ [Delegated Orchestration Phase 2–3 Final Review](../notes/delegated-orchestration-phase2-3-final-review.md)
+- `ef05fe8`แยก detection/resolution/UI และ wire explicit delegated composition; initial reviewพบ policy-induced REVIEW fallbackกับ missing workspace authority Medium
+- `e89dd0b`เพิ่ม resolver-owned policy REVIEW, generation-bound grantsและ Coordinator workspace authority; independent correction review **PASS**
+- production-candidate acceptance **PASS 16/16** profile `dc648f56…`; interactive requests `0`, full suite `209/209`, runtime probes `10/10`
+- resolver auditอยู่ที่ [Delegated Guardrail Resolver Independent Review](../notes/delegated-guardrail-resolver-independent-review.md)
 - execution-adapter auditอยู่ที่ [Worker Execution Adapters Independent Review](../notes/worker-execution-adapters-independent-review.md)
 - evidenceอยู่ที่ [Agent-teams Generated-path Real-provider Acceptance](../notes/agent-teams-generated-path-real-provider-acceptance.md)
 - productionยัง disabled
 
 ## Exact next action
 
-1. แยก guardrail detection → policy resolution → UI renderingโดยคง manual behaviorเดิม
-2. wire trusted delegated resolverกับ exact REVIEW grantsและ human-only boundaries
-3. รัน production-path acceptanceหลัง resolver wiring โดย productionยัง disabled
-4. ขอ independent resolver review แล้วจึงขอ human decisionก่อน production import, push, release/tagหรือ Default Pi switch
+1. ขอ human decisionแยกกันสำหรับ production import, push, release/tagและ Default Pi switch
+2. หากอนุมัติ production import ให้เพิ่ม root wiringแบบ explicitโดยไม่เปิด external mutationอื่นอัตโนมัติ
+3. rerun stable/manual regression + production acceptanceหลัง root wiring
+4. push, release/tagและ Default Pi switchทำเฉพาะรายการที่ผู้ใช้อนุมัติชัดเจน
 
 External push, release/tagและ Default Pi switchเป็น human-only mutationsและยังไม่ทำ
 
