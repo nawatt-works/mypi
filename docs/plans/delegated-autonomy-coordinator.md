@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — Phase 2 one-time machine setup + generated-path acceptance; production remains disabled<br>
+> **Status:** active — Phase 2 real-provider generated-path acceptance; production remains disabled<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 16:10<br>
+> **Updated:** 2026-08-30 18:15<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -880,17 +880,25 @@ Success metric หลัก:
 - auditอยู่ที่ [Agent-teams Generated Profile Binding Independent Review](../notes/agent-teams-generated-profile-binding-independent-review.md)
 - runtime/fault probes `10/10`, patched upstream typecheck/lintผ่าน และ production importยังไม่มี
 
+## Worker machine setup progress
+
+- `85beb57`เพิ่ม atomic/idempotent setup, verify, rotate, recoverและ incubator-only `/mypi-worker-setup`
+- corrections `0b8423a`, `bd8a924`, `1465c8d`, `348eab8` bind source/setup/revision, serialize rotate/issue, เพิ่ม signed crash journal, stale-lock recovery, receipt-gated operator recoverและ parent-directory fsync
+- independent reviewหลายรอบปิด Medium findingsทั้งหมด; final verdict **PASS**
+- auditอยู่ที่ [Worker Machine Setup Independent Review](../notes/worker-machine-setup-independent-review.md)
+- full suiteล่าสุดก่อน final fsync correction `192/192`; final targeted setup/profile tests `22/22`; runtime probes `10/10`
+- productionยัง disabledและ real-provider acceptanceยัง exit `78`
+
 ## Exact next action
 
-สร้าง one-time machine setupโดยยังไม่ activate production:
+สร้าง generated-path acceptanceใหม่โดยยังไม่ activate production:
 
-1. implement idempotent setup serviceสร้าง private runtime hierarchy, Ed25519 authorityและ provider credential sourceนอก worktree
-2. เพิ่ม `/mypi-worker-setup` เฉพาะ Development/incubator entrypoint พร้อม secret-safe interactive projection; ห้ามรับ secretผ่าน argv/environment/audit
-3. เพิ่ม setup verify/rotation/recovery contractและ missing/malformed/symlink/default-linked negative tests
-4. สร้าง real-provider generated-path acceptanceใหม่แทน blocker: spawn → readiness → work → stop/retry/replacement → no residual auth/profile
-5. แยก read-only/worktree-write execution adaptersและทดสอบ cleanup/retry/crash reconciliation
-6. ขอ independent reviewและ Phase 2–3 acceptanceก่อน production importหรือ Default release
-7. หลัง profile pathผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
+1. ใช้ verified machine receiptสร้าง `AgentTeamsProfile`กับ exact setup digest/revision
+2. แทน blockerด้วย disposable real-provider acceptance: spawn → readiness → work → stop → assert no lease/claim/generated auth/profile
+3. เพิ่ม retry/replacement/crash reconciliationและ credential refresh/rotation cases
+4. แยก read-only/worktree-write execution adapters
+5. ขอ independent reviewและ Phase 2–3 acceptanceก่อน production importหรือ Default release
+6. หลัง profile pathผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
 
 External push, release/tagและ Default Pi switchเป็น human-only mutationsและยังไม่ทำ
 
