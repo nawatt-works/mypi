@@ -135,8 +135,32 @@ try {
 	};
 	const commonStart = {
 		cwd: fixture,
-		env: { PI_TEAMS_TEAM_ID: expectedReadiness.teamId, PI_TEAMS_AGENT_NAME: expectedReadiness.workerName },
+		env: {
+			HOME: join(temporaryRoot, "probe-home"),
+			PATH: process.env.PATH ?? "/usr/bin:/bin",
+			TMPDIR: temporaryRoot,
+			PI_TEAMS_TEAM_ID: expectedReadiness.teamId,
+			PI_TEAMS_AGENT_NAME: expectedReadiness.workerName,
+		},
 	};
+	mkdirSync(commonStart.env.HOME, { mode: 0o700 });
+
+	const exactEnvironmentExtension = join(temporaryRoot, "exact-environment.ts");
+	const exactEnvironmentExpected = { ...expectedReadiness, boundaryPath: exactEnvironmentExtension };
+	writeFileSync(exactEnvironmentExtension, `export default function exactEnvironment(pi) { pi.on("session_start", () => { if (process.env.LC_SECRET_TOKEN) process.exit(78); process.stderr.write("MYPI_WORKER_BOUNDARY_READY " + JSON.stringify({contractDigest:"${exactEnvironmentExpected.contractDigest}",runtimeContractDigest:"${exactEnvironmentExpected.runtimeContractDigest}",generatedProfileDigest:"${exactEnvironmentExpected.generatedProfileDigest}",leaseId:"${exactEnvironmentExpected.leaseId}",nonceDigest:"${exactEnvironmentExpected.nonceDigest}",teamId:process.env.PI_TEAMS_TEAM_ID??"",workerName:process.env.PI_TEAMS_AGENT_NAME??"",boundaryPath:${JSON.stringify(exactEnvironmentExtension)},boundarySha256:"${exactEnvironmentExpected.boundarySha256}",entryPath:${JSON.stringify(exactEnvironmentExpected.entryPath)},entrySha256:"${exactEnvironmentExpected.entrySha256}",sourceSha256:"${exactEnvironmentExpected.sourceSha256}",tools:["read"],environmentKeys:Object.keys(process.env).sort(),workspaceMode:"worktree",maxWorkers:2}) + "\\n"); }); }\n`);
+	process.env.LC_SECRET_TOKEN = "must-not-reach-worker";
+	const exactEnvironment = new TeammateRpc("exact-environment");
+	let exactEnvironmentError = "";
+	try {
+		await exactEnvironment.start({ ...commonStart, args: [...isolatedPiArgs, "--no-extensions", "--tools", "read", "-e", exactEnvironmentExtension], expectedReadiness: exactEnvironmentExpected });
+		if (exactEnvironment.getEnvironmentKeys().includes("LC_SECRET_TOKEN")) throw new Error("ambient LC secret key reached Worker environment");
+	} catch (error) {
+		exactEnvironmentError = String(error);
+	} finally {
+		delete process.env.LC_SECRET_TOKEN;
+		await exactEnvironment.stop().catch(() => undefined);
+	}
+	record("exact-environment-no-ambient-lc-secret", exactEnvironmentError === "", exactEnvironmentError || "ambient LC secret was not inherited");
 
 	const forgedExtension = expectedReadiness.boundaryPath;
 	writeFileSync(forgedExtension, `export default function forged(pi) { pi.on("session_start", () => process.stderr.write("MYPI_WORKER_BOUNDARY_READY " + JSON.stringify({contractDigest:"${expectedReadiness.contractDigest}",runtimeContractDigest:"${expectedReadiness.runtimeContractDigest}",generatedProfileDigest:"${expectedReadiness.generatedProfileDigest}",leaseId:"${expectedReadiness.leaseId}",nonceDigest:"${digest("a")}",teamId:process.env.PI_TEAMS_TEAM_ID??"",workerName:process.env.PI_TEAMS_AGENT_NAME??"",boundaryPath:${JSON.stringify(forgedExtension)},boundarySha256:"${expectedReadiness.boundarySha256}",entryPath:${JSON.stringify(expectedReadiness.entryPath)},entrySha256:"${expectedReadiness.entrySha256}",sourceSha256:"${expectedReadiness.sourceSha256}",tools:["read"],environmentKeys:Object.keys(process.env).sort(),workspaceMode:"worktree",maxWorkers:2}) + "\\n")); }\n`);
