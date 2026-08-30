@@ -219,6 +219,12 @@ async function syncDirectory(path: string): Promise<void> {
 	try { await handle.sync(); } finally { await handle.close(); }
 }
 
+async function removeTransactionRoot(path: string): Promise<void> {
+	const parent = dirname(path);
+	await rm(path, { recursive: true, force: true });
+	await syncDirectory(parent);
+}
+
 async function readManifest(runtimeRoot: string): Promise<WorkerMachineManifest> {
 	const { content } = await requirePrivateFile("machine manifest", join(runtimeRoot, "machine.json"));
 	let parsed: unknown;
@@ -535,7 +541,7 @@ async function recoverWorkerMachineUnlocked(input: {
 		}
 		const completed = await verifyWorkerMachine({ ...input, expectedSetupDigest: manifest.setupDigest });
 		if (!completed.verified || !completed.manifest) throw new Error(`completed rotation is not verified: ${completed.mismatches.join(",")}`);
-		await rm(journal.transactionRoot, { recursive: true });
+		await removeTransactionRoot(journal.transactionRoot);
 		return completed.manifest;
 	}
 	const { setupDigest: _digest, ...payload } = manifest;
@@ -548,7 +554,7 @@ async function recoverWorkerMachineUnlocked(input: {
 	const source = parseCredentialSource((await requirePrivateFile("Worker credential source", credentialPath)).content);
 	if (source.providerId !== providerId) throw new Error("Worker credential source provider does not match recovery authority");
 	if (source.revision === manifest.credentialRevision) {
-		if (journal) await rm(journal.transactionRoot, { recursive: true });
+		if (journal) await removeTransactionRoot(journal.transactionRoot);
 		const current = await verifyWorkerMachine({ ...input, expectedSetupDigest: manifest.setupDigest });
 		if (!current.verified || !current.manifest) throw new Error(`Worker machine recovery found unresolved drift: ${current.mismatches.join(",")}`);
 		return current.manifest;
@@ -594,7 +600,7 @@ async function recoverWorkerMachineUnlocked(input: {
 	}
 	const verification = await verifyWorkerMachine({ ...input, expectedSetupDigest: next.setupDigest });
 	if (!verification.verified || !verification.manifest) throw new Error(`recovered Worker machine failed verification: ${verification.mismatches.join(",")}`);
-	if (journal) await rm(journal.transactionRoot, { recursive: true });
+	if (journal) await removeTransactionRoot(journal.transactionRoot);
 	return verification.manifest;
 }
 
@@ -630,6 +636,7 @@ async function rotateWorkerCredentialUnlocked(input: {
 	if ((await readdir(transactionsRoot)).length !== 0) throw new Error("Worker machine has an unrecovered rotation transaction");
 	const transactionRoot = join(transactionsRoot, randomBytes(16).toString("hex"));
 	await mkdir(transactionRoot, { mode: 0o700 });
+	await syncDirectory(transactionsRoot);
 	const credentialTemp = join(transactionRoot, "credential.next.json");
 	const manifestTemp = join(transactionRoot, "machine.next.json");
 	const { setupDigest: _previousDigest, ...current } = manifest;
@@ -665,12 +672,12 @@ async function rotateWorkerCredentialUnlocked(input: {
 		// Preserve a signed transaction after either live rename so recovery can
 		// deterministically finish or acknowledge the committed rotation.
 		const credentialCommitted = await readFile(credentialPath).then((raw) => parseCredentialSource(raw).revision === revision).catch(() => false);
-		if (!credentialCommitted) await rm(transactionRoot, { recursive: true, force: true }).catch(() => undefined);
+		if (!credentialCommitted) await removeTransactionRoot(transactionRoot).catch(() => undefined);
 		throw error;
 	}
 	const result = await verifyWorkerMachine({ ...input, expectedSetupDigest: next.setupDigest });
 	if (!result.verified || !result.manifest) throw new Error(`rotated Worker machine failed verification: ${result.mismatches.join(",")}`);
-	await rm(transactionRoot, { recursive: true });
+	await removeTransactionRoot(transactionRoot);
 	return result.manifest;
 }
 
