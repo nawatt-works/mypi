@@ -21,6 +21,7 @@ import {
 	initializeWorkerMachine,
 	listProviderCredentials,
 	loadProviderCredential,
+	recoverWorkerMachine,
 	rotateWorkerCredential,
 	verifyWorkerMachine,
 	type ProviderCredentialInfo,
@@ -358,8 +359,8 @@ export default function orchestration(pi: ExtensionAPI): void {
 				return;
 			}
 			const action = (typeof args === "string" ? args.trim() : "") || "setup";
-			if (!new Set(["setup", "verify", "rotate"]).has(action)) {
-				ctx.ui.notify("ใช้ /mypi-worker-setup [setup|verify|rotate] และห้ามส่ง path หรือ secret เป็น argument", "warning");
+			if (!new Set(["setup", "verify", "rotate", "recover"]).has(action)) {
+				ctx.ui.notify("ใช้ /mypi-worker-setup [setup|verify|rotate|recover] และห้ามส่ง path หรือ secret เป็น argument", "warning");
 				return;
 			}
 			const sourceAgentDir = process.env.PI_CODING_AGENT_DIR;
@@ -400,6 +401,34 @@ export default function orchestration(pi: ExtensionAPI): void {
 					verifiedExisting = result.manifest;
 					break;
 				}
+			}
+			if (action === "recover") {
+				const receipt = [...ctx.sessionManager.getBranch()].reverse().find((entry) =>
+					entry.type === "custom" && entry.customType === "mypi-worker-machine-setup" &&
+					(entry.data as { runtimeRoot?: unknown }).runtimeRoot === runtimeRoot &&
+					(entry.data as { providerId?: unknown }).providerId === selected.providerId
+				) as { data?: { setupDigest?: unknown } } | undefined;
+				const expectedSetupDigest = receipt?.data?.setupDigest;
+				if (typeof expectedSetupDigest !== "string") {
+					ctx.ui.notify("session นี้ไม่มี trusted Worker machine receipt สำหรับ recovery ห้ามเชื่อ digestจาก runtimeเอง", "error");
+					return;
+				}
+				const approved = await ctx.ui.confirm(
+					"กู้ Worker machine rotation ที่ค้าง?",
+					`provider: ${selected.providerId}\nruntime: ${runtimeRoot}\ntrusted setup receipt: ${expectedSetupDigest}\n\nกู้เฉพาะ signed one-step transaction และไม่แสดง credential`,
+				);
+				if (!approved) return;
+				try {
+					const manifest = await recoverWorkerMachine({ runtimeRoot, sourceAgentDir, providerId: selected.providerId, expectedSetupDigest });
+					pi.appendEntry("mypi-worker-machine-setup", {
+						action, providerId: manifest.providerId, credentialType: manifest.credentialType,
+						credentialRevision: manifest.credentialRevision, runtimeRoot: manifest.runtimeRoot, setupDigest: manifest.setupDigest,
+					});
+					ctx.ui.notify(`Worker machine recovery verified\nrevision: ${manifest.credentialRevision}\nsetup: ${manifest.setupDigest}`, "info");
+				} catch (error) {
+					ctx.ui.notify(`Worker machine recovery ไม่สำเร็จ: ${error instanceof Error ? error.message : String(error)}`, "error");
+				}
+				return;
 			}
 			if (action === "verify") {
 				if (!verifiedExisting) {

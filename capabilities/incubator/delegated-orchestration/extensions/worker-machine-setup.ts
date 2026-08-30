@@ -386,19 +386,53 @@ export async function verifyWorkerMachine(input: {
 	return { verified: mismatches.length === 0, mismatches, manifest: mismatches.length === 0 ? manifest : undefined };
 }
 
+async function reapStaleAuthorityLock(lockPath: string): Promise<boolean> {
+	const info = await lstat(lockPath);
+	if (info.isSymbolicLink() || !info.isFile()) throw new Error("Worker machine authority lock must be a real file");
+	if (typeof process.getuid === "function" && info.uid !== process.getuid()) throw new Error("Worker machine authority lock has a different owner");
+	if (process.platform !== "win32" && (info.mode & 0o077) !== 0) throw new Error("Worker machine authority lock permissions are unsafe");
+	let pid: number | undefined;
+	try {
+		const value = JSON.parse(await readFile(lockPath, "utf8")) as { pid?: unknown };
+		if (Number.isSafeInteger(value.pid) && Number(value.pid) > 0) pid = Number(value.pid);
+	} catch {
+		// A crash between exclusive creation and the first write can leave an
+		// empty lock. Reap it only after a bounded grace period.
+	}
+	if (pid !== undefined) {
+		try {
+			process.kill(pid, 0);
+			return false;
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ESRCH") return false;
+		}
+	} else if (Date.now() - info.mtimeMs < 30_000) {
+		return false;
+	}
+	await rm(lockPath);
+	return true;
+}
+
 export async function withWorkerMachineAuthorityLock<T>(runtimeRootInput: string, operation: () => Promise<T>): Promise<T> {
 	const runtimeRoot = await requireDirectory("runtimeRoot", runtimeRootInput, true);
 	const locksRoot = await requireDirectory("Worker machine locks root", join(runtimeRoot, "locks"), true);
 	const lockPath = join(locksRoot, "authority.lock");
 	let handle;
-	try {
-		handle = await open(lockPath, "wx", 0o600);
-		await handle.writeFile(`${process.pid}\n`, "utf8");
-	} catch (error) {
-		await handle?.close().catch(() => undefined);
-		if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("Worker machine authority is busy");
-		throw error;
+	for (let attempt = 0; attempt < 2; attempt += 1) {
+		try {
+			handle = await open(lockPath, "wx", 0o600);
+			await handle.writeFile(`${JSON.stringify({ schemaVersion: 1, pid: process.pid, createdAt: Date.now(), nonce: randomBytes(16).toString("hex") })}\n`, "utf8");
+			break;
+		} catch (error) {
+			await handle?.close().catch(() => undefined);
+			handle = undefined;
+			if ((error as NodeJS.ErrnoException).code !== "EEXIST" || attempt > 0 || !await reapStaleAuthorityLock(lockPath)) {
+				if ((error as NodeJS.ErrnoException).code === "EEXIST") throw new Error("Worker machine authority is busy");
+				throw error;
+			}
+		}
 	}
+	if (!handle) throw new Error("Worker machine authority lock could not be acquired");
 	try {
 		return await operation();
 	} finally {
