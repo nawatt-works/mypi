@@ -40,6 +40,7 @@ function request(overrides: Partial<CommandPolicyRequest> = {}): CommandPolicyRe
 		mandateId: "mandate-a",
 		profileId: "pi-profile-v1",
 		policyVersion: POLICY_DIGEST,
+		generationDigest: "c".repeat(64),
 		workspaceRoot: "/repo",
 		cwd: "/repo",
 		...overrides,

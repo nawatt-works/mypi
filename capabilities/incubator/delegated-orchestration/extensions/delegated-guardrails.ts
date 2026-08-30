@@ -4,6 +4,7 @@ import { createDelegatedPolicyResolver, type DelegatedPolicyResolver } from "./d
 import type { CommandReviewRegistry } from "./command-review-registry.ts";
 import type { PolicyLayers } from "./orchestration-policy.ts";
 import type { AuthorityRegistry } from "./orchestration-registry.ts";
+import type { DelegatedWorkspaceAuthority } from "./delegated-workspace-authority.ts";
 
 /**
  * Explicit composition seam for the future production entrypoint. It is not a
@@ -15,12 +16,14 @@ export function registerDelegatedGuardrails(input: {
 	pi: ExtensionAPI;
 	authority: AuthorityRegistry;
 	reviews: CommandReviewRegistry;
+	workspaces: DelegatedWorkspaceAuthority;
 	layers?: PolicyLayers;
 	now?: () => string;
 }): DelegatedPolicyResolver {
 	const resolver = createDelegatedPolicyResolver({
 		authority: input.authority,
 		reviews: input.reviews,
+		workspaces: input.workspaces,
 		layers: input.layers,
 		now: input.now,
 	});

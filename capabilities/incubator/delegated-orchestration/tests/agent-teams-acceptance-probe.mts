@@ -9,6 +9,7 @@ import { analyzeCommand, type CommandPolicyRequest } from "../extensions/command
 import { createCommandReviewRegistry } from "../extensions/command-review-registry.ts";
 import { registerDelegatedGuardrails } from "../extensions/delegated-guardrails.ts";
 import { createAuthorityRegistry } from "../extensions/orchestration-registry.ts";
+import { createDelegatedWorkspaceAuthority } from "../extensions/delegated-workspace-authority.ts";
 import { defaultWorkerRuntimeRoot, verifyWorkerMachine } from "../extensions/worker-machine-setup.ts";
 
 const checkout = resolve(process.argv[2] ?? "");
@@ -304,12 +305,26 @@ try {
 		verified: true,
 	}, new Date(resolverNow.getTime() + 1).toISOString());
 	const reviews = createCommandReviewRegistry(authorityPi as any, authority);
+	const workspaces = createDelegatedWorkspaceAuthority();
+	workspaces.registerVerified({
+		mandateId: "acceptance-mandate",
+		workerId: workerName,
+		sessionId: teamId,
+		profileId: profile.profileId,
+		policyDigest: profile.commandPolicySha256,
+		authorityProfileDigest: profile.profileDigest,
+		generationDigest: firstGeneration.profileDigest,
+		workspaceRoot: workerCwd,
+		cwd: workerCwd,
+		workspaceMode: "worktree-write",
+	});
 	const guardrailHandlers = new Map<string, (...args: any[]) => any>();
 	let delegatedUiRequests = 0;
 	const resolver = registerDelegatedGuardrails({
 		pi: { on(name: string, handler: (...args: any[]) => any) { guardrailHandlers.set(name, handler); }, events: { emit() {} } } as any,
 		authority,
 		reviews,
+		workspaces,
 		now: () => new Date(resolverNow.getTime() + 2_000).toISOString(),
 	});
 	const secretDecision = await guardrailHandlers.get("tool_call")?.(
@@ -323,13 +338,14 @@ try {
 		mandateId: "acceptance-mandate",
 		profileId: profile.profileId,
 		policyVersion: profile.commandPolicySha256,
+		generationDigest: firstGeneration.profileDigest,
 		workspaceRoot: workerCwd,
 		cwd: workerCwd,
 	};
 	const reviewAnalysis = analyzeCommand("rm -rf build/cache", { workspaceRoot: workerCwd, cwd: workerCwd });
 	const beforeGrant = resolver.resolveCommand(commandRequest, reviewAnalysis, new Date(resolverNow.getTime() + 3_000).toISOString());
 	if (beforeGrant.executionAllowed || beforeGrant.outcome !== "REVIEW") throw new Error("delegated REVIEW executed without trusted registry state");
-	reviews.issue(commandRequest, reviewAnalysis, { now: new Date(resolverNow.getTime() + 4_000).toISOString(), ttlMs: 60_000 });
+	resolver.issueReview(commandRequest, reviewAnalysis, { now: new Date(resolverNow.getTime() + 4_000).toISOString(), ttlMs: 60_000 });
 	const reviewed = resolver.resolveCommand(commandRequest, reviewAnalysis, new Date(resolverNow.getTime() + 5_000).toISOString());
 	const replay = resolver.resolveCommand(commandRequest, reviewAnalysis, new Date(resolverNow.getTime() + 6_000).toISOString());
 	if (!reviewed.executionAllowed || !reviewed.reviewed || replay.executionAllowed || replay.outcome !== "REVIEW") {

@@ -284,6 +284,7 @@ function policyRequest(profile: WorkerProfile, cwd: string): CommandPolicyReques
 		mandateId: "phase0-candidate",
 		profileId: profile.profileId,
 		policyVersion: profile.policyVersion,
+		generationDigest: process.env.MYPI_WORKER_PROFILE_DIGEST || "invalid-generation",
 		workspaceRoot: cwd,
 		cwd,
 	};

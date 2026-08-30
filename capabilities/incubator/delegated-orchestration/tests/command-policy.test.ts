@@ -26,6 +26,7 @@ const REQUEST: CommandPolicyRequest = {
 	mandateId: "mandate-01",
 	profileId: "pi-agent-teams-docker-v1",
 	policyVersion: "command-policy-v1",
+	generationDigest: "c".repeat(64),
 	workspaceRoot: WORKSPACE,
 	cwd: CWD,
 };
@@ -283,6 +284,7 @@ test("rejects stale review replay across command, Worker, mandate, profile, poli
 		[{ ...REQUEST, mandateId: "mandate-02" }, analysis, "2026-08-29T12:01:00.000Z"],
 		[{ ...REQUEST, profileId: "profile-v2" }, analysis, "2026-08-29T12:01:00.000Z"],
 		[{ ...REQUEST, policyVersion: "command-policy-v2" }, analysis, "2026-08-29T12:01:00.000Z"],
+		[{ ...REQUEST, generationDigest: "d".repeat(64) }, analysis, "2026-08-29T12:01:00.000Z"],
 		[REQUEST, analyze("rm -rf ../build/other"), "2026-08-29T12:01:00.000Z"],
 		[REQUEST, analysis, "2026-08-29T12:05:00.000Z"],
 	];

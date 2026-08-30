@@ -8,6 +8,7 @@ import {
 	type CommandAnalysis,
 	type CommandPolicyDecision,
 	type CommandPolicyRequest,
+	type CommandReviewGrant,
 } from "./command-policy.ts";
 import type { CommandReviewRegistry } from "./command-review-registry.ts";
 import {
@@ -17,14 +18,17 @@ import {
 	type PolicyLayers,
 } from "./orchestration-policy.ts";
 import type { AuthorityRegistry, OrchestrationAuthorityState } from "./orchestration-registry.ts";
+import type { DelegatedWorkspaceAuthority } from "./delegated-workspace-authority.ts";
 
 export type DelegatedPolicyResolver = GuardrailPolicyResolver & {
+	issueReview(request: CommandPolicyRequest, analysis: CommandAnalysis, options?: { now?: string; ttlMs?: number }): CommandReviewGrant;
 	resolveCommand(request: CommandPolicyRequest, analysis: CommandAnalysis, now?: string): CommandPolicyDecision;
 };
 
 export type DelegatedPolicyResolverOptions = {
 	authority: AuthorityRegistry;
 	reviews: CommandReviewRegistry;
+	workspaces: DelegatedWorkspaceAuthority;
 	layers?: PolicyLayers;
 	now?: () => string;
 };
@@ -63,6 +67,20 @@ function policyCommandAction(request: CommandPolicyRequest, analysis: CommandAna
 		workerId: request.workerId,
 		analyzerOutcome: analysis.recommendedOutcome,
 		findingCodes: analysis.findings.map((finding) => finding.code),
+	};
+}
+
+function effectiveReviewAnalysis(analysis: CommandAnalysis, policy: PolicyDecision): CommandAnalysis {
+	if (analysis.recommendedOutcome === "REVIEW") return analysis;
+	if (policy.outcome !== "REVIEW") throw new Error("policy does not require Coordinator review");
+	return {
+		...analysis,
+		findings: [...analysis.findings, {
+			code: "policy-review",
+			outcome: "REVIEW",
+			reason: `trusted policy layer requires review: ${policy.reason}`,
+		}],
+		recommendedOutcome: "REVIEW",
 	};
 }
 
@@ -105,6 +123,24 @@ export function createDelegatedPolicyResolver(options: DelegatedPolicyResolverOp
 			}
 		},
 
+		issueReview(request, analysis, issueOptions = {}) {
+			const at = issueOptions.now ?? now();
+			const state = authorityState(options.authority);
+			const workspace = options.workspaces.authorize(request, state);
+			if (!workspace.authorized) throw new Error(`delegated workspace authority denied review: ${workspace.reason}`);
+			const policy = evaluateOrchestrationPolicy({
+				mandate: state.activeMandate,
+				action: policyCommandAction(request, analysis, state),
+				layers: options.layers,
+				now: at,
+			});
+			if (policy.outcome !== "REVIEW") throw new Error(`cannot issue delegated review for ${policy.outcome}`);
+			return options.reviews.issue(request, effectiveReviewAnalysis(analysis, policy), {
+				now: at,
+				...(issueOptions.ttlMs === undefined ? {} : { ttlMs: issueOptions.ttlMs }),
+			});
+		},
+
 		resolveCommand(request, analysis, nowValue) {
 			const at = nowValue ?? now();
 			let state: OrchestrationAuthorityState;
@@ -112,6 +148,10 @@ export function createDelegatedPolicyResolver(options: DelegatedPolicyResolverOp
 				state = authorityState(options.authority);
 			} catch (error) {
 				return { outcome: "DENY", executionAllowed: false, reviewed: false, reasons: [`delegated command resolution failed closed: ${String(error)}`] };
+			}
+			const workspace = options.workspaces.authorize(request, state);
+			if (!workspace.authorized) {
+				return { outcome: "DENY", executionAllowed: false, reviewed: false, reasons: [`delegated workspace authority denied command: ${workspace.reason}`] };
 			}
 			const policy = evaluateOrchestrationPolicy({
 				mandate: state.activeMandate,
@@ -136,15 +176,16 @@ export function createDelegatedPolicyResolver(options: DelegatedPolicyResolverOp
 			}
 			if (policy.outcome === "ALLOW") return resolveCommandPolicy(request, analysis, { now: at });
 			try {
-				const decision = options.reviews.consume(request, analysis, at);
+				const reviewAnalysis = effectiveReviewAnalysis(analysis, policy);
+				const decision = options.reviews.consume(request, reviewAnalysis, at);
 				if (decision.executionAllowed && decision.reviewed) {
 					options.authority.recordAudit({
 						type: "review-grant-consumed",
 						actor: "coordinator",
 						workerId: request.workerId,
 						outcome: "ALLOW",
-						actionDigest: analysis.commandDigest,
-						details: { grantId: decision.grantId, findingCodes: analysis.findings.map((finding) => finding.code).sort() },
+						actionDigest: reviewAnalysis.commandDigest,
+						details: { grantId: decision.grantId, findingCodes: reviewAnalysis.findings.map((finding) => finding.code).sort() },
 					}, at);
 				} else {
 					options.authority.recordAudit({
@@ -152,8 +193,8 @@ export function createDelegatedPolicyResolver(options: DelegatedPolicyResolverOp
 						actor: "system",
 						workerId: request.workerId,
 						outcome: decision.outcome,
-						actionDigest: analysis.commandDigest,
-						details: { findingCodes: analysis.findings.map((finding) => finding.code).sort(), reviewGrantMatched: false },
+						actionDigest: reviewAnalysis.commandDigest,
+						details: { findingCodes: reviewAnalysis.findings.map((finding) => finding.code).sort(), reviewGrantMatched: false },
 					}, at);
 				}
 				return decision;

@@ -9,6 +9,7 @@ import { basename, isAbsolute, relative, resolve } from "node:path";
 export type CommandPolicyOutcome = "ALLOW" | "REVIEW" | "DENY" | "HUMAN";
 
 export type CommandFindingCode =
+	| "policy-review"
 	| "parser-limit"
 	| "malformed-shell"
 	| "dynamic-command-word"
@@ -69,6 +70,7 @@ export type CommandPolicyRequest = {
 	mandateId: string;
 	profileId: string;
 	policyVersion: string;
+	generationDigest: string;
 	workspaceRoot: string;
 	cwd: string;
 };
@@ -88,6 +90,7 @@ export type CommandReviewGrant = {
 	mandateId: string;
 	profileId: string;
 	policyVersion: string;
+	generationDigest: string;
 	workspaceRoot: string;
 	cwd: string;
 	findingCodes: CommandFindingCode[];
@@ -1132,6 +1135,7 @@ function validateRequest(request: CommandPolicyRequest, analysis: CommandAnalysi
 		const value = request[key];
 		if (!value || !IDENTIFIER_PATTERN.test(value)) reasons.push(`invalid ${key}`);
 	}
+	if (!/^[a-f0-9]{64}$/.test(request.generationDigest)) reasons.push("invalid generationDigest");
 	let workspaceRoot: string | undefined;
 	let cwd: string | undefined;
 	try {
@@ -1161,6 +1165,7 @@ function reviewBindingDigest(
 		mandateId: request.mandateId,
 		profileId: request.profileId,
 		policyVersion: request.policyVersion,
+		generationDigest: request.generationDigest,
 		workspaceRoot: analysis.workspaceRoot,
 		cwd: analysis.cwd,
 		findingCodes: [...new Set(analysis.findings.map((finding) => finding.code))].sort(),
@@ -1197,6 +1202,7 @@ export function createCommandReviewGrant(
 		mandateId: request.mandateId,
 		profileId: request.profileId,
 		policyVersion: request.policyVersion,
+		generationDigest: request.generationDigest,
 		workspaceRoot: analysis.workspaceRoot,
 		cwd: analysis.cwd,
 		findingCodes: [...new Set(analysis.findings.map((finding) => finding.code))].sort(),
@@ -1224,7 +1230,7 @@ export function verifyCommandReviewGrant(
 	const expectedFindingCodes = [...new Set(analysis.findings.map((finding) => finding.code))].sort();
 	if (JSON.stringify(grant.findingCodes) !== JSON.stringify(expectedFindingCodes)) reasons.push("finding codes mismatch");
 	if (JSON.stringify(grant.resources) !== JSON.stringify(analysis.resources)) reasons.push("resources mismatch");
-	for (const key of ["workerId", "sessionId", "mandateId", "profileId", "policyVersion", "workspaceRoot", "cwd"] as const) {
+	for (const key of ["workerId", "sessionId", "mandateId", "profileId", "policyVersion", "generationDigest", "workspaceRoot", "cwd"] as const) {
 		if (grant[key] !== (key === "workspaceRoot" ? analysis.workspaceRoot : key === "cwd" ? analysis.cwd : request[key])) {
 			reasons.push(`${key} mismatch`);
 		}

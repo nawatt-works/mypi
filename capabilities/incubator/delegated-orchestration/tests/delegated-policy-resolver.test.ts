@@ -6,6 +6,7 @@ import { createCommandReviewRegistry } from "../extensions/command-review-regist
 import { registerDelegatedGuardrails } from "../extensions/delegated-guardrails.ts";
 import { createDelegatedPolicyResolver } from "../extensions/delegated-policy-resolver.ts";
 import { createAuthorityRegistry } from "../extensions/orchestration-registry.ts";
+import { createDelegatedWorkspaceAuthority } from "../extensions/delegated-workspace-authority.ts";
 import type { DelegationMandate, PolicyLayers } from "../extensions/orchestration-policy.ts";
 
 const NOW = "2026-08-30T01:00:00.000Z";
@@ -45,8 +46,21 @@ function setup(layers?: PolicyLayers) {
 		verified: true,
 	}, "2026-08-30T01:00:01.000Z");
 	const reviews = createCommandReviewRegistry(pi as any, authority);
-	const resolver = createDelegatedPolicyResolver({ authority, reviews, layers, now: () => "2026-08-30T01:01:30.000Z" });
-	return { entries, authority, reviews, resolver };
+	const workspaces = createDelegatedWorkspaceAuthority();
+	workspaces.registerVerified({
+		mandateId: request().mandateId,
+		workerId: request().workerId,
+		sessionId: request().sessionId,
+		profileId: request().profileId,
+		policyDigest: POLICY_DIGEST,
+		authorityProfileDigest: "b".repeat(64),
+		generationDigest: request().generationDigest,
+		workspaceRoot: request().workspaceRoot,
+		cwd: request().cwd,
+		workspaceMode: "worktree-write",
+	});
+	const resolver = createDelegatedPolicyResolver({ authority, reviews, workspaces, layers, now: () => "2026-08-30T01:01:30.000Z" });
+	return { entries, authority, reviews, workspaces, resolver };
 }
 
 function request(): CommandPolicyRequest {
@@ -56,6 +70,7 @@ function request(): CommandPolicyRequest {
 		mandateId: "mandate-a",
 		profileId: "pi-profile-v1",
 		policyVersion: POLICY_DIGEST,
+		generationDigest: "c".repeat(64),
 		workspaceRoot: "/private/worktrees/run-a/worker-a",
 		cwd: "/private/worktrees/run-a/worker-a",
 	};
@@ -81,7 +96,7 @@ test("hard-denies delegated secret reads and uploads without asking UI", async (
 });
 
 test("composed delegated guardrail path blocks without opening Worker UI", async () => {
-	const { authority, reviews } = setup();
+	const { authority, reviews, workspaces } = setup();
 	const handlers = new Map<string, (...args: any[]) => any>();
 	let uiCalls = 0;
 	registerDelegatedGuardrails({
@@ -91,6 +106,7 @@ test("composed delegated guardrail path blocks without opening Worker UI", async
 		} as any,
 		authority,
 		reviews,
+		workspaces,
 		now: () => "2026-08-30T01:01:30.000Z",
 	});
 	const result = await handlers.get("tool_call")?.(
@@ -110,7 +126,7 @@ test("denies external mutations outside the mandate instead of widening manual s
 });
 
 test("consumes an exact REVIEW grant once and never treats it as bearer authority", () => {
-	const { authority, reviews, resolver } = setup();
+	const { authority, resolver } = setup();
 	const analysis = analyzeCommand("rm -rf build/cache", {
 		workspaceRoot: request().workspaceRoot,
 		cwd: request().cwd,
@@ -119,7 +135,7 @@ test("consumes an exact REVIEW grant once and never treats it as bearer authorit
 	const before = resolver.resolveCommand(request(), analysis, "2026-08-30T01:01:20.000Z");
 	assert.equal(before.outcome, "REVIEW");
 	assert.equal(before.executionAllowed, false);
-	reviews.issue(request(), analysis, { now: "2026-08-30T01:01:25.000Z", ttlMs: 60_000 });
+	resolver.issueReview(request(), analysis, { now: "2026-08-30T01:01:25.000Z", ttlMs: 60_000 });
 	const allowed = resolver.resolveCommand(request(), analysis, "2026-08-30T01:01:30.000Z");
 	assert.equal(allowed.outcome, "ALLOW");
 	assert.equal(allowed.executionAllowed, true);
@@ -129,6 +145,39 @@ test("consumes an exact REVIEW grant once and never treats it as bearer authorit
 	assert.equal(replay.outcome, "REVIEW");
 	assert.equal(replay.executionAllowed, false);
 	assert.equal(replay.reviewed, false);
+});
+
+test("policy-layer REVIEW cannot fall through for analyzer-ALLOW commands", () => {
+	const layers: PolicyLayers = {
+		global: { version: "global-v1", decisions: { command: "REVIEW" }, reason: "managed review ceiling" },
+	};
+	const { resolver } = setup(layers);
+	const analysis = analyzeCommand("echo safe", { workspaceRoot: request().workspaceRoot, cwd: request().cwd });
+	assert.equal(analysis.recommendedOutcome, "ALLOW");
+	const before = resolver.resolveCommand(request(), analysis, "2026-08-30T01:01:20.000Z");
+	assert.equal(before.outcome, "REVIEW");
+	assert.equal(before.executionAllowed, false);
+	const grant = resolver.issueReview(request(), analysis, { now: "2026-08-30T01:01:25.000Z", ttlMs: 60_000 });
+	assert.deepEqual(grant.findingCodes, ["policy-review"]);
+	const allowed = resolver.resolveCommand(request(), analysis, "2026-08-30T01:01:30.000Z");
+	assert.equal(allowed.executionAllowed, true);
+	assert.equal(allowed.reviewed, true);
+	const replay = resolver.resolveCommand(request(), analysis, "2026-08-30T01:01:31.000Z");
+	assert.equal(replay.outcome, "REVIEW");
+	assert.equal(replay.executionAllowed, false);
+});
+
+test("requires an exact Coordinator-registered workspace generation", () => {
+	const { resolver, workspaces } = setup();
+	const analysis = analyzeCommand("echo safe", { workspaceRoot: request().workspaceRoot, cwd: request().cwd });
+	const mismatched = { ...request(), cwd: `${request().workspaceRoot}/other` };
+	const denied = resolver.resolveCommand(mismatched, analysis, "2026-08-30T01:01:20.000Z");
+	assert.equal(denied.outcome, "DENY");
+	assert.match(denied.reasons[0] ?? "", /exact registered Worker workspace generation/);
+	workspaces.release({ workerId: request().workerId, sessionId: request().sessionId, generationDigest: request().generationDigest });
+	const released = resolver.resolveCommand(request(), analysis, "2026-08-30T01:01:21.000Z");
+	assert.equal(released.outcome, "DENY");
+	assert.match(released.reasons[0] ?? "", /not registered/);
 });
 
 test("HUMAN and DENY policy ceilings cannot be overridden by an active grant", () => {

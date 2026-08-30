@@ -70,7 +70,7 @@ function grantSnapshotErrors(grant: unknown): string[] {
 	for (const key of ["grantId", "workerId", "sessionId", "mandateId", "profileId"] as const) {
 		if (typeof grant[key] !== "string" || !IDENTIFIER.test(grant[key])) errors.push(`invalid ${key}`);
 	}
-	for (const key of ["bindingDigest", "commandDigest"] as const) {
+	for (const key of ["bindingDigest", "commandDigest", "generationDigest"] as const) {
 		if (typeof grant[key] !== "string" || !HASH.test(grant[key])) errors.push(`invalid ${key}`);
 	}
 	if (typeof grant.policyVersion !== "string" || !HASH.test(grant.policyVersion)) errors.push("policyVersion must be an exact policy digest");
@@ -101,6 +101,7 @@ function contextKey(grant: CommandReviewGrant): string {
 		mandateId: grant.mandateId,
 		profileId: grant.profileId,
 		policyVersion: grant.policyVersion,
+		generationDigest: grant.generationDigest,
 		workspaceRoot: grant.workspaceRoot,
 		cwd: grant.cwd,
 		findingCodes: grant.findingCodes,
