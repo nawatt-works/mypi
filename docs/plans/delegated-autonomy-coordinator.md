@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — Phase 2 agent-teams profile-adapter binding; production wiring remains disabled<br>
+> **Status:** active — Phase 2 patched agent-teams spawn/readiness binding; production wiring remains disabled<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 13:05<br>
+> **Updated:** 2026-08-30 14:10<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -861,14 +861,26 @@ Success metric หลัก:
 - correction `aba088a`ลบ fallback, require authority pathและเพิ่ม regressions; targeted `14/14`, full suite `160/160`
 - independent correction reviewให้ **PASS**; เก็บ auditที่ [Generated Worker Profile Core Independent Review](../notes/worker-profile-core-independent-review.md)
 
+## Agent-teams Worker profile adapter progress
+
+- adapter `0bd7069` materialize exact child profileจาก single-use leaseและคง production unwired
+- independent reviewให้ `FAIL` สอง High: unsigned lease replayข้าม identityและ lease-delete failureหลัง profileพร้อม
+- correction `0c64f4e`ใช้ signed identity/nonce/TTL-bound lease, pinned Ed25519 public key, durable consume markerและ atomic claimก่อน materialization; cleanup errorsไม่ถูก suppress
+- independent correction reviewให้ **PASS**; follow-up `0cd4e7b`เพิ่ม run/future/TTL/wrong-key/post-claim failure regressions
+- auditอยู่ที่ [Agent-teams Worker Profile Adapter Independent Review](../notes/agent-teams-worker-profile-adapter-independent-review.md)
+- setup/brokerที่ออก leaseยังไม่ implement; adapterและ coreยังไม่มี production import
+
 ## Exact next action
 
-เริ่ม agent-teams profile-adapter bindingโดยยังไม่ activate production:
+bind adapterเข้า patched agent-teams candidateโดยยังไม่ activate production:
 
-1. bind materialized profile digest, agent/home/session pathsและ environment keysเข้า agent-teams requested/observed readiness contract
-3. regenerate overlay/profile hashesและเพิ่ม missing/default-linked/stale profile startup probes
-4. แยก read-only/worktree-write execution adaptersและทดสอบ cleanup/retry race
-5. หลัง profile adapterผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
+1. เพิ่ม adapter module/source digestและ machine runtime authority refsเข้า `AgentTeamsProfile` contract
+2. patch leaderให้ขอ signed leaseจาก future broker seam, claim/materializeก่อน `TeammateRpc.start` และส่ง exact child args/environment
+3. bind generated profile digest, agent/home/session paths, environment keysและ lease IDเข้า requested/observed readiness
+4. cleanup generated profileเมื่อ startup/stop/replacement fail
+5. regenerate zero-context overlay, profile hashesและเพิ่ม missing/default-linked/stale/forged profile startup probes
+6. แยก read-only/worktree-write execution adaptersและทดสอบ cleanup/retry race
+7. หลัง profile adapterผ่าน จึงแยก guardrail detection → resolution → UI และ wire delegated resolver
 
 External pushไม่จำเป็นต่อ adapter developmentและจะขอ human decisionเมื่อถึง release checkpoint
 
