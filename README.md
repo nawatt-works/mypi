@@ -53,6 +53,10 @@ Pi จะอ้างอิง repository นี้จากตำแหน่�
 - `command-policy.ts`
   - pure Phase 0 analyzer/resolver สำหรับ dangerous commands, hardline deny, HUMAN/REVIEW routing และ exact short-lived review grants
   - normalize shell syntaxแบบ bounded/fail-closed แต่เป็น defense-in-depth ไม่ใช่ sandbox และยังไม่ถูกโหลดใน production path
+- `orchestration-policy.ts`
+  - pure Phase 1 bounded-mandate validator/evaluator, narrow-only policy precedence, combined policy digestและ audit redaction
+  - `orchestration-registry.ts` เก็บ versioned mandate/audit/profile referencesใน Pi session, reject stale/tampered/duplicate-active replayและไม่คืน mutable state aliases
+  - independent correction reviewผ่าน แต่ยังไม่ถูก wireเข้า `orchestration.ts` หรือ production spawn
 - `scoped-worker-tools.ts`
   - scoped Read/Write/Edit operationsสำหรับ Worker; canonicalize existing ancestor/targetและ deny external, sensitive, `.git` และ symlink escape
   - เป็น host-operation guardที่มี TOCTOU limitation ไม่ใช่ OS sandbox

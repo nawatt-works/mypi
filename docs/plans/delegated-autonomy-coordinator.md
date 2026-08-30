@@ -1,8 +1,8 @@
 # ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy
 
-> **Status:** active — Phase 1 pure mandate/policy model<br>
+> **Status:** active — Phase 2 guardrails/REVIEW registry<br>
 > **Created:** 2026-08-28 15:32<br>
-> **Updated:** 2026-08-30 08:10<br>
+> **Updated:** 2026-08-30 08:30<br>
 > **Purpose:** รื้อ authority, permission และ control loop ของ Coordinator ให้ผู้ใช้มอบอำนาจแบบมีขอบเขตครั้งเดียว แล้ว Coordinator สร้าง ควบคุม ตรวจ และแก้ Workers จนจบโดยไม่ต้องให้ผู้ใช้เฝ้า pane
 
 ## Context
@@ -570,12 +570,19 @@ Files:
 
 Tasks:
 
-- [ ] นิยาม mode, mandate, ceilings, outcomes และ audit events
-- [ ] สร้าง pure evaluator ที่ไม่เรียก UI
-- [ ] บังคับ lower layer ให้ narrow-only
-- [ ] restore/migrate session entries เดิม
-- [ ] redact launch config ก่อน audit
-- [ ] property/table tests สำหรับ precedence และ hard-deny invariants
+- [x] นิยาม versioned mandate, ceilings, outcomes, profile refs และ audit events
+- [x] สร้าง pure evaluator ที่ไม่เรียก UI
+- [x] บังคับ lower layer ให้ narrow-onlyและสร้าง combined policy digest
+- [x] restore session entriesแบบ fail-closed; duplicate active Worker replayถูก rejectแต่ release→register reuseได้
+- [x] redact secret-bearing fields/launch argsก่อน audit
+- [x] property/table tests สำหรับ precedence, hard-deny invariants, stale/malformed stateและ object aliasing
+
+Evidence:
+
+- producer `6ebe29b`; independent review `FAIL` พบ mutable state/history alias + duplicate Worker register replay
+- correction `1b403d4` deep-clone registry/audit/profile snapshots, restrict immutable Worker patchesและ fail-close duplicate active registration
+- independent correction re-review `PASS`; full suite `133/133`, `git diff --check`ผ่าน
+- `extensions/orchestration.ts` และ production entrypointsไม่ถูกแก้; pure modelยังไม่เปลี่ยน runtime behavior
 
 Exit criteria:
 
@@ -806,11 +813,11 @@ Success metric หลัก:
 
 ## Exact next action
 
-ดำเนิน Phase 1 pure mandate/policy modelโดยยังไม่เปลี่ยน production behavior:
+ดำเนิน Phase 2 แบบ incrementalและคง manual fallback:
 
-1. เพิ่ม `extensions/orchestration-policy.ts` สำหรับ versioned mandate validation, narrow-only precedence และ `ALLOW|REVIEW|DENY|HUMAN`
-2. เพิ่ม session-entry schema/audit/profile referencesใน `orchestration-registry.ts` พร้อม malformed/stale fail-closed migration
-3. เพิ่ม table/property testsสำหรับ hard-deny invariants, lower-layer narrowing, redactionและ restore
-4. หลัง pure modelผ่าน independent review จึงเริ่ม Phase 2 wiringกับ guardrails/REVIEW registry
+1. เพิ่ม Coordinator-owned REVIEW grant registryใน trusted session state; bind exact command/context/mandate/profile/policy digest/expiryและ consume-once
+2. แยก guardrail detection → policy resolution → UI rendering โดย normal manual sessionยังทำงานเดิม
+3. wire delegated Worker resolverให้ DENY/HUMAN/unknown fail closedโดยไม่เปิด dialog; REVIEW executeได้เฉพาะ trusted grantที่ registry consumeสำเร็จ
+4. เพิ่ม integration testsก่อน wire atomic policy referenceเข้า Pi spawn
 
-ห้ามโหลด agent-teams candidateหรือข้าม manual Herdr confirmationใน production pathระหว่าง Phase 1
+ห้ามโหลด agent-teams candidateหรือข้าม manual Herdr confirmationจน Phase 2–3 production-path acceptanceผ่าน

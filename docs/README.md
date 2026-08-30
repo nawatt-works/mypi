@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-07-27 08:55<br>
-> **Updated:** 2026-08-30 08:10<br>
+> **Updated:** 2026-08-30 08:30<br>
 > **Purpose:** แสดงภาพรวมของ design notes และ implementation history ที่ repository `my-pi` เป็นเจ้าของ
 
 `docs/` เป็น project documentation ของ repository นี้ ไม่ใช่ workspace-wide artifact store และไม่ใช่ default path สำหรับ plan, note หรือ output จาก AI tool/skill/harness อื่น
@@ -11,7 +11,7 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
-| 2026-08-30 08:10 | 2026-08-28 15:32 | active — Phase 1 | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | Pi-native Phase 0 chainผ่าน; exact nextคือ pure mandate/policy modelโดย productionยัง unchanged |
+| 2026-08-30 08:30 | 2026-08-28 15:32 | active — Phase 2 | [ปรับ Pi/Herdr Coordinator เป็น Delegated Autonomy](plans/delegated-autonomy-coordinator.md) | pure mandate/policy registry independent PASS; exact nextคือ trusted REVIEW registry + guardrail separation |
 | 2026-08-28 15:32 | 2026-08-25 09:19 | superseded | [Pi Coordinator บน Herdr](plans/pi-herdr-coordinator.md) | เก็บ implementation/probe history; authority contract และ Phase 3 เดิมถูกแทนด้วย delegated-autonomy plan |
 | 2026-08-23 11:19 | 2026-08-22 12:40 | superseded | [แยก Workflow Plan, Continuity Ledger และ Plannotator Review](plans/flexible-planning-continuity.md) | implementation รุ่น managed fallback; ต่อมาถูกแทนด้วย pointer-only และ dual session/workspace tracking |
 | 2026-08-09 19:25 | 2026-08-09 11:10 | complete | [ย้ายและขยาย Azure DevOps extension](plans/azure-devops-extension-crud.md) | เพิ่ม opt-in Work Item CRUD; ปัจจุบัน maintain ที่ `local/extensions/azure-devops/` และให้แต่ละ project โหลดเอง |
@@ -33,6 +33,7 @@
 
 ## Change log
 
+- 2026-08-30 08:30 — Phase 1 pure mandate/policy/audit registryผ่าน correction review: ปิด mutable alias + duplicate active replay, full suite `133/133`; production behaviorยัง unchangedและเริ่ม Phase 2
 - 2026-08-30 08:10 — เพิ่ม opt-in real-model agent-teams acceptance probe; implement→review→correction→acceptance tasks `5/5`, artifacts `7/7`, approvals/dialogs/screen-polling `0`, HUMAN remote-mutation side effects `0`; Phase 0 gateปิดและเริ่ม pure Phase 1
 - 2026-08-29 23:30 — independent reviewer reproduce correction v5ผ่าน self-contained apply-check/profile build/negative startup `6/6`, full suite `115/115`, diff-clean และให้ verdict `PASS`; productionยัง disabled
 - 2026-08-29 23:20 — correction v5ส่ง temporary `--session-dir`ให้ runtime-probe childทุกตัว แยก test-harness EPERMจาก boundary outcomeและผ่าน apply-check/negative startup `6/6`
