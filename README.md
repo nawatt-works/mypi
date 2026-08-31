@@ -29,6 +29,7 @@ Root `package.json#pi` aggregateเฉพาะ packagesใต้ `capabilities/
 - [`dependency-updates`](capabilities/global/dependency-updates/)
   - ตรวจ dependencyแบบ backgroundไม่ขวาง startup
   - command `/mypi-updates`
+  - skill `dependency-update-assessment` ประเมิน upstream/compatibility/security/lock/test evidenceก่อนเสนอแก้ exact pin
 - [`herdr-integration`](capabilities/global/herdr-integration/)
   - shared Herdr CLI client, blocked-state bridge และ official lifecycle integration setup
   - commands `/mypi-herdr-status`, `/mypi-herdr-setup`
@@ -164,15 +165,15 @@ Target release modelคือ exact Git refจาก remote:
 git@github.com:nawatt-works/mypi.git
 ```
 
-Published releaseและ Default Piปัจจุบันยังเป็น annotated tag `v0.2.0` ที่ commit `6c61b9d0ddd50f0f5adf4761fd93979dae6bc0bf`:
+Published releaseล่าสุดคือ annotated tag `v0.3.0` ที่ commit `7de3aacf46aa542038bd5b0fcae599fa8cef9d6d`:
 
 ```sh
-pi install git:git@github.com:nawatt-works/mypi.git@v0.2.0
+pi install git:git@github.com:nawatt-works/mypi.git@v0.3.0
 ```
 
-Pinned refไม่เลื่อนเองจากการแก้ working treeหรือ `pi update --extensions` การเปลี่ยนรุ่นต้องระบุ refใหม่และ rollbackได้ด้วย previous ref Default Piที่ตรวจรับแล้วโหลด tagนี้จาก Pi Git package store; development checkoutใช้เฉพาะ isolated development profile
+Pinned refไม่เลื่อนเองจากการแก้ working treeหรือ `pi update --extensions` การเปลี่ยนรุ่นต้องระบุ refใหม่และ rollbackได้ด้วย previous ref Development checkoutใช้เฉพาะ isolated development profile
 
-Local candidate `v0.3.0` รวม exact-pinned MCP/Web/Chrome adaptersไว้ใน stable aggregate แต่ไม่ pushและไม่เปลี่ยน Default Piตาม release decision การ switchในอนาคตต้องลบ `npm:pi-mcp-adapter`, `npm:pi-web-access` และ `npm:@narumitw/pi-chrome-devtools` พร้อมกันก่อนเปิด sessionใหม่ เพื่อไม่ให้ extension tools/commandsโหลดซ้ำและไม่ให้ skill `mcp-scripting` ชนกันระหว่าง standalone packageกับ My Pi aggregate
+Default Piปัจจุบันยังคง pinned `v0.2.0` พร้อม standalone `npm:pi-mcp-adapter`, `npm:pi-web-access` และ `npm:@narumitw/pi-chrome-devtools`; remote `v0.3.0` ยังไม่ได้ activateใน Default profile การ switchในอนาคตต้องลบสาม standalone entriesพร้อมกันก่อนเปิด sessionใหม่ เพื่อไม่ให้ extension tools/commandsโหลดซ้ำและไม่ให้ skill `mcp-scripting` ชนกันระหว่าง standalone packageกับ My Pi aggregate
 
 ## Verification
 
@@ -194,20 +195,21 @@ Clean-install gateต้องผ่าน `npm ci` และโหลด stable
 
 ## Dependency updates
 
-ตรวจทันที:
+ตรวจว่ามี versionใหม่หรือไม่ด้วย commandแบบ detection-only:
 
 ```text
 /mypi-updates
 ```
 
-หรืออัปเดตจาก repository:
+ก่อนเปลี่ยน exact pin ให้เรียก skillพร้อม packageและ candidateที่ต้องการประเมิน:
 
-```sh
-npm update
-npm test
+```text
+/skill:dependency-update-assessment <package> <current> -> <candidate>
 ```
 
-หากต้องการให้ตรง lockfileทุกประการใช้ `npm ci` Capability package dependenciesเป็น npm workspacesและ root lockfileเป็น clean-install boundary
+Skillอ่าน registry/changelog/tarballและทดสอบ candidateใน disposable copy โดยไม่แก้ repositoryจริง ผล `CURRENT` หมายถึงไม่ต้องเปลี่ยน, `SAFE_TO_PROPOSE` หมายถึงเสนอ patchได้แต่ยังไม่ใช่ approvalให้ apply ส่วน `HOLD`, `REJECT` และ `HUMAN` ห้ามข้ามด้วย `npm update` หรือ force flags
+
+หลังผู้ใช้อนุมัติ applyแยกต่างหากจึงแก้ exact versionใน capability manifest, regenerate `package-lock.json` โดยปิด lifecycle scripts, review direct/transitive diff แล้วรัน focused/full tests, clean-install smokeและ auditอีกครั้ง ห้ามใช้ floating rangeแทน exact pin `npm ci` ใช้ verify lockfileที่อนุมัติแล้ว ไม่ใช่ตัดสินว่า candidateปลอดภัย Capability package dependenciesเป็น npm workspacesและ root lockfileเป็น clean-install boundary
 
 ## Guardrails และขอบเขตการป้องกัน
 

@@ -2,7 +2,7 @@
 
 > **Status:** active<br>
 > **Created:** 2026-07-27 08:55<br>
-> **Updated:** 2026-08-31 09:00<br>
+> **Updated:** 2026-08-31 09:30<br>
 > **Purpose:** แสดงภาพรวมของ design notes และ implementation history ที่ repository `my-pi` เป็นเจ้าของ
 
 `docs/` เป็น project documentation ของ repository นี้ ไม่ใช่ workspace-wide artifact store และไม่ใช่ default path สำหรับ plan, note หรือ output จาก AI tool/skill/harness อื่น
@@ -25,7 +25,8 @@
 
 | Updated | Created | Status | Document | Purpose |
 |---|---|---|---|---|
-| 2026-08-31 09:00 | 2026-08-31 08:30 | acceptance PASS — local release | [My Pi v0.3.0 Managed Third-party Adapters](notes/my-pi-v0.3.0-third-party-adapters.md) | exact MCP/Web/Chrome adapters; 228/228 + isolated host-core/duplicate/resource smoke PASS; no push/switch |
+| 2026-08-31 09:30 | 2026-08-31 09:05 | review PASS — unreleased | [Dependency Update Assessment Skill](notes/dependency-update-assessment-skill.md) | assessment-first exact-pin workflow, calibrated verdicts, disposable gates และ no-mutation boundary |
+| 2026-08-31 09:00 | 2026-08-31 08:30 | acceptance PASS — published, not activated | [My Pi v0.3.0 Managed Third-party Adapters](notes/my-pi-v0.3.0-third-party-adapters.md) | exact MCP/Web/Chrome adapters; 228/228 + isolated host-core/duplicate/resource smoke PASS; remote tagพร้อมแต่ Defaultยัง v0.2.0 |
 | 2026-08-31 01:30 | 2026-08-30 20:00 | acceptance PASS | [Agent-teams Generated-path Real-provider Acceptance](notes/agent-teams-generated-path-real-provider-acceptance.md) | four-layer guardrails + disabled opt-in/dual adapters/REVIEW/HUMAN/crash cleanupผ่าน 19/19 |
 | 2026-08-31 00:55 | 2026-08-31 00:20 | review PASS | [Delegated Guardrail Resolver Independent Review](notes/delegated-guardrail-resolver-independent-review.md) | ปิด policy REVIEW fallback + workspace authority Medium; candidate 16/16 |
 | 2026-08-30 23:40 | 2026-08-30 23:15 | review PASS | [Delegated Orchestration Phase 2–3 Final Review](notes/delegated-orchestration-phase2-3-final-review.md) | ปิด Docker runtime-contract Medium; final candidateไม่มี High/Medium |
@@ -46,7 +47,8 @@
 
 ## Change log
 
-- 2026-08-31 09:00 — รวม exact-pinned MCP/Web/Chrome adaptersใน local `v0.3.0`; acceptance/reviewผ่านและยังไม่ push/switch
+- 2026-08-31 09:30 — เพิ่ม `dependency-update-assessment` skillหลัง `v0.3.0`; eval/reviewผ่านและยังไม่ release
+- 2026-08-31 09:00 — รวม exact-pinned MCP/Web/Chrome adaptersใน `v0.3.0`; remote tagพร้อมแต่ Default profileยังไม่ switch
 - 2026-08-31 03:00 — safety guardrailsสี่ชุดผ่าน closure review, full 227/227, runtime 10/10 และ real-provider 19/19
 - 2026-08-31 01:50 — ปิดแผนด้วย local disabled candidate; external mutationsทั้งหมดถูก deferตาม human decision
 - 2026-08-31 01:40 — disabled production opt-in review/acceptanceผ่าน; root/manual unchanged

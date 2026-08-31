@@ -85,7 +85,10 @@ test("root aggregate loads every and only stable global capability resource", ()
 		}));
 	}).sort();
 	assert.deepEqual(rootResources, expected);
-	assert.deepEqual(root.pi?.skills, ["./capabilities/global/mcp-adapter/skills/mcp-scripting/SKILL.md"]);
+	assert.deepEqual(root.pi?.skills, [
+		"./capabilities/global/mcp-adapter/skills/mcp-scripting/SKILL.md",
+		"./capabilities/global/dependency-updates/skills/dependency-update-assessment/SKILL.md",
+	]);
 });
 
 test("managed third-party global adapters use exact dependency pins", () => {

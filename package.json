@@ -39,7 +39,8 @@
       "./capabilities/global/ui-themes/themes"
     ],
     "skills": [
-      "./capabilities/global/mcp-adapter/skills/mcp-scripting/SKILL.md"
+      "./capabilities/global/mcp-adapter/skills/mcp-scripting/SKILL.md",
+      "./capabilities/global/dependency-updates/skills/dependency-update-assessment/SKILL.md"
     ]
   }
 }

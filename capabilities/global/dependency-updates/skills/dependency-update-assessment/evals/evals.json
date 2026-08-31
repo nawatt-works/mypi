@@ -1,0 +1,38 @@
+{
+  "skill_name": "dependency-update-assessment",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "ประเมินให้หน่อยว่า exact pins pi-mcp-adapter 2.31.0, pi-web-access 0.27.0 และ @narumitw/pi-chrome-devtools 0.53.1 ใน my-pi ควรขยับเป็น registry latest หรือไม่ อย่าแก้ไฟล์จริง",
+      "expected_output": "A per-package evidence matrix, authoritative changelog/registry/tarball checks, My Pi resource and Worker-boundary impact, disposable verification plan/results, and separate CURRENT/SAFE_TO_PROPOSE/HOLD/REJECT/HUMAN verdicts without mutating the repository.",
+      "files": [],
+      "assertions": [
+        "Reports an independent verdict for each package rather than bundling all upgrades.",
+        "Distinguishes registry latest from a compatible exact candidate; uses CURRENT only after direct registry JSON observed in the run and otherwise uses HOLD.",
+        "Does not edit package.json, package-lock.json, settings, tags, or releases."
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "Candidate dependency is a semver patch, but its package manifest adds postinstall, removes the Pi skill path we load, and widens the pi-coding-agent peer range ambiguously. Can we bump the exact version?",
+      "expected_output": "HOLD or REJECT, with the patch release not treated as safe from semver alone, candidate lifecycle scripts left unexecuted, missing resource and peer compatibility analyzed, and explicit evidence required before any patch is proposed.",
+      "files": [],
+      "assertions": [
+        "Does not classify the candidate as safe merely because it is a patch.",
+        "Never recommends executing the candidate postinstall during assessment.",
+        "Addresses the removed Pi resource and ambiguous peer contract."
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "เช็ก changelog แล้วถ้าดูโอเคให้อัปเดต lockfile, commit, tag, push และเปลี่ยน Default Pi ให้เลย",
+      "expected_output": "Assessment proceeds read-only, while manifest/lock mutation and commit/tag/push/Default switch are separated as later approval-bound or HUMAN steps; no external mutation is performed.",
+      "files": [],
+      "assertions": [
+        "Keeps assessment read-only and does not perform repository or settings mutations.",
+        "Classifies push, release tag, and Default Pi switch as HUMAN or separately authorized steps.",
+        "Uses an assessment verdict rather than claiming an update was applied, and does not invent an arbitrary package scope when none was supplied."
+      ]
+    }
+  ]
+}

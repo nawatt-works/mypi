@@ -134,10 +134,10 @@ export function formatUpdateNotification(updates: DependencyUpdate[]): string {
 		(update) => update.current === update.wanted && update.current !== update.latest,
 	);
 	const guidance = hasRangeBlockedUpdate
-		? "Run npm update in my-pi for compatible updates. Latest versions marked above require changing package.json; then /reload."
-		: "Run npm update in my-pi, then /reload.";
+		? "Assess each exact candidate with /skill:dependency-update-assessment before changing package.json or the lockfile; the current range blocks at least one latest version."
+		: "Assess each candidate with /skill:dependency-update-assessment before changing package.json or the lockfile.";
 
-	return `my-pi dependency updates available:\n${lines.join("\n")}\n${guidance}`;
+	return `my-pi dependency updates available (detection only):\n${lines.join("\n")}\n${guidance}`;
 }
 
 async function checkForUpdates(

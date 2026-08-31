@@ -1,7 +1,7 @@
 # My Pi v0.3.0 — Managed Third-party Adapters
 
-> **Status:** acceptance PASS · local release only<br>
-> **Release decision:** annotated local `v0.3.0`; no push, Default switchหรือ settings mutation<br>
+> **Status:** acceptance PASS · published release · Default not activated<br>
+> **Release:** annotated `v0.3.0` at `7de3aacf46aa542038bd5b0fcae599fa8cef9d6d`; remote tag observed, Default profile/settings unchanged<br>
 > **Delegated orchestration:** remains incubator; production disabled
 
 ## Scope
@@ -41,10 +41,10 @@ Web Accessและ Chrome packagesไม่มี root export จึงใช�
 
 ## Deferred migration
 
-Default Piยังใช้ pinned `v0.2.0` และ global settingsยังคง entriesเดิม:
+Default Piยังใช้ pinned `v0.2.0` แม้ remote `v0.3.0`พร้อมแล้ว และ global settingsยังคง entriesเดิม:
 
 - `npm:pi-mcp-adapter`
 - `npm:pi-web-access`
 - `npm:@narumitw/pi-chrome-devtools`
 
-เมื่อมี human authorizationให้ switchเป็น remote `v0.3.0` ในอนาคต ต้อง push releaseก่อน แล้วลบทั้งสาม standalone entriesพร้อมกันก่อนเปิด sessionใหม่ มิฉะนั้น extension tools/commandsจะ duplicateและ skill `mcp-scripting`จะ collision ห้ามเปลี่ยน Default Piด้วย local tagที่ยังไม่ push
+เมื่อมี human authorizationให้ switchเป็น remote `v0.3.0` ในอนาคต ให้ลบทั้งสาม standalone entriesพร้อมกันและเปลี่ยน pinned refก่อนเปิด sessionใหม่ มิฉะนั้น extension tools/commandsจะ duplicateและ skill `mcp-scripting`จะ collision

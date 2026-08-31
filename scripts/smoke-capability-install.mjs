@@ -66,7 +66,7 @@ try {
 	for (const required of [
 		"mypi-worker-status", "mypi-updates", "mypi-herdr-status", "mypi-herdr-setup", "mypi-continuity",
 		"plannotator-plan-mode", "plannotator-review",
-		"mcp", "pi-mcp", "mcp-auth", "chrome-devtools", "skill:mcp-scripting",
+		"mcp", "pi-mcp", "mcp-auth", "chrome-devtools", "skill:mcp-scripting", "skill:dependency-update-assessment",
 	]) {
 		if (!commandNames.has(required)) throw new Error(`stable aggregate command is missing: ${required}`);
 	}
@@ -107,6 +107,7 @@ try {
 		rpcSessionStart: true,
 		stableCommands: [...commandNames].filter((name) => name.startsWith("mypi-")).sort(),
 		thirdPartyCommands: ["mcp", "pi-mcp", "mcp-auth", "chrome-devtools", "skill:mcp-scripting"],
+		stableSkills: ["skill:mcp-scripting", "skill:dependency-update-assessment"],
 		stableAdapterTools: requiredStableTools,
 		projectOptInPackage: "azure-devops",
 	}));
