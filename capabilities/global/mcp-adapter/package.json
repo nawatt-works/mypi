@@ -1,0 +1,18 @@
+{
+  "name": "@nawatt-works/mypi-mcp-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pinned My Pi stable adapter for pi-mcp-adapter.",
+  "keywords": ["pi-package"],
+  "dependencies": {
+    "pi-mcp-adapter": "2.31.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/index.ts"],
+    "skills": ["./skills/mcp-scripting/SKILL.md"]
+  }
+}

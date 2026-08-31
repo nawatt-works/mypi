@@ -1,6 +1,6 @@
 {
   "name": "my-pi-setup",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "description": "Stable global My Pi capability aggregate with project-opt-in and incubator packages.",
@@ -30,11 +30,16 @@
       "./capabilities/global/interactive-steering/extensions/index.ts",
       "./capabilities/global/structured-questions/extensions/index.ts",
       "./capabilities/global/planning-review/extensions/index.ts",
-      "./capabilities/global/planning-continuity/extensions/index.ts"
+      "./capabilities/global/planning-continuity/extensions/index.ts",
+      "./capabilities/global/mcp-adapter/extensions/index.ts",
+      "./capabilities/global/web-access/extensions/index.ts",
+      "./capabilities/global/chrome-devtools/extensions/index.ts"
     ],
     "themes": [
       "./capabilities/global/ui-themes/themes"
     ],
-    "skills": []
+    "skills": [
+      "./capabilities/global/mcp-adapter/skills/mcp-scripting/SKILL.md"
+    ]
   }
 }

@@ -85,7 +85,25 @@ test("root aggregate loads every and only stable global capability resource", ()
 		}));
 	}).sort();
 	assert.deepEqual(rootResources, expected);
-	assert.deepEqual(root.pi?.skills, []);
+	assert.deepEqual(root.pi?.skills, ["./capabilities/global/mcp-adapter/skills/mcp-scripting/SKILL.md"]);
+});
+
+test("managed third-party global adapters use exact dependency pins", () => {
+	const expected = new Map([
+		["@nawatt-works/mypi-mcp-adapter", ["pi-mcp-adapter", "2.31.0"]],
+		["@nawatt-works/mypi-web-access", ["pi-web-access", "0.27.0"]],
+		["@nawatt-works/mypi-chrome-devtools", ["@narumitw/pi-chrome-devtools", "0.53.1"]],
+	]);
+	let matched = 0;
+	for (const directory of packageDirectories("global")) {
+		const value = manifest(join(directory, "package.json"));
+		const pin = expected.get(value.name);
+		if (!pin) continue;
+		matched++;
+		assert.deepEqual(Object.entries(value.dependencies ?? {}), [pin]);
+		assert.match(pin[1], /^\d+\.\d+\.\d+$/);
+	}
+	assert.equal(matched, expected.size);
 });
 
 test("stable global packages cannot depend on or import from another lane", () => {

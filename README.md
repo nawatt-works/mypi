@@ -1,6 +1,6 @@
 # My Pi
 
-ชุด capability packages สำหรับ Pi ที่แยก stable global resources, project opt-ins และ incubator ออกจากกันอย่างชัดเจน Root package `0.2.0` เป็น stable global aggregate ส่วน releaseจริงจะติดตั้งจาก exact Git tag/commit ไม่อ้าง development working tree
+ชุด capability packages สำหรับ Pi ที่แยก stable global resources, project opt-ins และ incubator ออกจากกันอย่างชัดเจน Root package `0.3.0` เป็น stable global aggregate ส่วน releaseจริงจะติดตั้งจาก exact Git tag/commit ไม่อ้าง development working tree
 
 ## Repository model
 
@@ -37,6 +37,12 @@ Root `package.json#pi` aggregateเฉพาะ packagesใต้ `capabilities/
   - manual modeถามผู้ใช้; non-interactive mode fail closed
 - [`interactive-steering`](capabilities/global/interactive-steering/)
   - ให้ผู้ใช้เลือก Steer, Wait หรือ Cancel ระหว่าง agentทำงาน
+- [`mcp-adapter`](capabilities/global/mcp-adapter/)
+  - exact adapterสำหรับ `pi-mcp-adapter@2.31.0` พร้อม My Pi `mcp-scripting` guidance
+- [`web-access`](capabilities/global/web-access/)
+  - exact adapterสำหรับ `pi-web-access@0.27.0`
+- [`chrome-devtools`](capabilities/global/chrome-devtools/)
+  - exact adapterสำหรับ `@narumitw/pi-chrome-devtools@0.53.1`; generated Workersไม่ inherit browser tools
 - [`structured-questions`](capabilities/global/structured-questions/)
   - adapterสำหรับ `@juicesharp/rpiv-ask-user-question`
 - [`planning-review`](capabilities/global/planning-review/)
@@ -158,13 +164,15 @@ Target release modelคือ exact Git refจาก remote:
 git@github.com:nawatt-works/mypi.git
 ```
 
-Stable releaseปัจจุบันคือ annotated tag `v0.2.0` ที่ commit `6c61b9d0ddd50f0f5adf4761fd93979dae6bc0bf`:
+Published releaseและ Default Piปัจจุบันยังเป็น annotated tag `v0.2.0` ที่ commit `6c61b9d0ddd50f0f5adf4761fd93979dae6bc0bf`:
 
 ```sh
 pi install git:git@github.com:nawatt-works/mypi.git@v0.2.0
 ```
 
 Pinned refไม่เลื่อนเองจากการแก้ working treeหรือ `pi update --extensions` การเปลี่ยนรุ่นต้องระบุ refใหม่และ rollbackได้ด้วย previous ref Default Piที่ตรวจรับแล้วโหลด tagนี้จาก Pi Git package store; development checkoutใช้เฉพาะ isolated development profile
+
+Local candidate `v0.3.0` รวม exact-pinned MCP/Web/Chrome adaptersไว้ใน stable aggregate แต่ไม่ pushและไม่เปลี่ยน Default Piตาม release decision การ switchในอนาคตต้องลบ `npm:pi-mcp-adapter`, `npm:pi-web-access` และ `npm:@narumitw/pi-chrome-devtools` พร้อมกันก่อนเปิด sessionใหม่ เพื่อไม่ให้ extension tools/commandsโหลดซ้ำและไม่ให้ skill `mcp-scripting` ชนกันระหว่าง standalone packageกับ My Pi aggregate
 
 ## Verification
 
@@ -182,7 +190,7 @@ Test runnerค้น `*.test.ts` ใต้ root `tests/` และ `capabilities
 - commandsที่ maintainเองใช้ prefix `/mypi-`
 - legacy flat resource rootsไม่มีเหลือ
 
-Clean-install gateต้องผ่าน `npm ci` และโหลด stable extension setจาก temporary isolated Pi directoryโดยไม่อาศัย development `node_modules`
+Clean-install gateต้องผ่าน `npm ci` และโหลด stable extension setจาก temporary isolated Pi directoryโดยไม่อาศัย development `node_modules` Gateลบ npm-auto-installed Pi core peersจาก temporary releaseก่อน RPC startupเพื่อยืนยันว่า adapter imports resolveผ่าน host Pi extension loader, พร้อมตรวจ tools/commands/skillและ duplicate names
 
 ## Dependency updates
 

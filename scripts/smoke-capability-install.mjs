@@ -28,6 +28,15 @@ try {
 		},
 	});
 	run("npm", ["ci", "--omit=dev", "--ignore-scripts", "--no-audit", "--no-fund"], { cwd: releaseRoot });
+	// Pi's extension loader must provide host-owned core modules. Removing npm's
+	// auto-installed peer copies proves the adapters do not depend on release-local Pi cores.
+	for (const modulePath of [
+		["@earendil-works", "pi-coding-agent"],
+		["@earendil-works", "pi-agent-core"],
+		["@earendil-works", "pi-ai"],
+		["@earendil-works", "pi-tui"],
+		["typebox"],
+	]) rmSync(join(releaseRoot, "node_modules", ...modulePath), { recursive: true, force: true });
 	const environment = {
 		...process.env,
 		PI_CODING_AGENT_DIR: agentRoot,
@@ -51,18 +60,29 @@ try {
 	}
 	const commandsResponse = messages.find((message) => message.type === "response" && message.command === "get_commands" && message.success === true);
 	if (!commandsResponse) throw new Error("stable aggregate RPC session did not return commands");
-	const commandNames = new Set((commandsResponse.data?.commands ?? []).map((command) => command.name));
+	const commandList = (commandsResponse.data?.commands ?? []).map((command) => command.name);
+	const commandNames = new Set(commandList);
+	if (commandNames.size !== commandList.length) throw new Error("stable aggregate registered a duplicate command name");
 	for (const required of [
 		"mypi-worker-status", "mypi-updates", "mypi-herdr-status", "mypi-herdr-setup", "mypi-continuity",
 		"plannotator-plan-mode", "plannotator-review",
+		"mcp", "pi-mcp", "mcp-auth", "chrome-devtools", "skill:mcp-scripting",
 	]) {
 		if (!commandNames.has(required)) throw new Error(`stable aggregate command is missing: ${required}`);
 	}
 	for (const forbidden of ["mypi-orchestrate", "mypi-orchestrate-status", "mypi-orchestrate-cleanup", "mypi-azure-devops-config"]) {
 		if (commandNames.has(forbidden)) throw new Error(`non-global command leaked into stable aggregate: ${forbidden}`);
 	}
-	const observedTools = new Set(JSON.parse(readFileSync(resourceOutput, "utf8")).tools ?? []);
-	for (const required of ["ask_user_question", "plannotator_submit_plan"]) {
+	const observedToolList = JSON.parse(readFileSync(resourceOutput, "utf8")).tools ?? [];
+	const observedTools = new Set(observedToolList);
+	if (observedTools.size !== observedToolList.length) throw new Error("stable aggregate registered a duplicate tool name");
+	const requiredStableTools = [
+		"ask_user_question", "plannotator_submit_plan",
+		"mcp", "mcpScript",
+		"web_search", "source_check", "fetch_content", "get_search_content",
+		"chrome_devtools_load",
+	];
+	for (const required of requiredStableTools) {
 		if (!observedTools.has(required)) throw new Error(`stable aggregate tool is missing: ${required}`);
 	}
 	for (const forbidden of ["mypi_preview_worker", "mypi_spawn_worker", "azure_boards_doctor"]) {
@@ -86,7 +106,8 @@ try {
 		cleanInstall: true,
 		rpcSessionStart: true,
 		stableCommands: [...commandNames].filter((name) => name.startsWith("mypi-")).sort(),
-		stableAdapterTools: ["ask_user_question", "plannotator_submit_plan"],
+		thirdPartyCommands: ["mcp", "pi-mcp", "mcp-auth", "chrome-devtools", "skill:mcp-scripting"],
+		stableAdapterTools: requiredStableTools,
 		projectOptInPackage: "azure-devops",
 	}));
 } finally {

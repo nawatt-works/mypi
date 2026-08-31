@@ -1,0 +1,17 @@
+{
+  "name": "@nawatt-works/mypi-chrome-devtools",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pinned My Pi stable adapter for @narumitw/pi-chrome-devtools.",
+  "keywords": ["pi-package"],
+  "dependencies": {
+    "@narumitw/pi-chrome-devtools": "0.53.1"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/index.ts"]
+  }
+}
